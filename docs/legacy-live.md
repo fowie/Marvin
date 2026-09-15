@@ -186,3 +186,63 @@ Linux adds input/output baud encoding to cflag. The surgical normalization
 above fixes this reproduced host-side issue without relaxing other settings.
 Host PTY verification does not establish successful controller operation; any
 subsequent robot attempt needs fresh explicit authorization.
+
+## Reviewed persistent snapshot result
+
+The operator separately authorized one corrected attempt at
+`1e8378a5c287b023c7d22c38a7d8b661c388db2f`, September 15, 2026,
+23:41:12-32 UTC, without changing the four isolations or J10 connection.
+It completed five ReadRawData exchanges, sequences **512 through 516**, on
+one persistent open, followed by one recorded same-owner close.
+
+Fresh preflight, capture guards and a post-capture cached-only preflight agreed:
+USB `045e:4444`, physical port `1-1.1.3.3`, bus 1/device 7, tty `ttyACM0`
+(rdev 42496), sysfs device/inode 25/44386, 71 descriptor bytes, SHA256
+`7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b`.
+These are that connection's host identifiers, not future device-number pins or
+authenticated firmware identity. No tty owner remained after close.
+
+All five replies matched command `00`, status `80`, sequence, CRC and the
+134-byte/82-field profile. Independent offline comparison found identical
+720-byte streams in the collector events, raw adapter journal and ten complete
+USB-IN payloads. Five complete USB-OUT payloads exactly matched the five ten-byte
+requests, with successful completions: **50 bytes accepted/completed, zero
+uncertain bytes**, and no additional application OUT. All artifact hashes and
+the collector seal verified. The 68-record target USB capture ended normally
+by coordinator stop at approximately 20.23 seconds, before its 25-second bound,
+with queued/dropped counts both zero and no unmatched application transfers.
+
+Host write-attempt spacings were 1.022794, 1.039129, 1.033159 and 1.041388 seconds;
+each measured post-correlation idle interval exceeded 1.010441 seconds.
+Conservative RX lower bounds were 303-437 microseconds after the client
+submission timestamps; no timing, identity, correlation or cleanup error was
+reported. Close took approximately 35.554 milliseconds, with another 13.737
+seconds of USB tail. Requested/returned termios arrays were retained; the
+controller readback exhibited the same baud encoding normalization observed
+on the host PTY. CDC control-line requests again included **`3` then `0`**.
+
+Raw tick values were 1071212, 1071314, 1071415, 1071517 and 1071618 (deltas
+102/101/102/101). Both source-labeled reverse PWM fields were raw **100** in
+every snapshot; both forward PWM and reported velocity fields were zero.
+Other raw fields changed between samples. These are not physical units,
+controller timing calibration, actuator-stop evidence or commissioning approval.
+
+Private local evidence ID: `live-readraw-512-readback-fix`.
+The complete concatenated 720-byte reply stream has SHA256
+`45872f5ba302360d333528ca69c4d0277e931eb57d9fba84e92aefc43dd8165f`.
+The private `SHA256SUMS` manifest has SHA256
+`25db28df45a3a3aedf718c944b341d69387ba93130454c45f43c3036e883515e`.
+Only reviewed derived findings are published here, not raw captures.
+The historical metadata limitation strings about 32-byte payloads and pySerial
+flushing do not describe this adapter: its binary budget was 4096, its complete
+IN bytes were verified, and it used raw termios without a flush.
+
+**Remaining operator hold:** no physical disconnect/reconnect was performed.
+A proposed next step is a separately authorized, cleanly closed USB reconnect
+on only the same J10 host cable, preserving all four isolations and the reviewed
+port. Re-pin the returned connection and authorize a new bounded five-snapshot
+session with unused sequences (for example 768-772). An operator unplug/replug
+may remove controller USB power or restart firmware; no software reset/power
+command is authorized. This would test explicit fresh-session reconnect after
+clean close, **not in-flight USB loss or a failure-injection experiment**.
+Do not close Epic #1 or the independent physical gates from this result alone.

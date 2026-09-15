@@ -15,6 +15,34 @@ Original successor-drive software explicitly supports this legacy USB identity.
 Legacy `S`/`E` framing and six read operations are now live-confirmed on this controller.
 No motor/servo command library exists yet.
 
+**Persistent isolated snapshots, September 15 at 23:41 UTC:** after a separately
+authorized initial attempt failed before application TX on a host termios
+readback comparison, the reviewed fix at
+`1e8378a5c287b023c7d22c38a7d8b661c388db2f` completed five ReadRawData
+requests (sequences 512-516) on one persistent raw tty open. The same operator
+confirmed exclusive ownership, all four motor/servo power/signal isolations and
+the unchanged J10 connection. Fresh pre/post cached identity remained
+`045e:4444`, port `1-1.1.3.3`, bus 1/device 7, ttyACM0; these are observations,
+not pins for future reconnections.
+
+All five 144-byte replies matched command, sequence, status `80`, CRC and the
+134-byte/82-field profile. Full binary USB-IN, raw adapter journal and collector
+bytes matched exactly: 720 incoming bytes and five successful ten-byte OUTs,
+zero uncertain TX. Write spacing exceeded 1.022 seconds. One same-owner close
+completed; the 68-record USB capture stopped normally with zero queued/dropped
+events, and all private artifact hashes verified. Control-line requests were
+again `3` then `0`; requested low does not prevent transient assertions.
+
+**No physical stop claim:** both reverse-PWM fields remained raw `100`, both
+forward-PWM fields and velocities zero. Raw tick increments 102/101/102/101 and
+changing fields are not calibrated timing, units or electrical safety evidence.
+No cable removal, in-flight USB-loss experiment or operator reconnect was done.
+The [LIVE acceptance record](legacy-live.md#reviewed-persistent-snapshot-result)
+preserves the failed first attempt, successful bounded result and remaining
+operator gate. Private evidence ID: `live-readraw-512-readback-fix`; complete
+720-byte RX SHA256:
+`45872f5ba302360d333528ca69c4d0277e931eb57d9fba84e92aefc43dd8165f`.
+
 **Unprivileged isolated read, September 15 at 23:04 UTC:** the present operator
 confirmed motor/servo power AND signal isolation and approved one bounded
 ReadRawData request, including possible serial-open/close line effects. Both
