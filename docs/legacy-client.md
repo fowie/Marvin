@@ -123,6 +123,9 @@ truncated. Cleanup attempts close once and releases process-local claims.
 Contractual close errors and close-deadline overruns are reported separately
 without replacing an existing primary failure. The post-close deadline is
 checked even when the adapter raises. A close-only failure is raised.
+Cleanup clock validation records diagnostics without replacing the primary
+failure; a close-only clock failure consistently raises and retains
+`cleanup_failed`. Identical before/after cleanup clock diagnostics appear once.
 Unexpected programming exceptions/interruption invalidate the client;
 finalization still attempts cleanup once and propagates the initiating exception,
 retaining secondary finalization errors separately. The session is marked

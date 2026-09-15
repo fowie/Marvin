@@ -802,6 +802,46 @@ class LegacyClientTests(unittest.TestCase):
         self.assert_failed(session, transport, "clock_regressed", writes=0)
         self.assertTrue(session.cleanup_errors)
 
+    def test_close_clock_regressions_keep_raised_and_retained_failure_consistent(self):
+        for stage in ("before_close", "after_close", "close_error"):
+            with self.subTest(stage=stage):
+                session, transport, clock = self.make_client()
+                session.start()
+                if stage == "before_close":
+                    clock.now = 9
+                else:
+                    def regress_on_close():
+                        clock.now = 9
+                        if stage == "close_error":
+                            raise OSError("close failed")
+                    transport.on_close = regress_on_close
+                with self.assertRaises(client.SessionError) as raised:
+                    session.close()
+                self.assertEqual(raised.exception.code, "cleanup_failed")
+                self.assertEqual(session.failure.code, raised.exception.code)
+                self.assertEqual(session.failure.message, str(raised.exception))
+                self.assertEqual(session.cleanup_errors.count(
+                    client.Failure("cleanup_clock", "Monotonic clock moved backwards.")), 1)
+                if stage == "close_error":
+                    self.assertEqual(session.cleanup_errors[0], client.Failure("close_error", "close failed"))
+                self.assert_failed(session, transport, "cleanup_failed", writes=0)
+
+    def test_cleanup_clock_regression_preserves_prior_request_failure(self):
+        session, transport, clock = self.make_client()
+        transport.count = 3
+        transport.on_write = lambda packet: setattr(clock, "now", 9)
+        with self.assertRaises(client.SessionError) as raised:
+            with session:
+                session.request("get-config", timeout=1)
+        self.assertEqual(raised.exception.code, "short_write")
+        self.assertEqual(session.failure.code, raised.exception.code)
+        self.assertEqual(session.failure.message, str(raised.exception))
+        self.assertEqual(session.cleanup_errors, (
+            client.Failure("cleanup_clock", "Monotonic clock moved backwards."),
+        ))
+        self.assertEqual((session.accepted_bytes, session.uncertain_bytes), (3, 7))
+        self.assert_failed(session, transport, "short_write")
+
 
 if __name__ == "__main__":
     unittest.main()

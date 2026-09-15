@@ -254,10 +254,13 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                     self._requests[-1] = replace(self._requests[-1], status="failed")
                 self._finish_and_cleanup(primary_failure=True)
 
-    def _now(self):
+    def _now(self, *, record_failure=True):
         now = _number("clock", self._clock(), 0, 1e12)
         if now < self._last_now:
-            self._abort("clock_regressed", "Monotonic clock moved backwards.")
+            message = "Monotonic clock moved backwards."
+            if record_failure:
+                self._abort("clock_regressed", message)
+            raise ValueError(message)
         self._last_now = now
         return now
 
@@ -489,7 +492,7 @@ Evidence properties are immutable snapshots, not a polling/recording service.
         self._close_attempted = True
         try:
             try:
-                now = self._now()
+                now = self._now(record_failure=False)
             except (OSError, ValueError, TypeError, RuntimeError) as error:
                 self._cleanup_errors.append(Failure("cleanup_clock", str(error)[:1024]))
                 now = self._last_now
@@ -501,10 +504,12 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                 self._cleanup_errors.append(Failure("close_error", str(error)[:1024]))
             finally:
                 try:
-                    if self._now() >= now + self._cleanup_timeout:
+                    if self._now(record_failure=False) >= now + self._cleanup_timeout:
                         self._cleanup_errors.append(Failure("close_deadline", "Adapter close exceeded its deadline."))
                 except (OSError, ValueError, TypeError, RuntimeError) as error:
-                    self._cleanup_errors.append(Failure("cleanup_clock", str(error)[:1024]))
+                    diagnostic = Failure("cleanup_clock", str(error)[:1024])
+                    if diagnostic not in self._cleanup_errors:
+                        self._cleanup_errors.append(diagnostic)
         finally:
             with _CLAIM_LOCK:
                 del _CLAIMS[self._key]
