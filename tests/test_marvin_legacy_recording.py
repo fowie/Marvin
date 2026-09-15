@@ -1,10 +1,13 @@
+from contextlib import redirect_stdout
 import hashlib
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from tools.marvin_legacy_poll import CollectionError, PollPlan, collect
+from tools.marvin_legacy_poll import CollectionError, PollPlan, collect, main
+from tools import marvin_legacy_protocol as protocol
 from tools.marvin_legacy_recording import (
     MAX_FILE_BYTES, MAX_RECORDS, TERMINAL_BYTES, encode_row, inspect_recording,
 )
@@ -198,6 +201,67 @@ class RecordingReplayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             inspect_recording(self.altered(rows))
 
+    def test_stream_packet_uses_full_legacy_schema_not_compact_modern_schema(self):
+        self.record()
+        replay = inspect_recording(self.output)
+        for event in replay["events"]:
+            packet = protocol.decode_packet(bytes.fromhex(event["stream"]["raw_hex"]))
+            declared = event["stream"]["packet"]
+            self.assertEqual(declared, packet.to_dict())
+            self.assertEqual(declared["protocol"], "marvin-legacy-se")
+            self.assertEqual(declared["raw_hex"], event["stream"]["raw_hex"])
+            self.assertEqual(declared["declared_payload_bytes"], 134)
+            self.assertIn("crc16_value", declared)
+
+    def test_packet_integer_declarations_reject_equal_booleans_and_floats(self):
+        self.record()
+        packet = [row for row in self.rows() if row["type"] == "evidence"][1]["stream"]["packet"]
+        replacements = [(key, float(value)) for key, value in packet.items() if type(value) is int]
+        replacements += [("sequence", True), ("command", False)]
+        for key, value in replacements:
+            rows = self.rows()
+            event = [row for row in rows if row["type"] == "evidence"][1]
+            event["stream"]["packet"][key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                inspect_recording(self.altered(rows))
+
+    def test_nullable_request_fields_must_be_present_and_cli_reports_input_error(self):
+        self.transport.count = 3
+        with self.assertRaises(CollectionError):
+            self.record(count=1)
+        for key in ("submitted_at", "reply_event"):
+            rows = self.rows()
+            request = next(row for row in rows if row["type"] == "request")
+            self.assertIsNone(request.pop(key))
+            path = self.altered(rows)
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    inspect_recording(path)
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    self.assertEqual(main(["--replay", str(path)]), 2)
+                self.assertEqual(json.loads(stdout.getvalue())["status"], "input_error")
+
+    def test_candidate_timestamp_fields_must_be_present(self):
+        self.record()
+        for kind, keys in (("request", ("submitted_at", "reply_event")),
+                           ("evidence", ("started_at", "ended_at"))):
+            for key in keys:
+                rows = self.rows()
+                row = next(row for row in rows if row["type"] == kind)
+                del row[key]
+                with self.subTest(kind=kind, key=key), self.assertRaises(ValueError):
+                    inspect_recording(self.altered(rows))
+
+    def test_reused_candidate_fails_existing_raw_sequence_correlation(self):
+        self.record()
+        rows = self.rows()
+        first, second = [row for row in rows if row["type"] == "request"]
+        second.update(reply_event=first["reply_event"], input_boundary=first["input_boundary"],
+                      submitted_at=first["submitted_at"])
+        with self.assertRaisesRegex(ValueError, "reply sequence does not match"):
+            inspect_recording(self.altered(rows))
+
     def test_boolean_or_contradictory_completeness_claims_rejected(self):
         self.record()
         for key, value in (("persisted", {"requests": 1, "events": 2}),
@@ -236,6 +300,15 @@ class RecordingReplayTests(unittest.TestCase):
             rows[0]["plan"][key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
                 inspect_recording(self.altered(rows))
+        for key, value in (("max_outstanding", True), ("rate_hz", 1)):
+            rows = self.rows()
+            rows[0]["plan"][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                inspect_recording(self.altered(rows))
+        rows = self.rows()
+        rows[0]["plan"]["declared_settings"]["dtr"] = 0
+        with self.assertRaises(ValueError):
+            inspect_recording(self.altered(rows))
         for key, value in (("utc", "not-a-time"), ("monotonic_before", True),
                            ("monotonic_after", 0), ("phase", "physical_ack")):
             rows = self.rows()

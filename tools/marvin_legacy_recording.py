@@ -116,8 +116,12 @@ class Recorder:
             raise RecordingLimit("Terminal diagnostics exceed the reserved seal budget.")
         self._write(data)
         self.records += 1
-        os.fsync(self.stream.fileno())
-        self.sealed = True
+        try:
+            os.fsync(self.stream.fileno())
+            self.sealed = True
+        finally:
+            if not self.sealed:
+                self.broken = True
 
     def close(self):
         if self.stream is not None:
@@ -127,6 +131,19 @@ class Recorder:
 
 def _constant(value):
     raise ValueError(f"Nonstandard JSON constant: {value}")
+
+
+def _same_json(actual, expected):
+    """Compare schema values without Python's bool/int/float coercion."""
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(
+            _same_json(actual[key], value) for key, value in expected.items())
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _same_json(left, right) for left, right in zip(actual, expected))
+    return actual == expected
 
 
 def _time(value, *, optional=False):
@@ -154,6 +171,8 @@ def _utc(value):
 
 
 def _validate_request(row, index):
+    if not {"submitted_at", "reply_event"} <= row.keys():
+        raise ValueError("Request submitted_at and reply_event are required, even when null.")
     if row.get("index") != index or type(row.get("index")) is not int:
         raise ValueError("Request positions must be contiguous.")
     _integer("sequence", row.get("sequence"), 0, 65535)
@@ -181,6 +200,8 @@ def _validate_request(row, index):
 
 
 def _validate_evidence(row, index, offset, evidence_kind):
+    if not {"started_at", "ended_at"} <= row.keys():
+        raise ValueError("Evidence started_at and ended_at are required, even when null.")
     if type(row.get("index")) is not int or row["index"] != index:
         raise ValueError("Evidence positions must be contiguous.")
     if (row.get("profile") != PROFILE or row.get("evidence_kind") != evidence_kind
@@ -210,7 +231,7 @@ def _validate_evidence(row, index, offset, evidence_kind):
         raise ValueError("Invalid stream diagnostics.")
     if stream["kind"] == "frame":
         packet = protocol.decode_packet(raw)
-        if packet.to_dict() != stream.get("packet"):
+        if not _same_json(stream.get("packet"), packet.to_dict()):
             raise ValueError("Packet fields disagree with raw bytes.")
     elif "packet" in stream:
         raise ValueError("Non-frame event cannot assert a packet.")
@@ -334,7 +355,7 @@ def inspect_recording(path, *, max_bytes=MAX_FILE_BYTES, max_records=MAX_RECORDS
             if not isinstance(options, dict):
                 raise ValueError("Missing validated polling plan.")
             plan = PollPlan(**{field.name: options.get(field.name) for field in dataclass_fields(PollPlan)})
-            if options != plan.to_dict():
+            if not _same_json(options, plan.to_dict()):
                 raise ValueError("Recorded plan fields disagree.")
             if len(raw) > plan.max_output_bytes:
                 raise ValueError("Recording exceeds its declared byte bound.")

@@ -223,6 +223,26 @@ class PollCollectionTests(PollTestCase):
         self.failure("schedule_overrun", recorder_factory=DelayedContextRecorder)
         self.assertEqual(len(self.waits), 1)
 
+    def test_next_slot_at_or_after_duration_is_rejected_before_waiting(self):
+        for duration in (1.75, 1.6):
+            with self.subTest(duration=duration):
+                self.fresh()
+                clock = self.clock
+                self.transport.on_write = lambda packet: self.transport.enqueue(raw_reply(), at=10.125)
+
+                class SlowRecorder(recording.Recorder):
+                    def append(self, row):
+                        super().append(row)
+                        if row["type"] == "evidence":
+                            clock.now += 0.625
+
+                plan = poll.PollPlan(max_requests=2, request_timeout=0.25, duration=duration)
+                error = self.failure("duration", plan=plan, recorder_factory=SlowRecorder)
+                self.assertEqual(self.waits, [])
+                self.assertEqual(clock.now, 10.75)
+                self.assert_raw(error.result, raw_reply())
+                self.assertEqual(self.replay()["status"], "sealed_failed_collection")
+
     def test_every_frame_fragment_boundary_and_single_byte_reads(self):
         raw = raw_reply(bytes(range(134)))
         for split in range(1, len(raw)):
@@ -723,6 +743,31 @@ class PollRecordingFaultTests(PollTestCase):
         self.assertEqual(replay["status"], "sealed_collection_claim_complete")
         self.assertIn("cannot attest", replay["report"]["recording_finalization"])
         self.assertNotIn("recording_sealed", replay["report"])
+
+    def test_direct_recorder_cannot_resume_after_fsync_failure_or_interruption(self):
+        for fault in (OSError("injected fsync failure"), KeyboardInterrupt()):
+            with self.subTest(fault=type(fault).__name__):
+                self.fresh()
+                recorder = recording.Recorder(self.output, max_bytes=poll.PollPlan().max_output_bytes)
+                recorder.open()
+                try:
+                    recorder.append({"type": "header"})
+                    with patch.object(recording.os, "fsync", side_effect=fault) as fsync:
+                        with self.assertRaises(type(fault)):
+                            recorder.finish({"status": "failed"})
+                    fsync.assert_called_once()
+                    before = self.output.read_bytes()
+                    self.assertTrue(recorder.broken)
+                    self.assertFalse(recorder.sealed)
+                    with self.assertRaises(OSError):
+                        recorder.append({"type": "after-terminal"})
+                    with self.assertRaises(OSError):
+                        recorder.finish({"status": "failed"})
+                    self.assertEqual(self.output.read_bytes(), before)
+                    self.assertEqual(recorder.bytes_written, len(before))
+                    self.assertEqual(recorder.records, 2)
+                finally:
+                    recorder.close()
 
     def test_recorder_close_error_and_late_close_are_reported_after_preserving_seal(self):
         for late in (False, True):

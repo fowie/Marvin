@@ -32,8 +32,10 @@ It is not a template for live RX timestamping.
 
 By default replay rejects missing/truncated terminal seals, malformed JSON,
 duplicate keys, invalid numerical/schema values, hash/length/count mismatches
-and trailing content. `--replay ... --allow-incomplete` explicitly permits a
-missing seal or partial final JSON line: it returns available complete records
+and trailing content. Nullable request/evidence timestamps and correlation
+fields must still be present. Packet integer declarations require JSON integers,
+not equal-valued booleans or floats. `--replay ... --allow-incomplete` explicitly
+permits a missing seal or partial final JSON line: it returns available complete records
 and exact partial-line hex as **incomplete**, with exit code 2. It never repairs
 or overwrites the input and cannot waive a corrupt complete row or invalid seal.
 Sealed failed collections also return exit code 2. A sealed completion claim is
@@ -90,6 +92,8 @@ at most. One wait is attempted per interval; early/frozen, regressing or invalid
 clocks, early/invalid waits, excessive scheduler lateness, and request/batch
 overruns stop visibly. There is no busy loop, catch-up burst, retry, reopen,
 reconnect, sequence reuse or automatic resume.
+If the next slot reaches or exceeds the total duration deadline, collection
+stops before waiting for that slot.
 
 | `PollPlan` option | Default | Bound |
 |---|---|---|
@@ -186,6 +190,8 @@ JSONL bytes, **excluding the terminal record itself**. Replay checks status/coun
 relationships against the covered prefix, but the terminal claim is outside the
 checksum scope. SHA256 is consistency/integrity evidence, not authenticity.
 A short/uncertain file write poisons the recorder; no seal is appended afterward.
+An fsync failure or interruption also poisons it: direct callers cannot append
+more rows or retry sealing after the terminal may already have been written.
 Ordinary budget exhaustion before a write can still produce a sealed **failed**
 report using the reserve. No final successful API result is returned until client
 close, file sealing, fsync, file close and final clock checks succeed.

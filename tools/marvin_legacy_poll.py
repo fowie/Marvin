@@ -228,6 +228,8 @@ def collect(transport, output, *, ownership_key, expected_identity, plan=PollPla
         for index in range(plan.max_requests):
             if target is not None:
                 now = check(deadline, "duration")
+                if target >= deadline:
+                    raise SessionError("duration", "Next slot reaches/exceeds the collection deadline; no wait.")
                 if now > target + plan.max_lateness:
                     raise SessionError("schedule_overrun", "Processing missed the next slot; no catch-up.")
                 if now < target:
