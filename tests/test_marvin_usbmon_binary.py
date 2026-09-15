@@ -124,6 +124,20 @@ class BinaryTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(binary.BinaryError):
                 binary.to_text(raw, payload)
 
+    def test_captured_length_cannot_exceed_transfer_length_even_with_bounded_prefix(self):
+        for length, captured in ((0, 1), (31, 32), (32, 33), (64, 100), (2**31 - 1, 2**32 - 1)):
+            with self.subTest(length=length, captured=captured):
+                raw = header(length=length, captured=captured)
+                payload = b"x" * min(captured, binary.PAYLOAD_LIMIT)
+                with self.assertRaisesRegex(binary.BinaryError, "Inconsistent"):
+                    binary.to_text(raw, payload)
+        for length, captured in ((0, 0), (31, 31), (32, 32), (64, 64), (100, 64)):
+            with self.subTest(length=length, captured=captured):
+                payload = b"x" * min(captured, binary.PAYLOAD_LIMIT)
+                record = usbmon.parse_record(binary.to_text(header(length=length, captured=captured), payload))
+                self.assertEqual(record.length, length)
+                self.assertEqual(record.payload, payload)
+
     def test_stats_ioctl_decodes_queue_and_drop_counts(self):
         def ioctl(fd, command, buffer, mutate):
             self.assertEqual(command, 0x80089203)

@@ -38,6 +38,22 @@ class FirmwareTests(unittest.TestCase):
         self.assertEqual(self.second.read_bytes(), self.image)
         self.assertEqual(self.registers.read_bytes(), snapshot)
 
+    def test_stack_pointer_bounds_allow_empty_stack_at_one_past_sram_end(self):
+        for stack, accepted in (
+            (0x20000000, False), (0x20000004, True),
+            (0x20017FFC, True), (0x20017FFF, False),
+            (0x20018000, True), (0x20018004, False),
+        ):
+            with self.subTest(stack=hex(stack)):
+                image = bytearray(self.image)
+                struct.pack_into("<I", image, 0, stack)
+                self.first.write_bytes(image)
+                result = marvin_firmware.inspect_image(self.first)
+                self.assertEqual(bool(result["problems"]), not accepted)
+                if not accepted:
+                    self.assertIn("Initial stack pointer", result["problems"][0])
+                self.assertEqual(self.first.read_bytes(), image)
+
     def test_special_files_are_rejected_before_open(self):
         for inspect in (marvin_firmware.inspect_image, marvin_firmware.inspect_read_protection):
             for mode in (stat.S_IFCHR, stat.S_IFBLK, stat.S_IFIFO, stat.S_IFSOCK):

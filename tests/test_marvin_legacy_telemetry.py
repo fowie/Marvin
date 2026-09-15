@@ -25,6 +25,9 @@ OBSERVED_POWER_REPLY = bytes.fromhex("5302000e800200ff0ea85645")
 def expected_raw_fields():
     fields = {
         "tick": (0, 4),
+        "proximity1": (4, 2), "proximity2": (6, 2), "proximity3": (8, 2), "proximity4": (10, 2),
+        "proximity5": (12, 2), "proximity6": (14, 2), "proximity7": (16, 2), "proximity8": (18, 2),
+        "cliff1": (20, 2), "cliff2": (22, 2), "cliff3": (24, 2), "cliff4": (26, 2), "cliff5": (28, 2),
         "internalTemp": (30, 2), "externalTemp": (32, 2), "externalHumidity": (34, 2),
         "batteryVoltage": (36, 2), "batteryCurrent": (38, 2),
         "power5V": (40, 2), "power12V": (42, 2), "power9V": (44, 2), "power19V": (46, 2),
@@ -38,8 +41,6 @@ def expected_raw_fields():
         "motorPwmLeftForward": (90, 2), "motorPwmLeftReverse": (92, 2),
         "motorPwmRightForward": (94, 2), "motorPwmRightReverse": (96, 2),
     }
-    fields.update({f"proximity{i}": (2 + 2 * i, 2) for i in range(1, 9)})
-    fields.update({f"cliff{i}": (18 + 2 * i, 2) for i in range(1, 6)})
     fields.update({f"led{i}Brightness": (98 + i, 1) for i in range(18)})
     fields.update({f"led{i}Blink": (116 + i, 1) for i in range(18)})
     return fields

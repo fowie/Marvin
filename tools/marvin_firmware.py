@@ -25,7 +25,8 @@ from tools.marvin_stream import read_regular_file
 FLASH_BYTES = 262144
 MAX_REGISTER_SNAPSHOT_BYTES = 64 * 1024
 SRAM_START = 0x20000000
-SRAM_END_EXCLUSIVE = 0x20018000
+# An empty descending stack may start at the one-past-the-end SRAM address.
+INITIAL_STACK_POINTER_MAX = 0x20018000
 
 
 def inspect_image(path):
@@ -47,7 +48,7 @@ def inspect_image(path):
         stack, reset = struct.unpack_from("<II", image)
         report["initial_stack_pointer"] = f"0x{stack:08x}"
         report["reset_vector"] = f"0x{reset:08x}"
-        if not SRAM_START < stack <= SRAM_END_EXCLUSIVE or stack % 4:
+        if not SRAM_START < stack <= INITIAL_STACK_POINTER_MAX or stack % 4:
             report["problems"].append("Initial stack pointer is outside expected SRAM/alignment.")
         if not reset & 1:
             report["problems"].append("Reset vector does not have the Cortex-M Thumb bit set.")

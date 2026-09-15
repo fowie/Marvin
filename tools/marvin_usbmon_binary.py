@@ -101,7 +101,8 @@ def to_text(header, payload):
         raise BinaryError("Unsupported or malformed target binary USB event.")
     if seconds < 0 or not 0 <= micros < 1000000 or length >= 2**31:
         raise BinaryError("Invalid target binary USB timestamp or transfer length.")
-    if descriptors or len(payload) != min(captured, PAYLOAD_LIMIT) or len(payload) > length:
+    if (descriptors or captured > length
+            or len(payload) != min(captured, PAYLOAD_LIMIT) or len(payload) > length):
         raise BinaryError("Inconsistent target binary USB payload or ISO descriptors.")
     # mon_bin_get_data uses zero for captured bytes; '=' is a text-format marker,
     # not a binary flag (drivers/usb/mon/mon_bin.c).
