@@ -8,8 +8,9 @@ device identity, or creating output. --run acknowledges the selected query and
 possible line effects. GetUnitInfo additionally requires the separate
 --allow-telemetry-state-change acknowledgment for handshake effects.
 Execution requires ordinary-user coordination,
-physical power AND signal isolation, an expected physical USB port and privileged
-usbmon recording. Only the recorder uses sudo, via the existing run_session.
+physical power AND signal isolation, an expected physical USB port and usbmon
+recording. Select --unprivileged-usbmon for existing bus-node read permission or
+--sudo-usbmon to authorize sudo for the recorder only. There is no privilege fallback.
 
 Settings and timing are fixed: 57600/8N1, DTR/RTS false, no flow control, one 10-byte
 write at 5 s, serial observation 20 s, USB tail 5 s, maximum close grace 30 s. There is
@@ -73,7 +74,7 @@ def prepare(query, sequence=0):
         "required_run_acknowledgments": [
             "--run (selected query and possible line effects)",
             "--actuators-isolated (motor/servo power AND signals)",
-            "--sudo-usbmon (privileged recorder only, ordinary-user coordinator)",
+            "--unprivileged-usbmon OR --sudo-usbmon (recorder mode; coordinator remains ordinary-user)",
             "--expected-physical-port and --output NEWDIR",
             *(["--allow-telemetry-state-change (GetUnitInfo handshake effects)"]
               if packet.command == protocol.GET_UNIT_INFO else []),
@@ -142,13 +143,16 @@ def _check_capture_result(result, baseline):
 
 
 def run_probe(query, output, *, sequence=0, expected_physical_port=None,
-              actuators_isolated=False, sudo_usbmon=False, allow_telemetry_state_change=False):
+              actuators_isolated=False, sudo_usbmon=False, unprivileged_usbmon=False,
+              allow_telemetry_state_change=False):
     """Run only after explicit guards; transport and cleanup remain in run_session."""
     review = prepare(query, sequence)
     if actuators_isolated is not True:
         raise ValueError("--actuators-isolated must acknowledge motor/servo power AND signal isolation.")
-    if sudo_usbmon is not True:
-        raise ValueError("--sudo-usbmon is required; only the recorder may use sudo.")
+    if type(sudo_usbmon) is not bool or type(unprivileged_usbmon) is not bool:
+        raise ValueError("USB recorder mode flags must be explicit booleans.")
+    if sudo_usbmon == unprivileged_usbmon:
+        raise ValueError("Select exactly one of --sudo-usbmon or --unprivileged-usbmon.")
     if type(allow_telemetry_state_change) is not bool:
         raise ValueError("allow_telemetry_state_change must be an explicit boolean.")
     if review["telemetry_state_change_acknowledgment_required"] and allow_telemetry_state_change is not True:
@@ -171,7 +175,9 @@ def run_probe(query, output, *, sequence=0, expected_physical_port=None,
         "expected_physical_port": expected_physical_port,
         "actuator_power_and_signal_isolation_acknowledged": True,
         "telemetry_state_change_authorized": allow_telemetry_state_change,
-        "privileged_recorder_only": True, "application_acknowledgment": "not_established",
+        "privileged_recorder_only": sudo_usbmon,
+        "usbmon_privilege_mode": "sudo" if sudo_usbmon else "ordinary_user",
+        "application_acknowledgment": "not_established",
         "usb_out_validation": "Not established by this wrapper; inspect the complete trace separately.",
     }
     try:
@@ -180,7 +186,7 @@ def run_probe(query, output, *, sequence=0, expected_physical_port=None,
         session.check_identity(probe.DEFAULT_PORT, baseline)
         result = session.run_session(
             probe.DEFAULT_PORT, output / "capture", seconds=20,
-            actuators_isolated=True, sudo_usbmon=True, usbmon_backend="binary",
+            actuators_isolated=True, sudo_usbmon=sudo_usbmon, usbmon_backend="binary",
             probe_schedule=schedule, allow_unknown_command=True,
             allow_telemetry_state_change=allow_telemetry_state_change,
             probe_profile="legacy",
@@ -222,7 +228,11 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--actuators-isolated", action="store_true", help="Acknowledge motor/servo power AND signal isolation")
-    parser.add_argument("--sudo-usbmon", action="store_true", help="Authorize privileged recorder only, not a root coordinator")
+    recorder = parser.add_mutually_exclusive_group()
+    recorder.add_argument("--sudo-usbmon", action="store_true",
+                          help="Authorize privileged recorder only, not a root coordinator")
+    recorder.add_argument("--unprivileged-usbmon", action="store_true",
+                          help="Use existing USB bus-node read permission; never invoke sudo")
     parser.add_argument("--allow-telemetry-state-change", action="store_true",
                         help="Separately acknowledge GetUnitInfo handshake/telemetry effects")
     parser.add_argument("--run", action="store_true", help="Authorize this query and possible line effects; otherwise dry-run")
@@ -237,6 +247,7 @@ def main(argv=None):
                 args.query, args.output, sequence=args.sequence,
                 expected_physical_port=args.expected_physical_port,
                 actuators_isolated=args.actuators_isolated, sudo_usbmon=args.sudo_usbmon,
+                unprivileged_usbmon=args.unprivileged_usbmon,
                 allow_telemetry_state_change=args.allow_telemetry_state_change,
             )
     except (OSError, ValueError, ImportError, subprocess.SubprocessError) as error:
