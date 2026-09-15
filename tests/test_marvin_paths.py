@@ -244,7 +244,11 @@ class OutputEntryPointTests(unittest.TestCase):
         for name, call in self.entries[:-1]:
             output = self.root / name
 
-            def create_rival(_port):
+            def create_rival(_port, *, deadline=None):
+                if name == "campaign":
+                    self.assertGreater(deadline, 0)
+                else:
+                    self.assertIsNone(deadline)
                 output.mkdir()
                 (output / "winner").write_bytes(b"another capture")
                 return {"usb": {"descriptors_sha256": marvin_campaign.DESCRIPTOR_HASH}}

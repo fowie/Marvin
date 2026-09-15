@@ -164,9 +164,10 @@ def seal_evidence(output, metadata):
         original_error.add_note(f"Evidence sealing also failed: {error}")
 
 
-def wait_ready(process, directory, baseline, port, timeout=10):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def wait_ready(process, directory, baseline, port, timeout=10, *, deadline=None):
+    ready_deadline = time.monotonic() + min(timeout, marvin_probe.remaining_time(deadline))
+    while time.monotonic() < ready_deadline:
+        marvin_probe.remaining_time(deadline)
         if process.poll() is not None:
             raise OSError(recorder_error(directory, "USB recorder exited before readiness"))
         path = directory / "ready.json"
@@ -177,8 +178,10 @@ def wait_ready(process, directory, baseline, port, timeout=10):
                 if ready.get(key) != expected[key]:
                     raise ValueError(f"USB recorder readiness identity mismatch: {key}.")
             check_identity(port, baseline)
+            marvin_probe.remaining_time(deadline)
             return ready
-        time.sleep(0.05)
+        time.sleep(min(0.05, marvin_probe.remaining_time(deadline)))
+    marvin_probe.remaining_time(deadline)
     raise TimeoutError("USB recorder did not become ready; serial port was not opened.")
 
 
@@ -231,6 +234,7 @@ def run_session(
     probe_schedule=None, bytesize=8, parity="N", stopbits=1,
     probe_profile="modern",
     usb_tail_seconds=30, usb_close_grace_seconds=0,
+    deadline=None,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -241,6 +245,8 @@ def run_session(
     Asserting either line requires separate allow_line_state_change=True consent
     or an authorized GetConfig/schedule line-state trial. Generic consent never
     waives named query line/framing restrictions. Low/low defaults are unchanged.
+    An optional shared monotonic deadline bounds operational waits and serial
+    I/O admission, not safe shutdown or evidence sealing.
     """
     if os.geteuid() == 0:
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
@@ -322,7 +328,10 @@ def run_session(
         probe_name = "Campaign"
     marvin_probe.validate_probe_delay(probe, seconds, probe_delay)
     output = new_output_path(output, allow_missing_parents=True)
-    baseline = preflight(port)
+    marvin_probe.remaining_time(deadline)
+    deadline_options = {} if deadline is None else {"deadline": deadline}
+    baseline = preflight(port, **deadline_options)
+    marvin_probe.remaining_time(deadline)
     if expected_usb_identity is not None and baseline["usb"] != expected_usb_identity:
         raise OSError("USB identity changed before the requested capture segment.")
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -368,6 +377,8 @@ def run_session(
             "Electrical faults are not cleared by successful capture.",
         ],
     }
+    if deadline is not None:
+        metadata["shared_deadline_monotonic"] = deadline
     metadata_path = output / "metadata.json"
     write_json(metadata_path, metadata)
     command = [
@@ -391,8 +402,9 @@ def run_session(
             output / "usbmon-stderr.log"
         ).open("xb") as stderr:
             launched = time.monotonic()
+            marvin_probe.remaining_time(deadline)
             process = subprocess.Popen(command, stdout=stdout, stderr=stderr)
-            ready = wait_ready(process, usb_output, baseline, port)
+            ready = wait_ready(process, usb_output, baseline, port, **deadline_options)
             if usb_close_grace_seconds:
                 nominal_deadline, hard_deadline = coordinated_deadlines(
                     ready, usb_max_seconds, usb_nominal_seconds, launched)
@@ -405,19 +417,22 @@ def run_session(
             write_json(metadata_path, metadata)
 
             def guard():
+                marvin_probe.remaining_time(deadline)
                 if process.poll() is not None:
                     raise OSError("USB recorder stopped; ending serial observation.")
                 if hard_deadline is not None and time.monotonic() >= hard_deadline:
                     raise OSError("USB recorder hard deadline reached; ending serial observation.")
                 check_identity(port, baseline)
+                marvin_probe.remaining_time(deadline)
 
             # Establish a quiet pre-open window without changing device state.
             pre_open_deadline = time.monotonic() + 1
             while time.monotonic() < pre_open_deadline:
                 guard()
-                time.sleep(0.05)
+                time.sleep(min(0.05, marvin_probe.remaining_time(deadline)))
             if ready_callback is not None:
                 ready_callback(ready)
+            marvin_probe.remaining_time(deadline)
             probe_options = (
                 {"probe": probe, "allow_unknown_command": True} if probe is not None else {}
             )
@@ -434,7 +449,7 @@ def run_session(
                     bytesize=bytesize, parity=parity, stopbits=stopbits,
                     probe_profile=probe_profile,
                     allow_telemetry_state_change=allow_telemetry_state_change,
-                    **probe_options,
+                    **probe_options, **deadline_options,
                 )
             finally:
                 serial_returned = time.monotonic()
@@ -446,7 +461,9 @@ def run_session(
             # Never request stop until capture's finally/tty close has returned
             # and the reader has had a bounded opportunity to drain close events.
             while process.poll() is None:
+                marvin_probe.remaining_time(deadline)
                 check_identity(port, baseline)
+                marvin_probe.remaining_time(deadline)
                 now = time.monotonic()
                 if now >= recorder_deadline:
                     raise TimeoutError("USB recorder exceeded its bounded observation window.")
@@ -456,7 +473,8 @@ def run_session(
                     stop_requested_at = now
                     metadata["usb_stop_requested_monotonic"] = now
                     write_json(metadata_path, metadata)
-                time.sleep(0.1)
+                time.sleep(min(0.1, marvin_probe.remaining_time(deadline)))
+            marvin_probe.remaining_time(deadline)
             if process.returncode != 0:
                 raise OSError(recorder_error(usb_output, "USB recorder failed"))
             usb_metadata = json.loads((usb_output / "metadata.json").read_text(encoding="utf-8"))
@@ -468,11 +486,14 @@ def run_session(
             if usb_close_grace_seconds:
                 validate_coordinated_completion(usb_metadata, ready, stop_requested_at, hard_deadline)
             check_identity(port, baseline)
+            marvin_probe.remaining_time(deadline)
             metadata["usb"] = usb_metadata
             metadata["status"] = "completed"
     except (OSError, ValueError, subprocess.SubprocessError, marvin_probe.serial.SerialException) as error:
         metadata["status"] = "failed"
         metadata["error"] = str(error)
+        if isinstance(error, marvin_probe.DeadlineExpired):
+            metadata.update(deadline_expired=True, stop_reason="shared_deadline")
         if process is not None and (
             isinstance(error, marvin_probe.SerialSettingsRejected)
             or (usb_close_grace_seconds and serial_returned is not None)
@@ -483,6 +504,8 @@ def run_session(
             drain_deadline = time.monotonic() + drain_seconds
             if hard_deadline is not None:
                 drain_deadline = min(drain_deadline, hard_deadline)
+            if deadline is not None:
+                drain_deadline = min(drain_deadline, deadline)
             try:
                 while process.poll() is None and time.monotonic() < drain_deadline:
                     check_identity(port, baseline)
@@ -497,10 +520,15 @@ def run_session(
         try:
             if process is not None:
                 stop_recorder(process)
+            if metadata["status"] == "completed":
+                marvin_probe.remaining_time(deadline)
         except (OSError, subprocess.SubprocessError) as error:
             original_failure = metadata["status"] in ("failed", "interrupted")
             metadata["status"] = "failed"
-            metadata["shutdown_error"] = str(error)
+            if isinstance(error, marvin_probe.DeadlineExpired):
+                metadata.update(deadline_expired=True, stop_reason="shared_deadline", error=str(error))
+            else:
+                metadata["shutdown_error"] = str(error)
             if not original_failure:
                 raise
         finally:

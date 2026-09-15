@@ -48,6 +48,10 @@ class SerialSettingsRejected(serial.SerialException):
     """The host rejected line settings during open, before application writes."""
 
 
+class DeadlineExpired(TimeoutError):
+    """A shared operational deadline expired; cleanup must still run."""
+
+
 def validate_boolean_flags(**flags):
     for name, value in flags.items():
         if type(value) is not bool:
@@ -104,17 +108,22 @@ def save_metadata(path, metadata):
     path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
-def preflight_timeout(deadline=None):
-    """Bound each subprocess by its usual limit and an optional shared deadline."""
+def remaining_time(deadline=None):
+    """Check an optional absolute monotonic deadline without extending it."""
     if deadline is None:
-        return 5
+        return math.inf
     if (type(deadline) not in (int, float)
             or not -sys.float_info.max <= deadline <= sys.float_info.max):
-        raise ValueError("Preflight deadline must be a finite monotonic time.")
+        raise ValueError("Shared deadline must be a finite monotonic time.")
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise TimeoutError("Cached-identity preflight deadline expired.")
-    return min(5, remaining)
+        raise DeadlineExpired("Shared capture deadline expired.")
+    return remaining
+
+
+def preflight_timeout(deadline=None):
+    """Bound each subprocess by its usual limit and an optional shared deadline."""
+    return min(5, remaining_time(deadline))
 
 
 def check_device(port, *, deadline=None):
@@ -186,6 +195,7 @@ def capture(
     bytesize=8,
     parity="N",
     stopbits=1,
+    deadline=None,
 ):
     validate_boolean_flags(
         actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
@@ -220,8 +230,12 @@ def capture(
     validate_probe_delay(probe, seconds, probe_delay)
 
     output = new_output_path(output, allow_missing_parents=True)
-    properties = check_device(port)
-    check_port_available(port)
+    remaining_time(deadline)
+    deadline_options = {} if deadline is None else {"deadline": deadline}
+    properties = check_device(port, **deadline_options)
+    remaining_time(deadline)
+    check_port_available(port, **deadline_options)
+    remaining_time(deadline)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     metadata = {
         "started_at": utc_now(),
@@ -263,6 +277,8 @@ def capture(
             "Kernel exclusive-open prevents later unprivileged opens, not existing readers.",
         ],
     }
+    if deadline is not None:
+        metadata["shared_deadline_monotonic"] = deadline
     if schedule is not None:
         metadata.update({
             "probe_schedule": [
@@ -290,6 +306,7 @@ def capture(
             raw = files.enter_context((output / "received.bin").open("xb"))
             chunks = files.enter_context((output / "chunks.jsonl").open("x", encoding="utf-8"))
             event("session_prepared", baudrate=baudrate, framing=metadata["framing"])
+            remaining_time(deadline)
             port_handle = serial.Serial(
                 port=None,
                 baudrate=baudrate,
@@ -309,6 +326,7 @@ def capture(
             if guard is not None:
                 guard()
             event("open_attempt", dtr=port_handle.dtr, rts=port_handle.rts)
+            remaining_time(deadline)
             try:
                 port_handle.open()
             except OSError as error:
@@ -317,25 +335,29 @@ def capture(
                     raise SerialSettingsRejected(errno.EINVAL, str(error)) from error
                 raise
             event("open_completed")
+            remaining_time(deadline)
             fcntl.ioctl(port_handle.fileno(), termios.TIOCEXCL)
             metadata["kernel_exclusive_open"] = True
             event("exclusive_open_enabled")
             start = time.monotonic()
-            deadline = start + seconds
+            capture_deadline = start + seconds
             if dtr and not line_state_at_open:
                 event("dtr_change_attempt", requested=True)
+                remaining_time(deadline)
                 port_handle.dtr = True
                 metadata["dtr_asserted_at"] = utc_now()
                 event("dtr_change_completed", requested=True)
             if rts and not line_state_at_open:
                 event("rts_change_attempt", requested=True)
+                remaining_time(deadline)
                 port_handle.rts = True
                 metadata["rts_asserted_at"] = utc_now()
                 event("rts_change_completed", requested=True)
             def write_probe(data=probe, schedule_index=None):
                 if guard is not None:
                     guard()
-                if (probe_delay or schedule is not None) and time.monotonic() >= deadline:
+                remaining_time(deadline)
+                if (probe_delay or schedule is not None) and time.monotonic() >= capture_deadline:
                     metadata["transmit_status"] = "not_sent_before_deadline"
                     event("probe_suppressed", reason="capture_ended_before_write")
                     return False
@@ -349,6 +371,16 @@ def capture(
                     if schedule_index is not None else {}
                 )
                 event("write_attempt", hex=data.hex(), size=len(data), **details)
+                try:
+                    if deadline is not None:
+                        port_handle.write_timeout = min(0.1, remaining_time(deadline))
+                    remaining_time(deadline)
+                except DeadlineExpired:
+                    # Metadata/event I/O may exhaust the budget before write().
+                    metadata["application_bytes_written"] = known_before
+                    metadata["transmit_status"] = "not_sent_before_deadline"
+                    event("write_cancelled", reason="shared_deadline", **details)
+                    raise
                 written = port_handle.write(data)
                 if type(written) is not int or not 0 <= written <= len(data):
                     raise serial.SerialTimeoutException("Invalid write result; outcome unknown, not retrying.")
@@ -368,6 +400,7 @@ def capture(
                         metadata["transmit_status"] = "schedule_in_progress"
                 metadata["transmit_completed_at"] = utc_now()
                 save_metadata(metadata_path, metadata)
+                remaining_time(deadline)
                 return True
 
             schedule_index = 0
@@ -415,8 +448,9 @@ def capture(
             while metadata["bytes_received"] < max_bytes:
                 if guard is not None:
                     guard()
+                remaining_time(deadline)
                 now = time.monotonic()
-                remaining = deadline - now
+                remaining = capture_deadline - now
                 if remaining <= 0:
                     break
                 schedule_due = None
@@ -428,6 +462,7 @@ def capture(
                         schedule_due = max(schedule_due, schedule_last_completed + spacing)
                     if now >= schedule_due:
                         port_handle.timeout = 0
+                        remaining_time(deadline)
                         data = port_handle.read(min(4096, max_bytes - metadata["bytes_received"]))
                         if data:
                             received(data)
@@ -440,6 +475,7 @@ def capture(
                 if probe_pending and now >= probe_due:
                     # Drain already queued bytes before deciding whether to write.
                     port_handle.timeout = 0
+                    remaining_time(deadline)
                     data = port_handle.read(min(4096, max_bytes - metadata["bytes_received"]))
                     if data:
                         received(data)
@@ -447,11 +483,12 @@ def capture(
                         write_probe()
                         probe_pending = False
                     continue
-                port_handle.timeout = min(0.1, remaining)
+                port_handle.timeout = min(0.1, remaining, remaining_time(deadline))
                 if probe_pending:
                     port_handle.timeout = min(port_handle.timeout, probe_due - now)
                 if schedule_due is not None:
                     port_handle.timeout = min(port_handle.timeout, schedule_due - now)
+                remaining_time(deadline)
                 data = port_handle.read(
                     min(4096, max_bytes - metadata["bytes_received"])
                 )
@@ -467,12 +504,15 @@ def capture(
                 metadata["transmit_status"] = "not_sent_before_deadline"
                 event("schedule_suppressed", reason="capture_ended_before_write",
                       writes_remaining=len(schedule) - schedule_index)
+            remaining_time(deadline)
             metadata["status"] = "completed"
         except (OSError, ValueError, serial.SerialException) as error:
             metadata["status"] = "failed"
             metadata["error"] = str(error)
             metadata["error_errno"] = getattr(error, "errno", None)
             metadata["settings_rejected_before_open"] = isinstance(error, SerialSettingsRejected)
+            if isinstance(error, DeadlineExpired):
+                metadata.update(deadline_expired=True, stop_reason="shared_deadline")
             if metadata["transmit_status"] == "attempting":
                 metadata["transmit_status"] = "unknown"
             event("failed", error=str(error))
@@ -484,6 +524,8 @@ def capture(
             event("interrupted")
             raise
         finally:
+            original_error = (sys.exc_info()[1]
+                              if metadata["status"] in ("incomplete", "failed", "interrupted") else None)
             try:
                 if port_handle is not None:
                     event("close_attempt")
@@ -492,9 +534,18 @@ def capture(
             except (OSError, serial.SerialException) as error:
                 metadata["status"] = "failed"
                 metadata["close_error"] = str(error)
-                raise
+                if original_error is None:
+                    raise
+                original_error.add_note(f"Serial close also failed: {error}")
             finally:
                 metadata["finished_at"] = utc_now()
+                if deadline is not None and time.monotonic() >= deadline:
+                    metadata["deadline_expired"] = True
+                    if metadata["status"] == "completed":
+                        error = DeadlineExpired("Shared capture deadline expired during serial close.")
+                        metadata.update(status="failed", stop_reason="shared_deadline", error=str(error))
+                        save_metadata(metadata_path, metadata)
+                        raise error
                 save_metadata(metadata_path, metadata)
     return metadata
 

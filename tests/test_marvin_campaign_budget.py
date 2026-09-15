@@ -48,6 +48,7 @@ class CampaignBudgetTests(unittest.TestCase):
                 self.assertEqual(options[key], segment[key])
             self.assertEqual(options["usb_tail_seconds"], 5)
             self.assertEqual(options["usb_close_grace_seconds"], 30)
+            self.assertEqual(options["deadline"], started + max_seconds)
             self.assertEqual(options["probe_profile"], "experimental-successor")
             self.assertEqual(options["expected_usb_identity"], BASELINE["usb"])
             self.assertIs(options["actuators_isolated"], True)
@@ -83,7 +84,7 @@ class CampaignBudgetTests(unittest.TestCase):
                 allow_unknown_command=True, allow_telemetry_state_change=True,
                 allow_line_state_trials=True, switch_position="RUN", max_seconds=max_seconds,
             )
-        preflight.assert_called_once_with("offline-fixture")
+        preflight.assert_called_once_with("offline-fixture", deadline=started + max_seconds)
         self.assertEqual(identity.call_count, len(calls))
         self.assertEqual(session.call_count, len(calls))
         self.assertEqual([call["id"] for call in calls],

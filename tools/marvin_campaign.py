@@ -239,7 +239,9 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
     coverage = validate_plan(plan)
     encoded = json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
     output = new_output_path(output, allow_missing_parents=True)
-    baseline = marvin_session.preflight(port)
+    deadline = time.monotonic() + max_seconds
+    baseline = marvin_session.preflight(port, deadline=deadline)
+    marvin_probe.remaining_time(deadline)
     if baseline["usb"]["descriptors_sha256"] != DESCRIPTOR_HASH:
         raise ValueError("Marvin's descriptor fingerprint changed; review it before transmitting.")
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -251,6 +253,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
         "plan_sha256": hashlib.sha256(encoded).hexdigest(), "planned": coverage,
         "segments": [], "application_bytes_confirmed": 0,
         "max_wall_seconds": max_seconds, "automatic_retries": False,
+        "shared_deadline_monotonic": deadline,
         "usb_tail_seconds": USB_TAIL_SECONDS, "usb_close_grace_seconds": USB_CLOSE_GRACE_SECONDS,
         "limitations": [
             "Finite named catalogue, not all possible byte sequences or numeric settings.",
@@ -260,9 +263,9 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
             "USB IN is checked after each segment; pre-open data may have escaped serial observation.",
             "The fixed catalogue excludes known destructive commands, not every possible unknown-firmware effect.",
             "Requested CDC line coding is not proof of physical UART behavior or actual switch electrical mode.",
+            "The shared deadline stops new work; in-flight calls, safe cleanup and evidence sealing may finish later.",
         ],
     }
-    deadline = time.monotonic() + max_seconds
     path = output / "metadata.json"
     marvin_session.write_json(path, metadata)
     try:
@@ -272,6 +275,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
                 metadata["status"] = "stopped_wall_limit"
                 break
             marvin_session.check_identity(port, baseline)
+            marvin_probe.remaining_time(deadline)
             entry = {"id": segment["id"], "status": "incomplete", "steps_planned": len(segment["steps"]),
                      "writes_planned": len(schedule), "bytes_planned": sum(len(item.data) for item in schedule)}
             metadata["segments"].append(entry)
@@ -292,28 +296,40 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
                     allow_telemetry_state_change=True, expected_usb_identity=baseline["usb"],
                     allow_line_state_trial=allow_line_state_trials,
                     usb_tail_seconds=USB_TAIL_SECONDS, usb_close_grace_seconds=USB_CLOSE_GRACE_SECONDS,
+                    deadline=deadline,
                 )
             except marvin_probe.SerialSettingsRejected:
+                marvin_probe.remaining_time(deadline)
                 marvin_session.check_identity(port, baseline)
+                marvin_probe.remaining_time(deadline)
                 entry["assessment"] = rejected_settings_evidence(directory, baseline)
+                marvin_probe.remaining_time(deadline)
                 entry["status"] = "unsupported_settings"
                 marvin_session.write_json(path, metadata)
                 print(f"SEGMENT {number}: unsupported settings; no application write, not retried.", flush=True)
                 continue
+            marvin_probe.remaining_time(deadline)
             entry["assessment"] = assess_segment(directory, result, schedule)
             entry["status"] = "completed"
             metadata["application_bytes_confirmed"] += entry["assessment"].get("usb_out_confirmed_bytes", 0)
+            marvin_probe.remaining_time(deadline)
             marvin_session.write_json(path, metadata)
             print(f"SEGMENT {number}: {entry['assessment']['outcome']}", flush=True)
             if entry["assessment"]["outcome"] == "received_data_stop":
                 metadata["status"] = "stopped_on_rx"
                 break
         else:
+            marvin_probe.remaining_time(deadline)
             metadata["status"] = (
                 "completed_with_unsupported_settings"
                 if any(entry["status"] == "unsupported_settings" for entry in metadata["segments"])
                 else "completed_silent"
             )
+    except marvin_probe.DeadlineExpired as error:
+        metadata.update(status="stopped_wall_limit", deadline_expired=True, error=str(error))
+        if metadata["segments"] and metadata["segments"][-1]["status"] == "incomplete":
+            entry = metadata["segments"][-1]
+            entry.update(status="stopped_wall_limit", partial=partial_segment(output / entry["id"]))
     except (OSError, ValueError, KeyError, subprocess.SubprocessError, marvin_probe.serial.SerialException) as error:
         metadata["status"] = "failed"
         metadata["error"] = str(error)
@@ -346,7 +362,8 @@ def main():
     parser.add_argument("--allow-line-state-trials", action="store_true",
                         help="Separately acknowledge DTR/RTS transitions and possible firmware state/reset effects")
     parser.add_argument("--switch-position", choices=("RUN",))
-    parser.add_argument("--max-seconds", type=float, default=14400)
+    parser.add_argument("--max-seconds", type=float, default=14400,
+                        help="Shared operational budget from initial preflight; safe cleanup and sealing may finish later")
     args = parser.parse_args()
     from tools.marvin_campaign_plan import make_plan
     plan = make_plan(profile=args.profile)

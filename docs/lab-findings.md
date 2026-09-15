@@ -556,15 +556,34 @@ an opt-in empty regular file in the private recording directory. Readiness,
 stop timing, signal state, capture limits and complete pairing remain checked;
 an unexpected early exit cannot become a successful segment.
 
-Metadata distinguishes nominal and maximum USB budgets. The maximum remains
-hard-bounded; an unpaired OUT is still uncertain, and cancellation or delivery
-must never be inferred after the retained trace ends.
+Metadata distinguishes nominal and maximum USB budgets. The recorder's own
+maximum remains bounded, and the campaign's shared deadline may stop it earlier;
+an unpaired OUT is still uncertain, and cancellation or delivery must never be
+inferred after the retained trace ends.
 
 `plan.json` is frozen before transmission. Campaign and per-segment metadata,
 raw serial chunks/events, USB evidence and hashes retain planned, attempted,
 completed, rejected, and unfinished coverage. The full plan budgets about
 3.23 hours including five extra USB recording seconds per segment, before
-setup/host overhead; the live runner enforces a four-hour wall-clock cap.
+setup/host overhead. `--max-seconds` (at most 14400) establishes one absolute
+monotonic operational deadline before the initial runtime preflight. The existing
+per-next-segment reservation is prospective, not a cumulative charge. Each
+admitted session shares the same deadline across preflight subprocess timeouts,
+recorder readiness, the quiet window, serial reads/writes, and tail/grace waits.
+No new application write is started once expiry is observed, including after slow
+metadata/event writes; no retry or extra transport read extends the budget.
+Deadline expiry stops further segments with `stopped_wall_limit` and marks an
+affected capture failed rather than completed. Earlier independent failures keep
+their error and non-success status.
+
+This is not a hard-real-time guarantee that the function returns within four
+hours: OS scheduling and in-flight calls cannot be preempted reliably, accepted
+driver bytes cannot be retracted, and safe tty close, recorder shutdown, raw-byte
+retention and evidence sealing still run even after expiry. Work completed before
+the deadline is not retroactively failed solely because final evidence sealing
+finishes later. The shared absolute deadline is recorded in campaign, session and
+serial metadata; standalone sessions/captures without it retain their usual
+timing limits.
 Reopening between segments does not reset the MCU, so later negative results
 can still depend on earlier parser state.
 
