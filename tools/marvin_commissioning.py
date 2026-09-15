@@ -407,11 +407,12 @@ def evidence_schema():
 
     text = {"type": ["string", "null"], "minLength": 1, "maxLength": MAX_TEXT, "pattern": r"\S"}
     nonnull_text = {**text, "type": "string"}
+    # Unlike $, this ECMA-262 assertion cannot match before a trailing newline.
     timestamp = {"anyOf": [
         {"type": "null"},
         {"type": "string", "format": "date-time",
-         "pattern": "^" + _TIMESTAMP.pattern.replace(r"\Z", "$"),
-         "not": {"pattern": "-00:00$"}},
+         "pattern": "^" + _TIMESTAMP.pattern.replace(r"\Z", r"(?![\s\S])"),
+         "not": {"pattern": r"-00:00(?![\s\S])"}},
     ]}
     texts = {"type": "array", "items": nonnull_text, "maxItems": MAX_ITEMS, "uniqueItems": True}
     identity = obj({key: text for key in IDENTITY_FIELDS})

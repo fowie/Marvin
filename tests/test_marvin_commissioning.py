@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -57,6 +58,12 @@ class CommissioningTests(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(schema, allow_nan=False)), schema)
         ids = {row["properties"]["id"]["const"] for row in schema["properties"]["entries"]["items"]["oneOf"]}
         self.assertEqual(ids, set(commissioning.CHECKLIST))
+        timestamp = schema["properties"]["entries"]["items"]["oneOf"][0]["properties"]["observed_at"]["anyOf"][1]
+        for suffix in ("", "\n", "\r", "\r\n", "\u2028", "\u2029"):
+            value = AS_OF + suffix
+            with self.subTest(timestamp=value):
+                self.assertEqual(re.search(timestamp["pattern"], value) is not None, suffix == "")
+                self.assertEqual(self.evaluate(as_of=value)["status"], "malformed" if suffix else "complete")
         self.assertEqual(self.evaluate(as_of=None)["evaluation_time_source"], "system_utc")
 
     def test_every_prerequisite_unknown_failure_conflict_and_attribution_blocks(self):
@@ -278,6 +285,7 @@ class CommissioningTests(unittest.TestCase):
             mismatch = deepcopy(self.package)
             mismatch["entries"][0]["configuration"]["physical_port"] = "different"
             cases.append((mismatch, AS_OF, 1, "incomplete"))
+            cases.append((deepcopy(self.package), AS_OF + "\n", 2, "malformed"))
             for package, clock, expected_code, status in cases:
                 path.write_text(json.dumps(package), encoding="utf-8")
                 before = path.read_bytes()
