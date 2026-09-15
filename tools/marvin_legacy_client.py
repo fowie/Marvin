@@ -215,8 +215,9 @@ Evidence properties are immutable snapshots, not a polling/recording service.
         return self._rejected_input_bytes
 
     def _abort(self, code, message):
+        message = message[:1024]
         if self._failure is None:
-            self._failure = Failure(code, message[:1024])
+            self._failure = Failure(code, message)
         raise SessionError(code, message)
 
     @contextmanager
@@ -236,7 +237,7 @@ Evidence properties are immutable snapshots, not a polling/recording service.
             completed = True
         except (OSError, ValueError, TypeError) as error:
             code = "transport_error" if isinstance(error, OSError) else "adapter_contract"
-            self._abort(code, f"{type(error).__name__}: {error}")
+            self._abort(code, f"{type(error).__name__}: {str(error)[:1024]}")
         finally:
             if not completed:
                 self._state = "invalid"

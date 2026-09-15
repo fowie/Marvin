@@ -529,6 +529,29 @@ class LegacyClientTests(unittest.TestCase):
             session.close()
         self.assert_failed(session, transport, "cleanup_failed", writes=0)
 
+    def test_adapter_diagnostics_bound_raised_and_retained_messages(self):
+        for error_type in (OSError, ValueError, TypeError):
+            prefix = f"{error_type.__name__}: "
+            for size in (0, 1023 - len(prefix), 1024 - len(prefix), 1025 - len(prefix), 100_000):
+                with self.subTest(error_type=error_type.__name__, size=size):
+                    session, transport, _ = self.make_client()
+                    detail = "x" * size
+                    with patch.object(transport, "write", side_effect=error_type(detail)):
+                        with patch.object(transport, "close", side_effect=OSError("y" * 100_000)):
+                            session.start()
+                            with self.assertRaises(client.SessionError) as raised:
+                                session.request("get-config", timeout=1)
+                    expected = (prefix + detail)[:1024]
+                    self.assertEqual(str(raised.exception), expected)
+                    self.assertEqual(raised.exception.args, (expected,))
+                    self.assertEqual(session.failure.message, expected)
+                    self.assertEqual(raised.exception.code, session.failure.code)
+                    self.assertEqual(session.failure.code,
+                                     "transport_error" if error_type is OSError else "adapter_contract")
+                    self.assertEqual(session.cleanup_errors[0].message, "y" * 1024)
+                    self.assertEqual(session.state, "invalid")
+                    self.assertEqual((session.accepted_bytes, session.uncertain_bytes), (0, 10))
+
     def test_cleanup_deadline_and_caller_exception(self):
         session, transport, clock = self.make_client()
         transport.on_close = lambda: setattr(clock, "now", clock.now + 2)
