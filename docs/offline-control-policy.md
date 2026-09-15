@@ -15,6 +15,9 @@ The [manual acceptance matrix](stop-failure-acceptance.md) specifies the separat
 physical observations required for #11. UI/software stop is supplemental to an
 independent physical stop. Software cannot self-certify evidence, grant physical
 authorization, clear physical latches or prove that motion/energy has stopped.
+For the human decisions, evidence handoffs and explicit hold points needed to
+work through those gates interactively, use the
+[human bring-up runbook](human-bringup-runbook.md).
 
 ## Public Python API
 
