@@ -11,7 +11,8 @@ they never silently truncate a capture. Empty completed receive files are valid.
 
 Optional chunks must exactly cover received.bin in order with matching hex,
 positive sizes, finite nondecreasing elapsed_seconds and timezone-aware ISO at
-timestamps. Wall-clock adjustments are allowed. Chunk times are host read times,
+timestamps. Duplicate JSON object keys are rejected, even with identical values.
+Wall-clock adjustments are allowed. Chunk times are host read times,
 not byte arrival or device timestamps. No USB completion or application ACK is
 inferred from these bytes, even when the caller declares them received/recorded.
 
@@ -54,6 +55,15 @@ def _reject_constant(value):
     raise ValueError(f"Nonstandard JSON numeric constant: {value}")
 
 
+def _json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def _validate_chunks(raw, chunk_data, *, max_chunks):
     records = []
     expected_offset = 0
@@ -64,7 +74,7 @@ def _validate_chunks(raw, chunk_data, *, max_chunks):
         if len(records) >= max_chunks:
             raise ValueError(f"Chunk record limit {max_chunks} exceeded; no truncated replay produced.")
         try:
-            row = json.loads(line, parse_constant=_reject_constant)
+            row = json.loads(line, object_pairs_hook=_json_object, parse_constant=_reject_constant)
         except ValueError as error:
             raise ValueError(f"Chunk line {line_number}: invalid JSON: {error}") from error
         if not isinstance(row, dict):

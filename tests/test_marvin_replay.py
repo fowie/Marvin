@@ -153,6 +153,32 @@ class ReplayTests(unittest.TestCase):
         result = replay.replay_capture(self.raw_path, chunks_path=self.chunk_path)
         self.assertEqual(result["events"][0]["chunk_timing"]["last_at"], rows[1]["at"])
 
+    def test_duplicate_chunk_keys_are_rejected_without_modifying_sources(self):
+        data = frame(b"hello")
+        rows = chunks_for([data[:5], data[5:]])
+        self.write_capture(data)
+        for key, conflicting in (("offset", -1), ("size", 0), ("hex", "")):
+            for earlier in (conflicting, rows[1][key]):
+                content = (
+                    json.dumps(rows[0]) + "\n"
+                    + "{" + json.dumps(key) + ": " + json.dumps(earlier) + ", "
+                    + json.dumps(rows[1])[1:] + "\n"
+                )
+                self.chunk_path.write_text(content)
+                with self.subTest(key=key, earlier=earlier):
+                    with self.assertRaisesRegex(ValueError, f"Chunk line 2: invalid JSON: Duplicate JSON key: {key}"):
+                        replay.replay_capture(self.raw_path, chunks_path=self.chunk_path)
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        status = replay.main([str(self.raw_path), "--chunks", str(self.chunk_path)])
+                    self.assertEqual(status, 2)
+                    result = json.loads(output.getvalue())
+                    self.assertEqual(result["status"], "input_error")
+                    self.assertIn(f"Duplicate JSON key: {key}", result["error"])
+                    self.assertFalse(result["source_modified_by_replay"])
+                    self.assertEqual(self.raw_path.read_bytes(), data)
+                    self.assertEqual(self.chunk_path.read_text(), content)
+
     def test_large_finite_integer_elapsed_is_not_cast_to_float(self):
         data = frame()
         rows = chunks_for([data])

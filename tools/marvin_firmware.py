@@ -2,6 +2,10 @@
 
 This is an acquisition sanity check, not a firmware authenticity check or
 permission to flash. Original images are opened read-only and never modified.
+Inputs must be finished local regular files, not symlinks, special files or
+/dev, /proc, /sys interfaces. Images are limited to the 256-KiB flash region;
+register-snapshot JSON retains its 64-KiB limit. Oversized inputs are rejected,
+never truncated.
 """
 
 import argparse
@@ -11,19 +15,21 @@ from pathlib import Path
 import struct
 import sys
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.marvin_stream import read_regular_file
+
 
 FLASH_BYTES = 262144
+MAX_REGISTER_SNAPSHOT_BYTES = 64 * 1024
 SRAM_START = 0x20000000
 SRAM_END_EXCLUSIVE = 0x20018000
 
 
 def inspect_image(path):
     path = Path(path)
-    with path.open("rb") as stream:
-        # Bound memory even if the wrong input file is selected.
-        image = stream.read(FLASH_BYTES + 1)
-        if len(image) > FLASH_BYTES:
-            raise ValueError(f"{path.name}: image exceeds the 256-KiB flash region.")
+    image = read_regular_file(path, max_bytes=FLASH_BYTES)
     report = {
         "path": str(path.resolve()),
         "bytes": len(image),
@@ -59,10 +65,7 @@ def inspect_read_protection(path):
             "reason": "No recorded FMPRE0-3 snapshot supplied; matching hashes do not prove readability.",
         }
     path = Path(path)
-    with path.open("rb") as stream:
-        payload = stream.read(65537)
-    if len(payload) > 65536:
-        raise ValueError("Register snapshot is too large.")
+    payload = read_regular_file(path, max_bytes=MAX_REGISTER_SNAPSHOT_BYTES)
     registers = json.loads(payload)
     if not isinstance(registers, dict):
         raise ValueError("Register snapshot must be an object containing FMPRE0 through FMPRE3.")

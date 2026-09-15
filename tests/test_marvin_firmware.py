@@ -1,10 +1,18 @@
+from contextlib import redirect_stderr
+import io
 import json
 from pathlib import Path
+import stat
 import struct
+import subprocess
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from tools import marvin_firmware
+from tools import marvin_stream
 
 
 class FirmwareTests(unittest.TestCase):
@@ -22,11 +30,105 @@ class FirmwareTests(unittest.TestCase):
         self.registers.write_text(json.dumps({f"FMPRE{i}": "0xffffffff" for i in range(4)}))
 
     def test_valid_top_of_sram_stack_pointer_and_recorded_read_access(self):
+        snapshot = self.registers.read_bytes()
         result = marvin_firmware.audit(self.first, self.second, registers=self.registers)
         self.assertEqual(result["status"], "passed_preliminary_screen")
         self.assertEqual(result["images"][0]["initial_stack_pointer"], "0x20018000")
         self.assertEqual(self.first.read_bytes(), self.image)
         self.assertEqual(self.second.read_bytes(), self.image)
+        self.assertEqual(self.registers.read_bytes(), snapshot)
+
+    def test_special_files_are_rejected_before_open(self):
+        for inspect in (marvin_firmware.inspect_image, marvin_firmware.inspect_read_protection):
+            for mode in (stat.S_IFCHR, stat.S_IFBLK, stat.S_IFIFO, stat.S_IFSOCK):
+                with self.subTest(inspect=inspect.__name__, mode=mode), \
+                        patch.object(Path, "lstat", return_value=SimpleNamespace(st_mode=mode, st_size=0)), \
+                        patch.object(Path, "open", side_effect=AssertionError("unsafe Path.open")) as path_open, \
+                        patch.object(marvin_stream.os, "open", side_effect=AssertionError("unsafe os.open")) as opening:
+                    with self.assertRaisesRegex(ValueError, "regular file"):
+                        inspect(self.first)
+                    path_open.assert_not_called()
+                    opening.assert_not_called()
+
+    def test_symlinks_and_directories_are_rejected_before_open(self):
+        link = self.root / "link"
+        link.symlink_to(self.first)
+        for inspect in (marvin_firmware.inspect_image, marvin_firmware.inspect_read_protection):
+            for path in (link, self.root):
+                with self.subTest(inspect=inspect.__name__, path=path), \
+                        patch.object(Path, "open", side_effect=AssertionError("unsafe Path.open")) as path_open, \
+                        patch.object(marvin_stream.os, "open", side_effect=AssertionError("unsafe os.open")) as opening:
+                    with self.assertRaisesRegex(ValueError, "regular file"):
+                        inspect(path)
+                    path_open.assert_not_called()
+                    opening.assert_not_called()
+
+    def test_device_and_kernel_paths_are_rejected_before_stat_or_open(self):
+        for inspect in (marvin_firmware.inspect_image, marvin_firmware.inspect_read_protection):
+            for path in ("/dev/not-an-input", "/proc/not-an-input", "/sys/not-an-input",
+                         "/unused/../dev/not-an-input"):
+                with self.subTest(inspect=inspect.__name__, path=path), \
+                        patch.object(Path, "lstat", side_effect=AssertionError("unsafe lstat")) as inspecting, \
+                        patch.object(Path, "open", side_effect=AssertionError("unsafe Path.open")) as path_open, \
+                        patch.object(marvin_stream.os, "open", side_effect=AssertionError("unsafe os.open")) as opening:
+                    with self.assertRaisesRegex(ValueError, "Device and kernel-interface"):
+                        inspect(path)
+                    inspecting.assert_not_called()
+                    path_open.assert_not_called()
+                    opening.assert_not_called()
+
+    def test_resolved_kernel_paths_are_rejected_before_open(self):
+        for inspect in (marvin_firmware.inspect_image, marvin_firmware.inspect_read_protection):
+            for path in ("/dev/not-an-input", "/proc/not-an-input", "/sys/not-an-input"):
+                with self.subTest(inspect=inspect.__name__, path=path), \
+                        patch.object(Path, "resolve", return_value=Path(path)), \
+                        patch.object(Path, "open", side_effect=AssertionError("unsafe Path.open")) as path_open, \
+                        patch.object(marvin_stream.os, "open", side_effect=AssertionError("unsafe os.open")) as opening:
+                    with self.assertRaisesRegex(ValueError, "resolves to a device or kernel-interface"):
+                        inspect(self.registers)
+                    path_open.assert_not_called()
+                    opening.assert_not_called()
+
+    def test_image_and_register_size_limits_reject_before_open_without_truncating(self):
+        for inspect, path, limit in (
+            (marvin_firmware.inspect_image, self.first, 262144),
+            (marvin_firmware.inspect_read_protection, self.registers, 65536),
+        ):
+            payload = path.read_bytes().ljust(limit, b" ")
+            path.write_bytes(payload)
+            with self.subTest(inspect=inspect.__name__, size=limit):
+                inspect(path)
+                self.assertEqual(path.read_bytes(), payload)
+            oversized = payload + b" "
+            path.write_bytes(oversized)
+            with self.subTest(inspect=inspect.__name__, size=limit + 1), \
+                    patch.object(Path, "open", side_effect=AssertionError("oversized Path.open")) as path_open, \
+                    patch.object(marvin_stream.os, "open", side_effect=AssertionError("oversized os.open")) as opening:
+                with self.assertRaisesRegex(ValueError, f"exceeds the {limit}-byte limit"):
+                    inspect(path)
+                path_open.assert_not_called()
+                opening.assert_not_called()
+            self.assertEqual(path.read_bytes(), oversized)
+
+    def test_missing_inputs_surface_file_errors(self):
+        for inspect in (marvin_firmware.inspect_image, marvin_firmware.inspect_read_protection):
+            with self.subTest(inspect=inspect.__name__), self.assertRaises(FileNotFoundError):
+                inspect(self.root / "missing")
+
+    def test_cli_reports_regular_file_rejection_and_keeps_direct_script_support(self):
+        output = io.StringIO()
+        with patch.object(sys, "argv", ["marvin_firmware", str(self.first), str(self.second),
+                                      "--registers", str(self.root)]), redirect_stderr(output):
+            status = marvin_firmware.main()
+        self.assertEqual(status, 1)
+        self.assertIn("Firmware screening failed: Input must be a regular file", output.getvalue())
+        completed = subprocess.run(
+            [sys.executable, "-B", str(Path(marvin_firmware.__file__)), str(self.first),
+             str(self.second), "--registers", str(self.registers)],
+            capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(json.loads(completed.stdout)["status"], "passed_preliminary_screen")
+        self.assertEqual(completed.stderr, "")
 
     def test_without_protection_snapshot_never_claims_readable_backup(self):
         result = marvin_firmware.audit(self.first, self.second)
