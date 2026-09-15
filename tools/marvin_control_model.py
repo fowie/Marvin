@@ -202,7 +202,7 @@ class Record:
     index: int
     event: Event
     category: str
-    before: str
+    before: State
     after: State
     result: str
     confidence: str = "SYNTHETIC_model_only"
@@ -358,15 +358,6 @@ def _operate(state, event):
         if observation.elapsed > observation.reviewed_limit:
             raise _Fault("observation_limit")
         return state
-    if kind == "host_crash":
-        return replace(
-            _revoke(state, "crashed", fault=state.fault or "host_crash",
-                    intention="external_stop_required"),
-            cleanup="cannot_execute_after_host_crash",
-        )
-    if kind == "host_exit":
-        return _revoke(state, "exited", fault=state.fault or (
-            "uncertain_delivery" if state.pending else None))
     if kind == "restart":
         return replace(_revoke(state, "new", intention="remain_disarmed"),
                        pending=None, last_intent_at=None, last_velocity=(0, 0),
@@ -379,6 +370,15 @@ def _operate(state, event):
                        cleanup="no_hardware_cleanup_exists")
     if state.mode in ("fault", "crashed", "exited"):
         raise _Fault(state.fault or "session_invalid")
+    if kind == "host_crash":
+        return replace(
+            _revoke(state, "crashed", fault="host_crash",
+                    intention="external_stop_required"),
+            cleanup="cannot_execute_after_host_crash",
+        )
+    if kind == "host_exit":
+        return _revoke(state, "exited", fault=(
+            "uncertain_delivery" if state.pending else None))
     if kind in ("stop", "disarm"):
         if state.pending:
             raise _Fault("uncertain_delivery")
@@ -560,7 +560,7 @@ class Model:
         try:
             if len(self._records) >= self.state.policy.max_events:
                 raise ModelError("Evidence budget exhausted; model cannot resume.")
-            before = self.state.mode
+            before = self.state
             try:
                 validate_event(event)
             except ModelError:

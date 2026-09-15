@@ -74,6 +74,19 @@ class ControlModelTests(unittest.TestCase):
         for record in simulation.records:
             self.assertEqual(record.application_acknowledgment, "not_established")
         self.assertEqual(write_snapshot[-1].event.write.raw, b"SYNTHETIC")
+        for previous, current in zip(simulation.records, simulation.records[1:]):
+            self.assertIs(current.before, previous.after)
+        stopped = simulation.records[-2]
+        self.assertIs(stopped.before.token, old.token)
+        self.assertEqual(stopped.before.reviews, old.reviews)
+        self.assertEqual(stopped.before.deadman_deadline, old.deadman_deadline)
+        self.assertEqual(stopped.before.commands, 1)
+        self.assertIsNone(stopped.after.token)
+        self.assertEqual(stopped.after.reviews, ())
+        encoded = m.to_json(stopped)
+        self.assertEqual(encoded["before"]["mode"], "armed")
+        self.assertEqual(encoded["before"]["token"]["owner"], old.token.owner)
+        self.assertEqual(encoded["after"]["mode"], "disarmed")
         json.dumps(m.to_json(simulation.records), allow_nan=False)
 
     def test_missing_unreviewed_stale_mismatched_prerequisites(self):
@@ -302,7 +315,14 @@ class ControlModelTests(unittest.TestCase):
                 self.submit(simulation)
                 self.write(simulation)
                 token = simulation.state.token
-                simulation.step(m.Event(0.7, kind))
+                before = simulation.state
+                record = simulation.step(m.Event(0.7, kind))
+                self.assertIs(record.before, before)
+                self.assertEqual(record.before.pending.status, "submitted")
+                self.assertEqual(record.before.pending.write.raw, b"SYNTHETIC")
+                self.assertEqual(record.before.pending.deadline, 1)
+                self.assertIs(record.before.token, token)
+                self.assertEqual(len(record.before.reviews), 3)
                 expected = {"host_exit": "exited", "host_crash": "crashed"}.get(kind, "fault")
                 self.assertEqual(simulation.state.mode, expected)
                 self.assertIsNone(simulation.state.token)
@@ -316,6 +336,30 @@ class ControlModelTests(unittest.TestCase):
                 self.assertEqual(simulation.state.physical_stop, "not_established")
                 simulation.step(m.Event(0.9, "arm", scope=simulation.state.scope, token=token))
                 self.assertEqual(simulation.state.mode, expected)
+        for initial in ("transport_lost", "host_crash", "host_exit"):
+            for later in ("host_crash", "host_exit"):
+                for pending in (False, True):
+                    with self.subTest(initial=initial, later=later, pending=pending):
+                        target = self.make_model()
+                        if pending:
+                            self.submit(target)
+                            self.write(target)
+                        target.step(m.Event(0.7, initial))
+                        terminal = target.state
+                        event = m.Event(0.8, later)
+                        reduced, result = m.transition(terminal, event)
+                        self.assertEqual(reduced, replace(terminal, last_at=event.at))
+                        self.assertNotEqual(result, "accepted")
+                        record = target.step(event)
+                        self.assertEqual(record.after, reduced)
+                        self.assertIs(record.before, terminal)
+                        self.assertIs(record.event, event)
+                        self.assertEqual(record.result, result)
+                        target.step(m.Event(0.9, "restart"))
+                        self.assertEqual(target.state.mode, "new")
+                        self.assertIsNone(target.state.token)
+                        self.assertIsNone(target.state.pending)
+                        self.assertEqual(target.records[-1].before.mode, terminal.mode)
         simulation = self.make_model()
         simulation.step(m.Event(2, "host_crash"))
         self.assertEqual(simulation.state.mode, "crashed")

@@ -2,7 +2,7 @@
 
 python -B -m tools.marvin_control_scenario data/synthetic-control-scenario.json
 
-Exit 0: completed without model faults; 1: modeled fault/crash; 2: invalid
+Exit 0: no modeled fault/exit/crash; 1: modeled fault/exit/crash; 2: invalid
 input/output. None is physical acceptance. Output defaults to stdout only.
 """
 
@@ -152,7 +152,7 @@ def run_scenario(document):
                 else model.Token(-1, "authorization-denied", save_name)
             )
     faulted = any(record.result not in ("accepted", "recorded")
-                  or record.after.mode in ("fault", "crashed") or record.after.fault
+                  or record.after.mode in ("fault", "crashed", "exited") or record.after.fault
                   for record in simulation.records)
     return {
         "schema_version": 1,

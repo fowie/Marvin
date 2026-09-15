@@ -45,6 +45,11 @@ class ControlScenarioTests(unittest.TestCase):
         self.assertFalse(report["resume_permitted"])
         self.assertEqual(report["records"][4]["event"]["write"]["raw"]["raw_hex"],
                          b"SYNTHETIC".hex())
+        self.assertEqual(report["records"][5]["before"], report["records"][4]["after"])
+        self.assertEqual(report["records"][5]["before"]["pending"]["status"], "submitted")
+        self.assertEqual(report["records"][6]["before"]["mode"], "armed")
+        self.assertIsNotNone(report["records"][6]["before"]["token"])
+        self.assertIsNone(report["records"][6]["after"]["token"])
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "report.json"
             result = self.cli(EXAMPLE, "--output", output)
@@ -84,6 +89,28 @@ class ControlScenarioTests(unittest.TestCase):
             {"kind": "host_exit", "at": 0.1}, {"kind": "restart", "at": 0.2},
         ]
         changes.append((doc, "exited", None))
+        for restart in (False, True):
+            for pending in (False, True):
+                doc = self.example()
+                doc["events"] = doc["events"][:5 if pending else 3] + [
+                    {"kind": "host_exit", "at": 0.7},
+                ]
+                if restart:
+                    doc["events"].append({"kind": "restart", "at": 0.8})
+                changes.append((doc, "new" if restart else "exited",
+                                "uncertain_delivery" if pending and not restart else None))
+        for initial, mode, code in (
+            ("transport_lost", "fault", "transport_lost"),
+            ("host_crash", "crashed", "host_crash"),
+            ("host_exit", "exited", None),
+        ):
+            doc = self.example()
+            doc["events"] = doc["events"][:3] + [
+                {"kind": initial, "at": 0.1},
+                {"kind": "host_crash", "at": 0.2},
+                {"kind": "host_exit", "at": 0.3},
+            ]
+            changes.append((doc, mode, code))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "scenario.json"
             for doc, mode, code in changes:

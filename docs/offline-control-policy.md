@@ -65,7 +65,7 @@ All modes below are **software model states**, never hardware states.
 | Valid state, no pending work | `stop` / `disarm` | Revokes owner/token, `disarmed` (or remains `new` if never connected); only a disarm intention |
 | Pending work | `stop` / `disarm` | `fault: uncertain_delivery`; preserves failed pending snapshot and original write/reply declarations |
 | Session uncertainty, stale traffic, bounds/ownership failure, expiry | Fault trigger | `fault`, revoked token, no retry/rearm/resume; pending work marked `failed` |
-| Any modeled host state | `host_crash` | `crashed`, external simulator projection; `cleanup=cannot_execute_after_host_crash` |
+| Nonterminal modeled host state | `host_crash` | `crashed`, external simulator projection; `cleanup=cannot_execute_after_host_crash` |
 | Valid state before deadlines | `host_exit` | `exited`, revoked authority, uncertainty recorded if pending; no hardware cleanup exists |
 | `fault` | `reset` | `new`, invalidates old token and clears working pending state; historical records remain |
 | Any state before applicable expiry checks, or terminal state | `restart` | `new`, no owner or resumed intent; old tokens invalid; lifetime budgets/sequences are not reset |
@@ -79,7 +79,9 @@ is special: with valid time it is an external projection even at deadline, not
 an opportunity for cleanup inside the crashed process. Later external
 observations may still be retained in terminal states; they do not revive them.
 The first terminal failure stays primary; later records retain their event and
-rejected result. Reset/restart acknowledges the model fault only, not any
+rejected result. A later `host_exit` or `host_crash` cannot replace an existing
+`fault`, `crashed` or `exited` mode, change its cleanup evidence or revoke tokens
+again; only the validated event time advances. Reset/restart acknowledges the model fault only, not any
 physical latch. A new identity/profile/calibration requires a newly constructed,
 explicitly reviewed model scope; reconnect does not accept it silently.
 
@@ -149,6 +151,10 @@ objects. This is a bounded model audit, not a raw transport capture.
 
 Records preserve the exact accepted event, model timestamp, profile/scope,
 authorization/reviews, before/after states, pending status and fault result.
+Both `Record.before` and `Record.after` are full frozen `State` snapshots,
+rendered as JSON objects. `before` retains the pre-event authorization, reviews,
+deadlines, counters and pending write evidence even when the event revokes or
+clears them from `after`.
 Distinct categories prevent promoting weaker evidence into stronger claims:
 
 | Record category | Meaning and limitation |
@@ -238,8 +244,10 @@ atomic or crash-proof recorder; an I/O error is explicit and may leave a partial
 new file, never a successful sealed report. Input bytes and their SHA-256 are
 preserved/identified, not authenticated. Output defaults to stdout.
 
-Exit 0 means the trace completed without modeled faults, **not physical PASS**.
-Exit 1 means the trace completed with one or more modeled faults/crashes, even
-if later explicitly reset. Exit 2 means schema/input/output failure; stderr JSON
+Exit 0 means the trace completed without modeled faults, exits or crashes,
+**not physical PASS**. Exit 1 means the trace completed with one or more modeled
+faults, host exits or crashes, even if later explicitly reset/restarted. A normal
+`host_exit` without pending work is still terminal session loss for this report;
+it cannot be hidden by restarting. Exit 2 means schema/input/output failure; stderr JSON
 has `complete: false`. An invalid document is fully schema-checked before model
 execution. There are no `--run`, serial, arbitrary opcode or actuator switches.
