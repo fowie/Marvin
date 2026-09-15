@@ -2,7 +2,8 @@
 
 `tools.marvin_legacy_client.LegacyClient` is a synchronous, transport-independent
 implementation for #7 (Epic #1). It opens **no devices** and adds no serial
-adapter, polling/recording service (#8), actuator API or live authorization.
+adapter, actuator API or live authorization. The separate injection-only
+[bounded polling/recording layer](legacy-polling.md) implements #8 on this API.
 The existing `marvin_legacy_probe` one-shot path and modern EFBE behavior are
 unchanged. Importing/invoking the client module does not perform I/O.
 
