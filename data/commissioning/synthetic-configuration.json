@@ -1,0 +1,16 @@
+{
+  "identity": {
+    "configuration_id": "SYNTHETIC-ONLY",
+    "revision": "invented-r1",
+    "device_id": "invented-asset-NOT-A-USB-SERIAL",
+    "physical_port": "invented-host/hub/port-4",
+    "protocol_profile": "legacy-se-synthetic-declaration",
+    "wiring_revision": "invented-map-r1"
+  },
+  "wiring_map": [
+    {"channel": "invented-motor", "connector": "invented-J1", "function": "SYNTHETIC disconnected motor channel"},
+    {"channel": "invented-servo", "connector": "invented-J2", "function": "SYNTHETIC disconnected servo channel"},
+    {"channel": "invented-proximity", "connector": "invented-J3", "function": "SYNTHETIC proximity input"},
+    {"channel": "invented-cliff", "connector": "invented-J4", "function": "SYNTHETIC cliff input"}
+  ]
+}

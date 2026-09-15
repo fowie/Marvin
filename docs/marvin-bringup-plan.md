@@ -231,6 +231,10 @@ reconnect behavior, without changing motor, servo, power or configuration state.
 
 ### 2. Clear physical and electrical prerequisites
 
+The [offline commissioning checklist and evidence validator](commissioning-evidence.md)
+records attributed prerequisites, configuration mismatches and reviewed-policy
+freshness. A complete package is not physical sign-off or authorization.
+
 Human intervention is required before actuator reconnection. Keep motor/servo
 power **and signal connections** isolated for current work. Make wiring changes
 only with robot power, batteries where applicable, and USB back-power removed.
