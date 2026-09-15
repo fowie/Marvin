@@ -577,7 +577,7 @@ def validate_monitor_final_stats(metadata):
             or any(type(value) is not int or value != 0 for value in stats.values())):
         raise UsbmonError(
             "Incomplete USB capture: final queued/dropped statistics must be explicit integer zeros; "
-            "monitor loss or an unread tail prevents completion."
+            "monitor loss (dropped events) or an unread tail prevents completion."
         )
 
 
