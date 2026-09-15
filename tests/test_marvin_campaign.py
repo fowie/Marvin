@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -280,11 +280,13 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(options["expected_usb_identity"], BASELINE["usb"])
         self.assertEqual(options["usb_tail_seconds"], 5)
         self.assertEqual(options["usb_close_grace_seconds"], 30)
+        self.assertIs(options["allow_line_state_trial"], True)
         return fixture(output, options["probe_schedule"], rx=self.rx)
 
     def run_campaign(self, **overrides):
         options = {"actuators_isolated": True, "allow_unknown_command": True,
-                   "allow_telemetry_state_change": True, "switch_position": "RUN"}
+                   "allow_telemetry_state_change": True, "allow_line_state_trials": True,
+                   "switch_position": "RUN"}
         options.update(overrides)
         return campaign.run_campaign(plan(), self.output, **options)
 
@@ -294,6 +296,9 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(result["application_bytes_confirmed"], 48)
         self.assertEqual(result["usb_close_grace_seconds"], 30)
         self.assertEqual(result["planned"]["usb_seconds"], 18)
+        self.assertIs(result["line_state_trials_authorized"], True)
+        recorded = json.loads((self.output / "metadata.json").read_text())
+        self.assertIs(recorded["line_state_trials_authorized"], True)
         self.assertEqual(self.session.call_count, 2)
         for line in (self.output / "SHA256SUMS").read_text().splitlines():
             digest, path = line.split("  ", 1)
@@ -303,13 +308,73 @@ class CampaignTests(unittest.TestCase):
 
     def test_non_boolean_authorizations_stop_before_preflight(self):
         for name in ("actuators_isolated", "allow_unknown_command",
-                     "allow_telemetry_state_change", "sudo_usbmon"):
+                     "allow_telemetry_state_change", "allow_line_state_trials", "sudo_usbmon"):
             for value in (1, 0, "false", "true", None, [], [True]):
                 with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "boolean"):
                     self.run_campaign(**{name: value})
         self.preflight.assert_not_called()
         self.session.assert_not_called()
         self.assertFalse(self.output.exists())
+
+    def test_missing_line_authorization_stops_before_preflight_or_output(self):
+        for lines in ((True, True), (True, False), (False, False), (False, True)):
+            value = plan()
+            for segment in value["segments"]:
+                segment["dtr"], segment["rts"] = lines
+            with self.subTest(lines=lines), self.assertRaisesRegex(ValueError, "line-state"):
+                campaign.run_campaign(
+                    value, self.output, actuators_isolated=True, allow_unknown_command=True,
+                    allow_telemetry_state_change=True, switch_position="RUN",
+                )
+        self.preflight.assert_not_called()
+        self.identity.assert_not_called()
+        self.session.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_authorized_line_matrix_is_forwarded_without_changing_plan(self):
+        value = plan()
+        value["segments"] = [
+            dict(value["segments"][0], id=f"lines-{index}", dtr=dtr, rts=rts)
+            for index, (dtr, rts) in enumerate(
+                ((True, True), (True, False), (False, False), (False, True)))
+        ]
+        original = copy.deepcopy(value)
+        result = campaign.run_campaign(
+            value, self.output, actuators_isolated=True, allow_unknown_command=True,
+            allow_telemetry_state_change=True, allow_line_state_trials=True,
+            switch_position="RUN",
+        )
+        self.assertEqual(result["status"], "completed_silent")
+        self.assertEqual(value, original)
+        self.assertEqual(json.loads((self.output / "plan.json").read_text()), original)
+        for call, segment in zip(self.session.call_args_list, original["segments"], strict=True):
+            self.assertIs(call.kwargs["allow_line_state_trial"], True)
+            for key in ("baudrate", "dtr", "rts", "bytesize", "parity", "stopbits"):
+                self.assertEqual(call.kwargs[key], segment[key])
+            schedule, seconds = campaign.compile_segment(segment)
+            self.assertEqual(call.kwargs["probe_schedule"], schedule)
+            self.assertEqual(call.kwargs["seconds"], seconds)
+            self.assertEqual(call.kwargs["probe_profile"], "experimental-successor")
+
+    def test_cli_requires_and_forwards_separate_line_state_authorization(self):
+        argv = [
+            "marvin_campaign", "--run", "--output", str(self.output),
+            "--actuators-isolated", "--allow-unknown-command",
+            "--allow-telemetry-state-change", "--switch-position", "RUN",
+        ]
+        with patch.object(marvin_campaign_plan, "make_plan", return_value=plan()):
+            with patch("sys.argv", argv), redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(campaign.main(), 1)
+            self.assertIn("line-state", errors.getvalue())
+            self.preflight.assert_not_called()
+            self.identity.assert_not_called()
+            self.session.assert_not_called()
+            self.assertFalse(self.output.exists())
+            with patch("sys.argv", [*argv, "--allow-line-state-trials"]), redirect_stdout(io.StringIO()):
+                self.assertEqual(campaign.main(), 0)
+        self.assertEqual(self.session.call_count, 2)
+        recorded = json.loads((self.output / "metadata.json").read_text())
+        self.assertIs(recorded["line_state_trials_authorized"], True)
 
     def test_rx_stops_before_the_second_segment(self):
         self.rx = True
@@ -348,12 +413,16 @@ class CampaignTests(unittest.TestCase):
 
     def test_authorization_and_root_are_rejected_before_preflight(self):
         for option in ({"actuators_isolated": False}, {"allow_unknown_command": False},
-                       {"allow_telemetry_state_change": False}, {"switch_position": "PRG"}):
+                       {"allow_telemetry_state_change": False}, {"allow_line_state_trials": False},
+                       {"switch_position": "PRG"}):
             with self.subTest(option=option), self.assertRaises(ValueError):
                 self.run_campaign(**option)
         with patch.object(campaign.os, "geteuid", return_value=0), self.assertRaises(ValueError):
             self.run_campaign()
         self.preflight.assert_not_called()
+        self.identity.assert_not_called()
+        self.session.assert_not_called()
+        self.assertFalse(self.output.exists())
 
     def test_changed_fingerprint_never_opens_a_port(self):
         self.preflight.return_value["usb"]["descriptors_sha256"] = "different"

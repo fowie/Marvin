@@ -3,6 +3,9 @@
 The default prints coverage only. Explicit --run uses one persistent tty open
 per segment, stops further transmission on observed RX, and never resumes or
 retries uncertain writes. Firmware writes, resets and actuation are excluded.
+Execution requires separate acknowledgment of DTR/RTS line-state effects.
+This historical successor campaign is experimental, not for the working legacy
+device; command authorization is not evidence of safety on unknown firmware.
 """
 
 import argparse
@@ -218,16 +221,20 @@ def rejected_settings_evidence(directory, baseline):
 
 def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isolated=False,
                  allow_unknown_command=False, allow_telemetry_state_change=False,
+                 allow_line_state_trials=False,
                  sudo_usbmon=False, switch_position=None, max_seconds=14400):
     if os.geteuid() == 0:
         raise ValueError("Run the campaign as the ordinary user, not under sudo.")
     marvin_probe.validate_boolean_flags(
         actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
         allow_telemetry_state_change=allow_telemetry_state_change, sudo_usbmon=sudo_usbmon,
+        allow_line_state_trials=allow_line_state_trials,
     )
     if (actuators_isolated is not True or allow_unknown_command is not True
             or allow_telemetry_state_change is not True):
         raise ValueError("Campaign requires isolation, unknown-command and telemetry-state authorizations.")
+    if allow_line_state_trials is not True:
+        raise ValueError("Campaign requires separate line-state authorization for DTR/RTS firmware effects.")
     if switch_position != "RUN":
         raise ValueError("This campaign requires an explicit owner-reported RUN position.")
     bounded_number(max_seconds, 1, 14400, "Campaign wall-clock limit")
@@ -242,6 +249,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
     metadata = {
         "status": "incomplete", "started_at": marvin_probe.utc_now(),
         "baseline": baseline, "owner_reported_switch_position": switch_position,
+        "line_state_trials_authorized": allow_line_state_trials,
         "plan_sha256": hashlib.sha256(encoded).hexdigest(), "planned": coverage,
         "segments": [], "application_bytes_confirmed": 0,
         "max_wall_seconds": max_seconds, "automatic_retries": False,
@@ -284,6 +292,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
                     probe_schedule=schedule, allow_unknown_command=True,
                     probe_profile="experimental-successor",
                     allow_telemetry_state_change=True, expected_usb_identity=baseline["usb"],
+                    allow_line_state_trial=allow_line_state_trials,
                     usb_tail_seconds=USB_TAIL_SECONDS, usb_close_grace_seconds=USB_CLOSE_GRACE_SECONDS,
                 )
             except marvin_probe.SerialSettingsRejected:
@@ -337,6 +346,8 @@ def main():
     parser.add_argument("--actuators-isolated", action="store_true")
     parser.add_argument("--allow-unknown-command", action="store_true")
     parser.add_argument("--allow-telemetry-state-change", action="store_true")
+    parser.add_argument("--allow-line-state-trials", action="store_true",
+                        help="Separately acknowledge DTR/RTS transitions and possible firmware state/reset effects")
     parser.add_argument("--switch-position", choices=("RUN",))
     parser.add_argument("--max-seconds", type=float, default=14400)
     args = parser.parse_args()
@@ -352,6 +363,7 @@ def main():
             plan, args.output, port=args.port, actuators_isolated=args.actuators_isolated,
             allow_unknown_command=args.allow_unknown_command,
             allow_telemetry_state_change=args.allow_telemetry_state_change,
+            allow_line_state_trials=args.allow_line_state_trials,
             sudo_usbmon=args.sudo_usbmon, switch_position=args.switch_position,
             max_seconds=args.max_seconds,
         )

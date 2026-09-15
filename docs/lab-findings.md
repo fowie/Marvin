@@ -344,10 +344,14 @@ USB OUT completion are established. Any serial or bulk/interrupt USB input,
 capture error, queued/dropped monitor tail, pairing problem, uncertain write,
 or identity change stops the series. It never resumes or retries a case.
 
-Nondefault line states require a separate `--allow-line-state-trial` option
-on the underlying coordinator; that exception applies only to GetConfig,
-not arbitrary commands, other baud rates, or GetUnitInfo.
-GetSensorInfo is likewise excluded from line-state trials.
+For named coordinator queries, departures from DTR/RTS high/high require the
+separate `--allow-line-state-trial` option; that exception still applies only
+to GetConfig at 115200/8N1, not GetUnitInfo or GetSensorInfo. The coordinator's
+Python schedule API separately requires `allow_line_state_trial=True` whenever
+DTR or RTS is asserted, for every transmit profile. Its existing low/low
+schedule defaults, including the fixed legacy wrapper settings, remain
+unchanged. Authorization never bypasses byte/profile validation or permits
+combining a schedule with a named probe.
 
 Reopening the port does not reset the controller: firmware/parser state can
 carry across cases, and kernel-open line transients remain possible.
@@ -406,7 +410,7 @@ heartbeat, motion, reset, or flash operation is part of these named probes.
 **Historical and experimental; NOT recommended for the known-working legacy
 device.** The successor command audit does not make these opcodes safe in
 legacy S/E framing; getters can collide with setters or resets. Preserve the
-old runner's defaults/behavior for reproducibility, but do not restart the
+old execution segments/bytes for reproducibility, but do not restart the
 sweep or use it as a fallback when a legacy read fails.
 
 `tools/marvin_campaign_plan.py` builds a finite, source-audited catalogue without
@@ -438,17 +442,30 @@ baud zero, and arbitrary padding/random-byte sweeps are excluded.
 .venv/bin/python -m tools.marvin_campaign --profile full
 ```
 
-The historical, separately authorized RUN campaign used the following options
-with actuator power **and signals** isolated. This records the old invocation,
-not a recommendation or authorization to run it now:
+The historical RUN campaign required separately approved actuator power **and
+signal** isolation. The equivalent invocation below includes the now-required
+separate line-state acknowledgment; it is not a recommendation or authorization
+to run it now:
 
 ```sh
 sudo -v &&
 .venv/bin/python -m tools.marvin_campaign --run --profile full \
   --sudo-usbmon --actuators-isolated --allow-unknown-command \
-  --allow-telemetry-state-change --switch-position RUN --max-seconds 14400 \
+  --allow-telemetry-state-change --allow-line-state-trials \
+  --switch-position RUN --max-seconds 14400 \
   --output /absolute/path/to/a/new/communication-campaign
 ```
+
+`run_campaign(..., allow_line_state_trials=True)` requires an exact boolean
+acknowledgment even for a low/low-only plan. Isolation, command authorization,
+and telemetry-state consent do not imply line-state consent. Missing/false or
+non-boolean consent fails before identity preflight, output creation, or a
+capture. Campaign metadata records `line_state_trials_authorized`, and every
+segment receives the corresponding coordinator `allow_line_state_trial` flag,
+recorded as `line_state_trial_authorized`. This acknowledges possible DTR/RTS
+firmware state/reset effects; it does not establish safety or eliminate
+kernel-open transients. Planned bytes, line settings, and segment timing are
+unchanged.
 
 Each segment keeps one tty open across its probes, including the 27/29 pair.
 Reads continue between fragments and response windows. Any observed serial

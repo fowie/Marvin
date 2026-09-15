@@ -41,6 +41,11 @@ Stateful identification queries require separate telemetry-state acknowledgment.
 The legacy `get-unit-info --run` command requires
 `--allow-telemetry-state-change`; boot observation separately requires
 `--allow-line-state-change` for its DTR/RTS requests.
+Historical campaign execution requires `--allow-line-state-trials`, recorded
+and forwarded to each segment. Direct coordinator schedules that assert DTR or
+RTS require `allow_line_state_trial=True`; low/low schedule defaults, including
+the fixed legacy wrapper settings, remain unchanged. Named query restrictions
+are unchanged; this acknowledgment never widens a transmit profile.
 Safety acknowledgments and boolean selectors reject strings and integers rather
 than interpreting their truthiness as consent.
 

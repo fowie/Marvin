@@ -179,6 +179,9 @@ class SessionTests(unittest.TestCase):
                                   allow_unknown_command=True)
         self.assertFalse(result["telemetry_state_change_authorized"])
         self.assertFalse(self.serial.call_args.kwargs["allow_telemetry_state_change"])
+        self.assertFalse(result["line_state_trial_authorized"])
+        self.assertFalse(self.serial.call_args.kwargs["dtr"])
+        self.assertFalse(self.serial.call_args.kwargs["rts"])
 
     def test_stateful_legacy_schedule_still_requires_explicit_authorization(self):
         schedule = (marvin_session.marvin_probe.ScheduledWrite(
@@ -324,11 +327,72 @@ class SessionTests(unittest.TestCase):
             {"allow_unknown_command": True, "allow_telemetry_state_change": True, "probe_get_unit_info": True},
             {"allow_unknown_command": True, "allow_telemetry_state_change": True, "probe_get_sensor_info": True},
             {"allow_unknown_command": True, "allow_telemetry_state_change": True, "probe_delay": 0.1},
-            {"allow_unknown_command": True, "allow_telemetry_state_change": True, "allow_line_state_trial": True},
+            {"allow_unknown_command": True, "allow_telemetry_state_change": True, "dtr": True},
+            {"allow_unknown_command": True, "allow_line_state_trial": True, "rts": True},
         ):
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 self.run_capture(probe_schedule=schedule, **extra)
         self.preflight.assert_not_called()
+
+    def test_nondefault_schedule_lines_require_separate_exact_boolean_authorization(self):
+        for profile in ("modern", "legacy", "experimental-successor"):
+            data = marvin_legacy_protocol.get_config_request() if profile == "legacy" else b"\r"
+            schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, data, "query/0"),)
+            for dtr, rts in ((True, True), (True, False), (False, True)):
+                for consent in ({}, {"allow_line_state_trial": False},
+                                *({"allow_line_state_trial": value}
+                                  for value in (1, 0, "true", "false", None, [], [True]))):
+                    with self.subTest(profile=profile, dtr=dtr, rts=rts, consent=consent):
+                        with self.assertRaisesRegex(ValueError, "line-state|allow_line_state_trial"):
+                            self.run_capture(
+                                probe_schedule=schedule, probe_profile=profile, dtr=dtr, rts=rts,
+                                allow_unknown_command=True, allow_telemetry_state_change=True,
+                                **consent,
+                            )
+        self.preflight.assert_not_called()
+        self.identity.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_authorized_schedule_lines_are_recorded_for_all_profiles(self):
+        for profile in ("modern", "legacy", "experimental-successor"):
+            data = marvin_legacy_protocol.get_config_request() if profile == "legacy" else b"\r"
+            schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, data, "query/0"),)
+            for dtr, rts in ((True, True), (True, False), (False, False), (False, True)):
+                with self.subTest(profile=profile, dtr=dtr, rts=rts):
+                    self.output = Path(self.temp.name) / f"{profile}-{dtr}-{rts}"
+                    self.clock.now = 0
+                    result = self.run_capture(
+                        probe_schedule=schedule, probe_profile=profile, dtr=dtr, rts=rts,
+                        allow_unknown_command=True, allow_telemetry_state_change=profile != "legacy",
+                        allow_line_state_trial=True,
+                    )
+                    self.assertEqual(result["status"], "completed")
+                    self.assertIs(result["line_state_trial_authorized"], True)
+                    recorded = json.loads((self.output / "metadata.json").read_text())
+                    self.assertIs(recorded["line_state_trial_authorized"], True)
+                    options = self.serial.call_args.kwargs
+                    self.assertIs(options["dtr"], dtr)
+                    self.assertIs(options["rts"], rts)
+                    self.assertEqual(options["probe_schedule"], schedule)
+                    self.assertEqual(options["probe_profile"], profile)
+                    self.assertEqual(result["requested_application_bytes"], len(data))
+                    self.assertIs(result["telemetry_state_change_authorized"], profile != "legacy")
+
+    def test_schedule_line_authorization_does_not_bypass_transmit_allowlist(self):
+        for profile in ("modern", "legacy", "experimental-successor"):
+            schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, b"erase\r", "bad/0"),)
+            with self.subTest(profile=profile), self.assertRaises(ValueError):
+                self.run_capture(
+                    probe_schedule=schedule, probe_profile=profile, dtr=True, rts=True,
+                    allow_unknown_command=True, allow_telemetry_state_change=True,
+                    allow_line_state_trial=True,
+                )
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
 
     def test_campaign_forwards_schedule_framing_and_short_bounded_usb_tail(self):
         schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, b"help\r", "help/0"),)
@@ -349,6 +413,9 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(result["usb_duration_seconds"], 5.5)
         self.assertEqual(result["framing"], "7E2")
         self.assertTrue(result["telemetry_state_change_authorized"])
+        self.assertFalse(result["line_state_trial_authorized"])
+        self.assertFalse(self.serial.call_args.kwargs["dtr"])
+        self.assertFalse(self.serial.call_args.kwargs["rts"])
 
     def test_named_queries_still_reject_changed_framing(self):
         for probe in ("probe_get_config", "probe_get_unit_info", "probe_get_sensor_info"):

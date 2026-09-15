@@ -213,6 +213,9 @@ def run_session(
     usb_nominal_duration_seconds excludes grace. With grace enabled, the normal
     stop is based on recorder readiness, after serial close and a short drain.
     Grace changes only host recording, never serial timing, writes, or retries.
+    Schedules retain the low/low line defaults; asserting either line requires
+    separate allow_line_state_trial=True consent, regardless of transmit profile.
+    Named query line/framing restrictions remain independent of schedule consent.
     """
     if os.geteuid() == 0:
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
@@ -262,8 +265,10 @@ def run_session(
             b"".join(item.data for item in probe_schedule), profile=probe_profile)
         if (probe_profile != "legacy" or stateful) and allow_telemetry_state_change is not True:
             raise ValueError("This schedule requires telemetry-state authorization.")
-    if allow_line_state_trial and not probe_get_config:
-        raise ValueError("Line-state trials are restricted to GetConfig.")
+        if (dtr or rts) and allow_line_state_trial is not True:
+            raise ValueError("Schedules with DTR or RTS high require separate line-state authorization.")
+    if allow_line_state_trial and not (probe_get_config or probe_schedule is not None):
+        raise ValueError("Line-state trials require GetConfig or an explicitly validated schedule.")
     if (probe_get_config or probe_get_unit_info or probe_get_sensor_info) and (
         baudrate != 115200 or (bytesize, parity, stopbits) != (8, "N", 1)
         or (not (dtr and rts) and not allow_line_state_trial)
