@@ -150,6 +150,39 @@ class FirmwareTests(unittest.TestCase):
         result = marvin_firmware.audit(self.first, self.second)
         self.assertEqual(result["status"], "protection_unverified")
 
+    def test_bounded_deep_json_uses_the_normal_cli_error_path_without_output_or_mutation(self):
+        depth = sys.getrecursionlimit() + 100
+        payload = '{"FMPRE0":' + "[" * depth + "0" + "]" * depth + "}"
+        self.assertLess(len(payload.encode()), 65536)
+        self.registers.write_text(payload)
+        report = self.root / "report.json"
+        arguments = [str(self.first), str(self.second), "--registers", str(self.registers),
+                     "--output", str(report)]
+        stdout, stderr = io.StringIO(), io.StringIO()
+        # Exercise real recursive parsing even on versions whose C scanner accepts deeper input.
+        with patch.object(json.scanner, "make_scanner", json.scanner.py_make_scanner), \
+                patch.object(sys, "argv", ["marvin_firmware", *arguments]), \
+                redirect_stdout(stdout), redirect_stderr(stderr):
+            self.assertEqual(marvin_firmware.main(), 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Firmware screening failed:", stderr.getvalue())
+        self.assertIn("recursion", stderr.getvalue().lower())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        for entry in (["-m", "tools.marvin_firmware"], [str(Path(marvin_firmware.__file__))]):
+            with self.subTest(entry=entry):
+                result = subprocess.run(
+                    [sys.executable, "-B", *entry, *arguments],
+                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Firmware screening failed:", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+        self.assertFalse(report.exists())
+        self.assertEqual(self.registers.read_text(), payload)
+        self.assertEqual(self.first.read_bytes(), self.image)
+        self.assertEqual(self.second.read_bytes(), self.image)
+
     def test_same_file_or_hard_link_is_not_two_acquisitions(self):
         alias = self.root / "alias"
         alias.hardlink_to(self.first)

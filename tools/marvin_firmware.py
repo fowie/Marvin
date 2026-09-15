@@ -145,7 +145,7 @@ def main():
             with args.output.open("x", encoding="utf-8") as stream:
                 stream.write(text)
         print(text, end="")
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RecursionError) as error:
         print(f"Firmware screening failed: {error}", file=sys.stderr)
         return 1
     return 0 if result["status"] == "passed_preliminary_screen" else 2

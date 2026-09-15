@@ -923,11 +923,15 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 try:
                     stats = binary.read_stats(fd)
                     metadata["monitor_final_stats"] = stats
+                    if metadata["status"] == "completed":
+                        validate_monitor_final_stats(metadata)
                     dropped = stats["dropped"] + metadata.get("monitor_initial_stats", {}).get("dropped", 0)
                     if dropped:
-                        failure = UsbmonError("USB monitor dropped events; capture is incomplete.")
-                except (OSError, binary.BinaryError) as exc:
-                    failure = exc
+                        raise UsbmonError("USB monitor dropped events; capture is incomplete.")
+                except (OSError, UsbmonError, binary.BinaryError) as exc:
+                    metadata["monitor_final_stats_error"] = _safe_error(exc)
+                    if failure is None:
+                        failure = exc
             try:
                 _check_identity(usb_path, identity)
             except (OSError, UsbmonError) as exc:

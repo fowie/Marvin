@@ -1,4 +1,5 @@
 import hashlib
+from contextlib import contextmanager
 import io
 import json
 import os
@@ -632,6 +633,97 @@ class CaptureTests(LocalFilesTests):
 
     def metadata(self):
         return json.loads((self.output / "metadata.json").read_text())
+
+    @contextmanager
+    def binary_monitor(self, final_stats, *, initial_stats=None, event_reader=None):
+        initial = {"queued": 0, "dropped": 0} if initial_stats is None else initial_stats
+        with patch.object(usbmon.binary, "open_monitor", return_value=self.trace_fd) as opening, \
+                patch.object(usbmon.binary, "read_stats", side_effect=[initial, final_stats]) as stats, \
+                patch.object(usbmon.binary, "read_event", side_effect=(
+                    event_reader if event_reader is not None else AssertionError("unexpected binary read")
+                )), \
+                patch.object(usbmon.binary, "address", return_value=(1, 8)), \
+                patch.object(usbmon.binary, "to_text", return_value=OUT), \
+                patch.object(usbmon.binary, "evidence_frame", return_value=b"mock-frame"):
+            yield
+        opening.assert_called_once_with(1)
+        self.assertEqual(stats.call_count, 2)
+        self.open_trace.assert_not_called()
+        self.assertEqual(self.closed[-1], self.trace_fd)
+
+    def test_direct_binary_capture_requires_complete_final_stats_at_both_stop_boundaries(self):
+        for reason in ("duration", "coordinator_stop"):
+            for index, stats in enumerate((
+                {"queued": 1, "dropped": 0}, {"queued": 0, "dropped": 1},
+                {"queued": False, "dropped": 0}, None,
+            )):
+                with self.subTest(reason=reason, stats=stats):
+                    self.output = self.root / f"final-stats-{reason}-{index}"
+                    self.now = 0
+                    self.after_select = lambda: self.request_stop(reason)
+                    with self.binary_monitor(stats):
+                        with self.assertRaises(usbmon.CaptureError) as raised:
+                            self.capture(backend="binary", coordinator_stop=True)
+                    metadata = raised.exception.metadata
+                    self.assertEqual(metadata["status"], "failed")
+                    self.assertEqual(metadata["stop_reason"], "capture_error")
+                    self.assertEqual(metadata["monitor_final_stats"], stats)
+                    self.assertIn("final queued/dropped", metadata["monitor_final_stats_error"])
+                    self.assertEqual(self.metadata()["status"], "failed")
+                    self.assertEqual(json.loads((self.output / "summary.json").read_text())["status"], "failed")
+                    self.assertEqual((self.output / "binary-events.bin").read_bytes(), usbmon.binary.FILE_MAGIC)
+                    self.assertEqual((self.output / "usbmon.txt").read_bytes(), b"")
+
+    def test_direct_binary_zero_final_stats_complete_but_initial_drops_still_fail(self):
+        for reason in ("duration", "coordinator_stop"):
+            self.output = self.root / f"complete-{reason}"
+            self.now = 0
+            self.after_select = lambda: self.request_stop(reason)
+            with self.binary_monitor({"queued": 0, "dropped": 0}):
+                self.assertEqual(self.capture(backend="binary", coordinator_stop=True)["status"], "completed")
+        self.output = self.root / "initial-loss"
+        self.now = 0
+        with self.binary_monitor({"queued": 0, "dropped": 0}, initial_stats={"queued": 0, "dropped": 1}):
+            with self.assertRaisesRegex(usbmon.CaptureError, "dropped events"):
+                self.capture(backend="binary")
+
+    def test_final_statistics_error_does_not_replace_an_earlier_binary_read_failure(self):
+        self.chunks = [b"ready"]
+        original = usbmon.binary.BinaryError("original binary read error")
+        with self.binary_monitor(OSError(5, "stats failure"), event_reader=original):
+            with self.assertRaises(usbmon.CaptureError) as raised:
+                self.capture(backend="binary")
+        self.assertIs(raised.exception.__cause__, original)
+        self.assertEqual(self.metadata()["error"], str(original))
+        self.assertIn("errno 5", self.metadata()["monitor_final_stats_error"])
+
+    def test_binary_queued_tail_retains_existing_signal_and_limit_non_success_results(self):
+        for stop in ("signal", "limit"):
+            self.output = self.root / f"non-success-{stop}"
+            self.now = 0
+            self.chunks = [] if stop == "signal" else [b"ready"]
+            self.signal_after_select = signal.SIGINT if stop == "signal" else None
+
+            def read_event(fd):
+                self.chunks.pop()
+                return b"mock-header", b"\r"
+
+            with self.binary_monitor({"queued": 1, "dropped": 0}, event_reader=read_event):
+                result = self.capture(backend="binary", max_records=1)
+            self.assertEqual(result["status"], "interrupted" if stop == "signal" else "limit_reached")
+            self.assertEqual(result["monitor_final_stats"]["queued"], 1)
+
+    def test_direct_binary_cli_reports_an_unread_tail_as_failure(self):
+        with self.binary_monitor({"queued": 1, "dropped": 0}), \
+                patch.object(usbmon.sys, "stdout", new_callable=io.StringIO) as stdout, \
+                patch.object(usbmon.sys, "stderr", new_callable=io.StringIO) as stderr:
+            code = usbmon.main([
+                "--usb-path", USB_PATH, "--output", str(self.output),
+                "--seconds", "0.5", "--actuators-isolated", "--backend", "binary",
+            ])
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(json.loads(stderr.getvalue())["status"], "failed")
 
     def test_filters_keyboard_payload_and_matches_only_target(self):
         other_bus = b"ffff0002 123458 C Ii:2:008:1 0:8 8 = 00000400 00000000\n"
