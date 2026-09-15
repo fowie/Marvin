@@ -42,6 +42,23 @@ def _host_call(operation, *args, **kwargs):
         raise OSError(f"{name}: {error}") from error
 
 
+def _termios_evidence(settings):
+    return {"fields": settings[:6],
+            "control_chars": [{"bytes_hex": value.hex()} if type(value) is bytes else value
+                              for value in settings[6]]}
+
+
+def _validate_termios(requested, actual):
+    if any(type(getattr(termios, name, None)) is not int for name in ("CBAUD", "CIBAUD")):
+        raise OSError("Linux termios baud-encoding masks are unavailable.")
+    mask = termios.CBAUD | termios.CIBAUD
+    expected, returned = list(requested), list(actual)
+    expected[2] &= ~mask
+    returned[2] &= ~mask
+    if actual[4:6] != [termios.B57600, termios.B57600] or returned != expected:
+        raise OSError("Kernel did not retain approved non-baud flags/control characters and exact 57600 speeds.")
+
+
 class _Timespec(ctypes.Structure):
     _fields_ = [("seconds", ctypes.c_long), ("nanoseconds", ctypes.c_long)]
 
@@ -329,8 +346,9 @@ class LiveTransport:
         _host_call(termios.tcsetattr, self.fd, termios.TCSANOW, settings)
         fcntl.ioctl(self.fd, termios.TIOCMBIC, struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS))
         self.settings = _host_call(termios.tcgetattr, self.fd)
-        if self.settings != settings:
-            raise OSError("Kernel did not retain exact approved termios settings.")
+        self.event("termios_readback", requested=_termios_evidence(settings),
+                   returned=_termios_evidence(self.settings))
+        _validate_termios(settings, self.settings)
         self.event("open_completed", input_flush=False)
         quiet_end = time.monotonic() + 1
         while time.monotonic() < quiet_end:
@@ -345,7 +363,10 @@ class LiveTransport:
     def identity(self, *, deadline):
         self._check(deadline)
         if self.fd is not None and hasattr(self, "settings"):
-            if _host_call(termios.tcgetattr, self.fd) != self.settings:
+            actual = _host_call(termios.tcgetattr, self.fd)
+            if actual != self.settings:
+                self.event("termios_changed", expected=_termios_evidence(self.settings),
+                           returned=_termios_evidence(actual))
                 raise OSError("Serial settings changed during session.")
             lines = struct.unpack("I", fcntl.ioctl(self.fd, termios.TIOCMGET, bytes(4)))[0]
             if lines & (termios.TIOCM_DTR | termios.TIOCM_RTS):

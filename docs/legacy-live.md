@@ -62,6 +62,12 @@ other-user readers; exclusive operator coordination remains essential.
 `57600/8N1`, no flow control, raw mode and low DTR/RTS are requested and read back.
 Configuration uses `TCSANOW`, **not an input flush**. Exactly one `os.write`
 syscall submits each ten-byte request; short/error/uncertain results stop.
+The requested and returned termios arrays are recorded before validation.
+Only Linux `CBAUD|CIBAUD` encoding bits are normalized for the initial cflag
+comparison; both speed fields must independently equal `B57600`, and every
+remaining flag and control character must match exactly. Missing platform
+constants fail explicitly. Later identity checks require the exact accepted
+readback, not a progressively relaxed comparison.
 
 Kernel first-open echo and line transitions remain possible before configuration.
 A one-second post-configuration observation suppresses the first request on any
@@ -152,3 +158,31 @@ this behavior without a separately reviewed operator procedure. Software
 boundary tests are not real disconnect/reconnect acceptance. Epic #1 remains
 open until both repeatable real snapshots and the separately authorized
 disconnect/reconnect observations are reviewed.
+
+## First authorized adapter attempt
+
+On September 15, 2026 at 23:38:10-12 UTC, the operator released exclusive
+ownership with all four isolations and the same J10 connection confirmed.
+The single bounded attempt at `a82b604265c25f47ef5715ee7825e2dafedffecd`
+stopped at initial termios readback validation, **before any application request**.
+It recorded one open attempt and a same-owner close attempt/completion, without
+retry. The 38-record USB trace contains no bulk OUT, no nonzero IN payload,
+19 paired transfers, no unmatched/pending transfers and final queued/dropped
+counts of zero. The trace records CDC control-line requests `3` then `0`;
+low requested lines did not prevent the transient assertion.
+
+This is a **failed attempt with retained partial-session evidence**, not a
+successful collection. The recorder was interrupted with SIGINT after tty
+close and approximately 0.4 seconds of tail, rather than completing its normal
+window. All sealed artifact hashes matched. There are no new telemetry,
+PWM or velocity observations and no physical disconnect/reconnect acceptance.
+Private local evidence ID: `live-readraw-512-first`; no raw captures are published.
+
+That version failed to retain the requested/returned termios arrays, so the
+exact controller readback cannot be recovered from this attempt. A separate
+host-only PTY reproduced the whole-list comparison failure: requested cflag
+`0x8b0`, returned `0x100118b1`, identical remaining fields and exact 57600 speeds.
+Linux adds input/output baud encoding to cflag. The surgical normalization
+above fixes this reproduced host-side issue without relaxing other settings.
+Host PTY verification does not establish successful controller operation; any
+subsequent robot attempt needs fresh explicit authorization.

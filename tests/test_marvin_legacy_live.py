@@ -277,7 +277,7 @@ class LiveTests(unittest.TestCase):
                     patch.object(live.os, "close") as closing:
                 try:
                     if rejected:
-                        with self.assertRaisesRegex(OSError, "approved termios"):
+                        with self.assertRaisesRegex(OSError, "approved non-baud"):
                             transport.revalidate(deadline=200)
                     else:
                         self.assertEqual(transport.revalidate(deadline=200), transport.token)
@@ -294,6 +294,33 @@ class LiveTests(unittest.TestCase):
                     transport.close(deadline=200)
                     transport.close(deadline=200)
                     closing.assert_called_once_with(999)
+
+    def test_linux_baud_normalization_preserves_all_other_checks_and_raw_readback(self):
+        requested = [0, 0, 2224, 0, live.termios.B57600, live.termios.B57600, [b"\0"] * 32]
+        actual = deepcopy(requested)
+        # Actual Linux/Python 3.14 host-PTY readback, not a robot measurement.
+        actual[2] = 268507313
+        live._validate_termios(requested, actual)
+        self.assertEqual(live._termios_evidence(actual)["fields"][2], 268507313)
+        self.assertEqual(live._termios_evidence(actual)["control_chars"][0], {"bytes_hex": "00"})
+        for index, value in ((0, live.termios.IXON), (1, live.termios.OPOST),
+                             (2, actual[2] | live.termios.PARENB),
+                             (2, actual[2] | live.termios.CSTOPB),
+                             (2, actual[2] | live.termios.CRTSCTS),
+                             (2, actual[2] & ~live.termios.CREAD),
+                             (2, actual[2] & ~live.termios.CLOCAL),
+                             (3, live.termios.ECHO), (4, live.termios.B9600), (5, live.termios.B9600)):
+            changed = deepcopy(actual)
+            changed[index] = value
+            with self.subTest(index=index, value=value), self.assertRaises(OSError):
+                live._validate_termios(requested, changed)
+        changed = deepcopy(actual)
+        changed[6][live.termios.VMIN] = 1
+        with self.assertRaises(OSError):
+            live._validate_termios(requested, changed)
+        with patch.object(live.termios, "CIBAUD", None):
+            with self.assertRaisesRegex(OSError, "unavailable"):
+                live._validate_termios(requested, actual)
 
 
 if __name__ == "__main__":
