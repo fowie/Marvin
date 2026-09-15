@@ -22,6 +22,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_probe, marvin_session, marvin_usbmon
+from tools.marvin_paths import new_output_path
 
 
 IDENTITY_TRANSITION_SECONDS = 2
@@ -106,8 +107,8 @@ def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=Fals
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     if allow_line_state_change is not True:
         raise ValueError("--allow-line-state-change must acknowledge DTR/RTS transitions and possible firmware effects.")
+    output = new_output_path(output, allow_missing_parents=True)
     baseline = marvin_session.preflight(port)
-    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     metadata = {
         "status": "incomplete",

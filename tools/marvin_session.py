@@ -28,6 +28,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_probe, marvin_protocol, marvin_tx_policy, marvin_usbmon
+from tools.marvin_paths import new_output_path
 
 
 USB_POST_CLOSE_DRAIN_SECONDS = 0.25
@@ -320,10 +321,10 @@ def run_session(
     elif probe_schedule is not None:
         probe_name = "Campaign"
     marvin_probe.validate_probe_delay(probe, seconds, probe_delay)
+    output = new_output_path(output, allow_missing_parents=True)
     baseline = preflight(port)
     if expected_usb_identity is not None and baseline["usb"] != expected_usb_identity:
         raise OSError("USB identity changed before the requested capture segment.")
-    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     usb_output = output / "usb"
     metadata = {

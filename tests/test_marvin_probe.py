@@ -271,7 +271,18 @@ class ListenTests(unittest.TestCase):
         self.output.mkdir()
         with self.assertRaises(FileExistsError):
             self.capture()
+        self.udev.assert_not_called()
+        self.ownership.assert_not_called()
         self.factory.assert_not_called()
+
+    def test_new_nested_output_parents_remain_supported(self):
+        self.output = self.output / "missing" / "nested" / "serial"
+        result = self.capture()
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual((self.output / "received.bin").read_bytes(), b"abc")
+        self.assertEqual(self.output.stat().st_mode & 0o777, 0o700)
+        self.factory.assert_called_once()
+        self.transport.write.assert_not_called()
 
     def test_disconnect_preserves_partial_data_and_error(self):
         self.transport.read.side_effect = [

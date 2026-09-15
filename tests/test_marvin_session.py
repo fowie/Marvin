@@ -123,9 +123,19 @@ class SessionTests(unittest.TestCase):
                 self.assertEqual(raised.exception.filename, str(self.output))
                 self.assertEqual(self.output.readlink(), destination)
                 self.assertFalse(target.exists())
+        self.preflight.assert_not_called()
         self.identity.assert_not_called()
         self.popen.assert_not_called()
         self.serial.assert_not_called()
+
+    def test_new_nested_output_parents_remain_supported(self):
+        self.output = self.output / "missing" / "nested" / "session"
+        result = self.run_capture()
+        self.assertEqual(result["status"], "completed")
+        self.assertTrue((self.output / "SHA256SUMS").is_file())
+        self.preflight.assert_called_once()
+        self.popen.assert_called_once()
+        self.serial.assert_called_once()
 
     def test_ready_before_one_serial_open_and_trace_lasts_through_close(self):
         result = self.run_capture(dtr=True, rts=True, allow_line_state_change=True)
@@ -908,6 +918,7 @@ class SessionTests(unittest.TestCase):
         self.output.mkdir()
         with self.assertRaises(FileExistsError):
             self.run_capture()
+        self.preflight.assert_not_called()
         self.popen.assert_not_called()
 
     def test_recorder_identity_mismatch_prevents_open(self):

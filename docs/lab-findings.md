@@ -256,6 +256,18 @@ user. Noninteractive sudo failure stops the session before tty open; it does
 not hang waiting for a password. Do not run the coordinator or a GUI as root,
 make all USB monitors readable, or disable ModemManager globally.
 
+Before runtime identity/ownership preflight or output creation, the coordinator,
+boot wrapper, campaign, trials, and direct serial capture validate the new output
+destination. Existing destinations (including dangling links), symlink or
+non-directory ancestors, and `/dev`, `/proc`, or `/sys` paths are rejected.
+Every supplied component is checked, including ancestors hidden by `..`;
+links are not resolved. Modern captures still allow missing nested parents,
+created only after preflight. The legacy probe shares these checks but continues
+to require existing parent directories, before loading its transport runtime.
+These are snapshot checks, not protection against concurrent ancestor replacement.
+Final directory creation remains exclusive: a destination created after the
+precheck is not overwritten or resumed.
+
 Each new private output directory contains:
 
 | Path | Content |
@@ -273,10 +285,13 @@ If failed metadata cannot be persisted either, the exception carries that
 additional failure; files alone may then retain a stale status and must not be
 treated as sealed evidence. Hashes attest retained host bytes, not physical safety.
 
-Binary-backed sessions require explicit integer-zero final `queued` and `dropped`
-monitor statistics before reporting completion. Missing, malformed or nonzero
-counts fail the session, including boot and legacy wrapper captures. Text captures
-do not invent binary statistics; their existing completeness checks still apply.
+Direct binary recordings and binary-backed sessions require explicit integer-zero
+final `queued` and `dropped` monitor statistics before reporting completion.
+Missing, malformed or nonzero counts turn otherwise completed captures into
+failures, including boot and legacy wrapper captures. Direct recordings already
+stopped by a signal or limit retain their existing non-success status; queued
+tails are not drained with extra reads or extended budgets. Text captures do not
+invent binary statistics; their existing completeness checks still apply.
 
 **Privacy and interpretation:** unrelated devices' events can enter the
 usbmon reader's memory, but are filtered out before storage. Use an isolated
@@ -694,7 +709,8 @@ Use the existing project virtual environment, with `pyserial==3.5` installed.
   --output /path/to/a/new/capture-directory
 ```
 
-The output directory must not already exist. It contains raw `received.bin`,
+The output directory must not already exist and must pass the output-path checks
+above before device identity or `fuser` ownership checks. It contains raw `received.bin`,
 timestamped read chunks in `chunks.jsonl`, and session details in `metadata.json`.
 `events.jsonl` records attempted/completed open, control-line, write and close
 operations with wall-clock and monotonic timestamps. Captures check for existing

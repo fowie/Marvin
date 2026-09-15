@@ -24,6 +24,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_probe, marvin_session, marvin_tx_policy, marvin_usbmon
+from tools.marvin_paths import new_output_path
 
 
 DESCRIPTOR_HASH = "7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b"
@@ -237,10 +238,10 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
     bounded_number(max_seconds, 1, 14400, "Campaign wall-clock limit")
     coverage = validate_plan(plan)
     encoded = json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    output = new_output_path(output, allow_missing_parents=True)
     baseline = marvin_session.preflight(port)
     if baseline["usb"]["descriptors_sha256"] != DESCRIPTOR_HASH:
         raise ValueError("Marvin's descriptor fingerprint changed; review it before transmitting.")
-    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     marvin_session.write_json(output / "plan.json", plan)
     metadata = {

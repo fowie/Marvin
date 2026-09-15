@@ -290,6 +290,8 @@ class LegacyProbeRunTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.run_probe()
         self.assertFalse(self.output.parent.exists())
+        self.runtime.assert_not_called()
+        self.session.preflight.assert_not_called()
         self.output = self.root / "race"
         def race(_port):
             self.output.mkdir()

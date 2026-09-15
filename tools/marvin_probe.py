@@ -28,6 +28,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_protocol, marvin_tx_policy
+from tools.marvin_paths import new_output_path
 
 
 DEFAULT_PORT = (
@@ -218,9 +219,9 @@ def capture(
             raise ValueError("The selected query requires telemetry-state authorization.")
     validate_probe_delay(probe, seconds, probe_delay)
 
+    output = new_output_path(output, allow_missing_parents=True)
     properties = check_device(port)
     check_port_available(port)
-    output = Path(output)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     metadata = {
         "started_at": utc_now(),

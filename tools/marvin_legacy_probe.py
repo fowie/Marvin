@@ -28,7 +28,6 @@ import json
 import os
 from pathlib import Path
 import re
-import stat
 import subprocess
 import sys
 
@@ -36,6 +35,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_legacy_protocol as protocol
+from tools.marvin_paths import new_output_path
 
 
 _ENCODERS = {
@@ -99,19 +99,7 @@ def _load_runtime():
 def _new_output_path(output):
     if output is None:
         raise ValueError("--output NEWDIR is required for --run.")
-    path = Path(os.path.abspath(output))
-    if len(path.parts) > 1 and path.parts[1] in ("dev", "proc", "sys"):
-        raise ValueError("Output must not be a device or kernel-interface path.")
-    try:
-        path.lstat()
-    except FileNotFoundError:
-        pass
-    else:
-        raise FileExistsError("Output already exists; previous captures are never overwritten or resumed.")
-    for parent in reversed(path.parents):
-        if not stat.S_ISDIR(parent.lstat().st_mode):
-            raise ValueError("Output parents must be existing directories, not symlinks or special files.")
-    return path
+    return new_output_path(output)
 
 
 def _validate_baseline(baseline, expected_port, descriptor_hash):

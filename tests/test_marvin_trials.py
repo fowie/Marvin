@@ -135,9 +135,18 @@ class TrialTests(unittest.TestCase):
                 self.assertEqual(raised.exception.filename, str(self.output))
                 self.assertEqual(self.output.readlink(), destination)
                 self.assertFalse(target.exists())
+        self.preflight.assert_not_called()
         self.identity.assert_not_called()
         self.run_session.assert_not_called()
         self.assertEqual(self.calls, [])
+
+    def test_new_nested_output_parents_remain_supported(self):
+        self.output = self.output / "missing" / "nested" / "trials"
+        result = self.run_trials()
+        self.assertEqual(result["status"], "completed_silent")
+        self.assertTrue((self.output / "SHA256SUMS").is_file())
+        self.preflight.assert_called_once()
+        self.assertEqual(len(self.calls), 4)
 
     def test_four_fixed_cases_are_bounded_and_pin_identity(self):
         result = self.run_trials()

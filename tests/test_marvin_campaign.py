@@ -328,8 +328,17 @@ class CampaignTests(unittest.TestCase):
                 self.assertEqual(raised.exception.filename, str(self.output))
                 self.assertEqual(self.output.readlink(), destination)
                 self.assertFalse(target.exists())
+        self.preflight.assert_not_called()
         self.identity.assert_not_called()
         self.session.assert_not_called()
+
+    def test_new_nested_output_parents_remain_supported(self):
+        self.output = self.output / "missing" / "nested" / "campaign"
+        result = self.run_campaign()
+        self.assertEqual(result["status"], "completed_silent")
+        self.assertTrue((self.output / "SHA256SUMS").is_file())
+        self.preflight.assert_called_once()
+        self.assertEqual(self.session.call_count, 2)
 
     def test_silent_campaign_records_all_segments_and_hashes(self):
         result = self.run_campaign()
@@ -511,6 +520,7 @@ class CampaignTests(unittest.TestCase):
         self.output.mkdir()
         with self.assertRaises(FileExistsError):
             self.run_campaign()
+        self.preflight.assert_not_called()
         self.session.assert_not_called()
 
 

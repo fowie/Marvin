@@ -17,6 +17,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_probe, marvin_protocol, marvin_session, marvin_usbmon
+from tools.marvin_paths import new_output_path
 
 
 CASES = (
@@ -115,8 +116,8 @@ def run_trials(
         raise ValueError("Trials require actuator isolation, command authorization, and line-state authorization.")
     if power_state not in POWER_STATES:
         raise ValueError("Power state must be explicit and supported.")
+    output = new_output_path(output, allow_missing_parents=True)
     baseline = marvin_session.preflight(port)
-    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     metadata = {
         "status": "incomplete", "started_at": marvin_probe.utc_now(),

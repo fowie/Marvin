@@ -212,6 +212,7 @@ class BootTests(unittest.TestCase):
         self.output.mkdir()
         with self.assertRaises(FileExistsError):
             self.run_boot()
+        self.preflight.assert_not_called()
         self.segment.assert_not_called()
 
     def test_dangling_output_symlink_cannot_redirect_evidence(self):
@@ -227,9 +228,19 @@ class BootTests(unittest.TestCase):
                 self.assertEqual(raised.exception.filename, str(self.output))
                 self.assertEqual(self.output.readlink(), destination)
                 self.assertFalse(target.exists())
+        self.preflight.assert_not_called()
         self.segment.assert_not_called()
         self.changed.assert_not_called()
         self.returned.assert_not_called()
+
+    def test_new_nested_output_parents_remain_supported(self):
+        self.output = self.output / "missing" / "nested" / "boot"
+        self.disconnect = False
+        result = self.run_boot()
+        self.assertEqual(result["status"], "completed_without_reenumeration")
+        self.assertTrue((self.output / "SHA256SUMS").is_file())
+        self.preflight.assert_called_once()
+        self.segment.assert_called_once()
 
     def test_accepts_same_physical_device_with_new_address(self):
         boot.validate_return(BASELINE, RETURNED)
