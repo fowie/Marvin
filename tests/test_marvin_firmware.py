@@ -1,4 +1,4 @@
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -191,6 +191,42 @@ class FirmwareTests(unittest.TestCase):
             self.registers.write_text(json.dumps(values))
             with self.subTest(value=value), self.assertRaises(ValueError):
                 marvin_firmware.inspect_read_protection(self.registers)
+
+    def test_duplicate_snapshot_registers_reject_api_and_cli_without_mutation(self):
+        values = {f"FMPRE{i}": "0xffffffff" for i in range(4)}
+        report = self.root / "report.json"
+        for key in values:
+            for earlier in (0, values[key]):
+                payload = "{" + json.dumps(key) + ":" + json.dumps(earlier) + "," + json.dumps(values)[1:]
+                self.registers.write_text(payload)
+                before = {path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+                          for path in self.root.iterdir()}
+                with self.subTest(key=key, earlier=earlier):
+                    with self.assertRaisesRegex(ValueError, f"Duplicate JSON key: {key}"):
+                        marvin_firmware.inspect_read_protection(self.registers)
+                    output, errors = io.StringIO(), io.StringIO()
+                    argv = ["marvin_firmware", str(self.first), str(self.second),
+                            "--registers", str(self.registers), "--output", str(report)]
+                    with patch.object(sys, "argv", argv), redirect_stdout(output), redirect_stderr(errors):
+                        status = marvin_firmware.main()
+                    self.assertEqual(status, 1)
+                    self.assertEqual(output.getvalue(), "")
+                    self.assertIn(f"Firmware screening failed: Duplicate JSON key: {key}", errors.getvalue())
+                    self.assertFalse(report.exists())
+                    self.assertEqual(before, {path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+                                              for path in self.root.iterdir()})
+
+    def test_duplicate_unknown_nested_and_escaped_keys_are_rejected(self):
+        valid = json.dumps({f"FMPRE{i}": "0xffffffff" for i in range(4)})
+        for payload, key in (
+            (valid[:-1] + ',"note":1,"note":1}', "note"),
+            (valid[:-1] + ',"metadata":{"source":"first","source":"second"}}', "source"),
+            (r'{"FMPRE\u0030":0,' + valid[1:], "FMPRE0"),
+        ):
+            self.registers.write_text(payload)
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, f"Duplicate JSON key: {key}"):
+                marvin_firmware.inspect_read_protection(self.registers)
+            self.assertEqual(self.registers.read_text(), payload)
 
 
 if __name__ == "__main__":

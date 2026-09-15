@@ -5,7 +5,7 @@ permission to flash. Original images are opened read-only and never modified.
 Inputs must be finished local regular files, not symlinks, special files or
 /dev, /proc, /sys interfaces. Images are limited to the 256-KiB flash region;
 register-snapshot JSON retains its 64-KiB limit. Oversized inputs are rejected,
-never truncated.
+never truncated. Duplicate JSON keys are rejected, even with identical values.
 """
 
 import argparse
@@ -18,6 +18,7 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from tools.marvin_json import unique_object
 from tools.marvin_stream import read_regular_file
 
 
@@ -66,7 +67,7 @@ def inspect_read_protection(path):
         }
     path = Path(path)
     payload = read_regular_file(path, max_bytes=MAX_REGISTER_SNAPSHOT_BYTES)
-    registers = json.loads(payload)
+    registers = json.loads(payload, object_pairs_hook=unique_object)
     if not isinstance(registers, dict):
         raise ValueError("Register snapshot must be an object containing FMPRE0 through FMPRE3.")
     values = []

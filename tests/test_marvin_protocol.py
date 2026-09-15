@@ -1,8 +1,11 @@
 import io
 import json
+from pathlib import Path
 import struct
+import subprocess
+import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from tools import marvin_protocol as protocol
@@ -80,8 +83,87 @@ class ProtocolTests(unittest.TestCase):
     def test_cli_generates_sensor_info_without_transport(self):
         output = io.StringIO()
         with patch("sys.argv", ["marvin_protocol", "generate", "--command", "29", "--sequence", "2"]), redirect_stdout(output):
-            protocol.main()
+            self.assertEqual(protocol.main(), 0)
         self.assertEqual(bytes.fromhex(output.getvalue()), protocol.get_sensor_info_request())
+
+    def test_cli_dispatch_input_errors_are_json(self):
+        bad_crc = bytearray(protocol.get_config_request())
+        bad_crc[-4] ^= 1
+        cases = [
+            (["inspect", "zz"], "non-hexadecimal"),
+            (["inspect", "a"], "hexadecimal"),
+            (["inspect", ""], "header"),
+            (["inspect", bad_crc.hex()], "CRC"),
+            (["inspect", protocol.get_config_request().hex(), "--response"], "four payload bytes"),
+        ]
+        for command in (4, 27, 29):
+            for sequence in (-1, 65536):
+                cases.append((["generate", "--command", str(command), "--sequence", str(sequence)], "uint16"))
+        for args, message in cases:
+            with self.subTest(args=args):
+                output, errors = io.StringIO(), io.StringIO()
+                with patch("sys.argv", ["marvin_protocol", *args]), redirect_stdout(output), redirect_stderr(errors):
+                    status = protocol.main()
+                self.assertEqual(status, 2)
+                result = json.loads(output.getvalue())
+                self.assertEqual(result["status"], "input_error")
+                self.assertTrue(result["offline_only"])
+                self.assertIn(message, result["error"])
+                self.assertEqual(errors.getvalue(), "")
+
+    def test_cli_dispatch_catches_type_error_but_not_unrelated_failures(self):
+        args = ["marvin_protocol", "inspect", protocol.get_config_request().hex()]
+        output = io.StringIO()
+        with patch("sys.argv", args), redirect_stdout(output), \
+                patch.object(protocol, "decode_packet", side_effect=TypeError("invalid byte input")):
+            self.assertEqual(protocol.main(), 2)
+        self.assertEqual(json.loads(output.getvalue()),
+                         {"status": "input_error", "offline_only": True, "error": "invalid byte input"})
+        with patch("sys.argv", args), patch.object(protocol, "decode_packet", side_effect=RuntimeError("unexpected")):
+            with self.assertRaisesRegex(RuntimeError, "unexpected"):
+                protocol.main()
+
+    def test_invalid_sequence_types_keep_argparse_and_api_validation(self):
+        for value in ("false", "1.5", "not-an-integer"):
+            output, errors = io.StringIO(), io.StringIO()
+            with self.subTest(value=value), \
+                    patch("sys.argv", ["marvin_protocol", "generate", "--sequence", value]), \
+                    redirect_stdout(output), redirect_stderr(errors):
+                with self.assertRaises(SystemExit) as raised:
+                    protocol.main()
+                self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(output.getvalue(), "")
+            self.assertIn("invalid int value", errors.getvalue())
+            self.assertNotIn("Traceback", errors.getvalue())
+        for encoder in (protocol.get_config_request, protocol.get_unit_info_request, protocol.get_sensor_info_request):
+            for value in (True, False, 1.5, "1", None, -1, 65536):
+                with self.subTest(encoder=encoder.__name__, value=value), self.assertRaisesRegex(ValueError, "uint16"):
+                    encoder(value)
+
+    def test_cli_valid_generation_keeps_default_sequence_and_hex_format(self):
+        for command, encoder in ((4, protocol.get_config_request), (27, protocol.get_unit_info_request),
+                                 (29, protocol.get_sensor_info_request)):
+            for sequence in (None, 0, 65535):
+                args = ["marvin_protocol", "generate", "--command", str(command)]
+                if sequence is not None:
+                    args += ["--sequence", str(sequence)]
+                output = io.StringIO()
+                with self.subTest(command=command, sequence=sequence), patch("sys.argv", args), redirect_stdout(output):
+                    self.assertEqual(protocol.main(), 0)
+                self.assertEqual(output.getvalue(), encoder(0 if sequence is None else sequence).hex(" ") + "\n")
+
+    def test_module_and_direct_script_propagate_cli_exit_codes(self):
+        for entry in (["-m", "tools.marvin_protocol"], [str(Path(protocol.__file__))]):
+            with self.subTest(entry=entry):
+                invalid = subprocess.run([sys.executable, "-B", *entry, "inspect", "zz"],
+                                         capture_output=True, text=True, check=False)
+                self.assertEqual(invalid.returncode, 2)
+                self.assertEqual(json.loads(invalid.stdout)["status"], "input_error")
+                self.assertEqual(invalid.stderr, "")
+                valid = subprocess.run([sys.executable, "-B", *entry, "generate"],
+                                       capture_output=True, text=True, check=True)
+                self.assertEqual(valid.stdout, protocol.get_config_request().hex(" ") + "\n")
+                self.assertEqual(valid.stderr, "")
 
     def test_complete_config_and_shared_unit_info_prefix(self):
         payload = struct.pack("<III", 45949, 0x10300, 0x01020304) + bytes(range(96))
@@ -125,7 +207,7 @@ class ProtocolTests(unittest.TestCase):
             output = io.StringIO()
             argv = ["marvin_protocol", "inspect", "--response", response(payload).hex()]
             with patch("sys.argv", argv), redirect_stdout(output):
-                protocol.main()
+                self.assertEqual(protocol.main(), 0)
             result = json.loads(output.getvalue())
             self.assertEqual(result["payload_hex"], payload.hex())
             self.assertEqual(result["payload_bytes"], size)

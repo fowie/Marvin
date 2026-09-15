@@ -34,6 +34,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools import marvin_legacy_protocol as protocol
+from tools.marvin_json import unique_object
 from tools.marvin_legacy_telemetry import interpret_packet
 from tools.marvin_legacy_stream import DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_PAYLOAD_BYTES, LegacyStreamDecoder
 from tools.marvin_stream import read_regular_file
@@ -62,15 +63,6 @@ def read_capture_file(path, *, max_bytes):
     return read_regular_file(path, max_bytes=max_bytes)
 
 
-def _json_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"Duplicate JSON key: {key}")
-        result[key] = value
-    return result
-
-
 def _json_constant(value):
     raise ValueError(f"Nonstandard JSON numeric constant: {value}")
 
@@ -87,7 +79,7 @@ def validate_chunks(raw, chunk_data, *, max_chunks=DEFAULT_MAX_CHUNKS):
         if len(records) >= max_chunks:
             raise ValueError("Chunk record limit exceeded; no truncated replay produced.")
         try:
-            row = json.loads(line, object_pairs_hook=_json_object, parse_constant=_json_constant)
+            row = json.loads(line, object_pairs_hook=unique_object, parse_constant=_json_constant)
         except ValueError as error:
             raise ValueError(f"Chunk line {number}: invalid JSON: {error}") from error
         if not isinstance(row, dict):

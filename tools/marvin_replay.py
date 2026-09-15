@@ -34,6 +34,7 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from tools.marvin_json import unique_object
 from tools.marvin_stream import DEFAULT_MAX_PAYLOAD_BYTES, StreamDecoder, read_regular_file
 from tools.marvin_telemetry import DEFAULT_CATALOG, DIRECTIONS, TelemetryDecoder
 
@@ -55,15 +56,6 @@ def _reject_constant(value):
     raise ValueError(f"Nonstandard JSON numeric constant: {value}")
 
 
-def _json_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"Duplicate JSON key: {key}")
-        result[key] = value
-    return result
-
-
 def _validate_chunks(raw, chunk_data, *, max_chunks):
     records = []
     expected_offset = 0
@@ -74,7 +66,7 @@ def _validate_chunks(raw, chunk_data, *, max_chunks):
         if len(records) >= max_chunks:
             raise ValueError(f"Chunk record limit {max_chunks} exceeded; no truncated replay produced.")
         try:
-            row = json.loads(line, object_pairs_hook=_json_object, parse_constant=_reject_constant)
+            row = json.loads(line, object_pairs_hook=unique_object, parse_constant=_reject_constant)
         except ValueError as error:
             raise ValueError(f"Chunk line {line_number}: invalid JSON: {error}") from error
         if not isinstance(row, dict):

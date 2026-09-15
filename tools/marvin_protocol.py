@@ -3,6 +3,8 @@
 No transport access or startup sequence is provided. Only documented config,
 unit-info, and sensor-info queries can be generated. The latter two can enable
 telemetry together; sensor-info is not a live sensor measurement.
+CLI action validation errors produce JSON input_error output and exit 2;
+argument syntax/type errors retain argparse's standard diagnostics.
 """
 
 import argparse
@@ -100,28 +102,33 @@ def main():
     inspect.add_argument("--response", action="store_true",
                          help="Interpret bytes known to have been received from the controller")
     args = parser.parse_args()
-    if args.action == "generate":
-        print(_identification_request(args.command, args.sequence).hex(" "))
-        return
-    packet = decode_packet(bytes.fromhex(args.hex_packet))
-    result = {
-        "sequence": packet.sequence,
-        "command": packet.command,
-        "response_field": packet.response_field,
-        "payload_bytes": len(packet.payload),
-        "payload_hex": packet.payload.hex(),
-        "direction": "response" if args.response else "unspecified",
-    }
-    if args.response:
-        result["response_code"] = packet.response_code()
-        known_layout = (packet.command, len(packet.payload)) in ((GET_CONFIG, 108), (27, 12))
-        if packet.response_field == 0x80 and known_layout:
-            result["unit_info"] = packet.unit_info()
-            result["metadata_tail_hex"] = packet.payload[12:].hex()
-        elif packet.command in (GET_CONFIG, 27) and packet.response_field == 0x80:
-            result["warning"] = "Unknown metadata layout; raw payload retained without field decoding."
+    try:
+        if args.action == "generate":
+            print(_identification_request(args.command, args.sequence).hex(" "))
+            return 0
+        packet = decode_packet(bytes.fromhex(args.hex_packet))
+        result = {
+            "sequence": packet.sequence,
+            "command": packet.command,
+            "response_field": packet.response_field,
+            "payload_bytes": len(packet.payload),
+            "payload_hex": packet.payload.hex(),
+            "direction": "response" if args.response else "unspecified",
+        }
+        if args.response:
+            result["response_code"] = packet.response_code()
+            known_layout = (packet.command, len(packet.payload)) in ((GET_CONFIG, 108), (27, 12))
+            if packet.response_field == 0x80 and known_layout:
+                result["unit_info"] = packet.unit_info()
+                result["metadata_tail_hex"] = packet.payload[12:].hex()
+            elif packet.command in (GET_CONFIG, 27) and packet.response_field == 0x80:
+                result["warning"] = "Unknown metadata layout; raw payload retained without field decoding."
+    except (ValueError, TypeError) as error:
+        print(json.dumps({"status": "input_error", "offline_only": True, "error": str(error)}))
+        return 2
     print(json.dumps(result, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
