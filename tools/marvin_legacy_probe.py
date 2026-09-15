@@ -12,7 +12,7 @@ physical power AND signal isolation, an expected physical USB port and privilege
 usbmon recording. Only the recorder uses sudo, via the existing run_session.
 
 Settings and timing are fixed: 57600/8N1, DTR/RTS false, no flow control, one 10-byte
-write at5s, serial observation20s, USB tail5s, maximum close grace30s. There is
+write at 5 s, serial observation 20 s, USB tail 5 s, maximum close grace 30 s. There is
 no retry, reconnect, reset, arbitrary command/payload, setter or settings sweep.
 Any early RX suppresses the scheduled query in the existing serial coordinator.
 
