@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "SYNTHETIC",
+  "scope": {
+    "identity": "SYNTHETIC-installed-generation-1",
+    "profile": "marvin-legacy-se",
+    "calibration": "SYNTHETIC-calibration-1",
+    "velocity_unit": "m/s",
+    "acceleration_unit": "m/s^2"
+  },
+  "policy": {
+    "reference": "SYNTHETIC-limits-not-for-a-robot",
+    "max_velocity": 1,
+    "max_acceleration": 2,
+    "max_duration": 3,
+    "deadman_timeout": 2,
+    "reply_timeout": 0.5,
+    "max_command_age": 0.25,
+    "max_commands": 16,
+    "max_events": 32
+  },
+  "reviews": [
+    {
+      "kind": "calibration",
+      "reference": "SYNTHETIC-calibration-measurement",
+      "reviewer": "SYNTHETIC-reviewer",
+      "scope": "expected",
+      "policy_reference": "SYNTHETIC-limits-not-for-a-robot",
+      "measured": true,
+      "reviewed": true,
+      "valid_from": 0,
+      "expires_at": 20,
+      "source": "SYNTHETIC"
+    },
+    {
+      "kind": "physical_stop",
+      "reference": "SYNTHETIC-independent-stop-measurement",
+      "reviewer": "SYNTHETIC-reviewer",
+      "scope": "expected",
+      "policy_reference": "SYNTHETIC-limits-not-for-a-robot",
+      "measured": true,
+      "reviewed": true,
+      "valid_from": 0,
+      "expires_at": 20,
+      "source": "SYNTHETIC"
+    },
+    {
+      "kind": "limits",
+      "reference": "SYNTHETIC-reviewed-limit-measurement",
+      "reviewer": "SYNTHETIC-reviewer",
+      "scope": "expected",
+      "policy_reference": "SYNTHETIC-limits-not-for-a-robot",
+      "measured": true,
+      "reviewed": true,
+      "valid_from": 0,
+      "expires_at": 20,
+      "source": "SYNTHETIC"
+    }
+  ],
+  "events": [
+    {"at": 0, "kind": "connect", "scope": "expected"},
+    {
+      "at": 0, "kind": "authorize", "owner": "SYNTHETIC-owner",
+      "reference": "SYNTHETIC-session-approval",
+      "reviews": ["calibration", "physical_stop", "limits"], "save_token": "first"
+    },
+    {"at": 0, "kind": "arm", "scope": "expected", "token": "first"},
+    {
+      "at": 0.5, "kind": "intent", "scope": "expected", "token": "first",
+      "intent": {
+        "sequence": 0, "issued_at": 0.5, "left_velocity": 0.25,
+        "right_velocity": -0.25, "acceleration": 1, "duration": 1
+      }
+    },
+    {
+      "at": 0.6, "kind": "request_write", "scope": "expected", "token": "first",
+      "write": {"sequence": 0, "raw_hex": "53594e544845544943", "accepted_bytes": 9, "uncertain_bytes": 0}
+    },
+    {
+      "at": 0.7, "kind": "application_reply", "scope": "expected", "token": "first",
+      "reply": {
+        "sequence": 0, "raw_hex": "53594e544845544943",
+        "labels": ["matched_candidate"], "request_status": "matched"
+      }
+    },
+    {"at": 0.8, "kind": "stop"},
+    {
+      "at": 0.9, "kind": "external_stop",
+      "observation": {
+        "reference": "SYNTHETIC-external-observer", "reviewer": "SYNTHETIC-reviewer",
+        "elapsed": 0.1, "reviewed_limit": 0.2, "outcome": "pass"
+      }
+    }
+  ]
+}
