@@ -1,8 +1,9 @@
 """Offline, successor-only decoding of the curated packed telemetry catalogue.
 
 Importing this module performs no file I/O. Construct TelemetryDecoder explicitly
-to read the bounded local JSON schema. No recovered code or hardware libraries
-are imported, and no calibration, motion, unit conversion or transport exists.
+to read the bounded local JSON schema; duplicate keys are rejected at every
+object depth. No recovered code or hardware libraries are imported, and no
+calibration, motion, unit conversion or transport exists.
 """
 
 import hashlib
@@ -13,6 +14,7 @@ import re
 import struct
 
 from tools import marvin_protocol as protocol
+from tools.marvin_json import unique_object
 from tools.marvin_stream import read_regular_file
 
 
@@ -34,7 +36,7 @@ class TelemetryDecoder:
     def __init__(self, catalog_path=DEFAULT_CATALOG):
         self.catalog_path = Path(catalog_path)
         raw = read_regular_file(self.catalog_path, max_bytes=MAX_CATALOG_BYTES)
-        catalog = json.loads(raw, parse_constant=_reject_constant)
+        catalog = json.loads(raw, parse_constant=_reject_constant, object_pairs_hook=unique_object)
         if (not isinstance(catalog, dict) or catalog.get("byte_order") != "little-endian"
                 or type(catalog.get("packing")) is not int or catalog["packing"] != 1):
             raise ValueError("Catalogue must specify little-endian packed layouts.")

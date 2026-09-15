@@ -146,6 +146,40 @@ class TelemetryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 telemetry.TelemetryDecoder(path)
 
+    def test_duplicate_catalogue_keys_reject_identical_and_conflicting_values(self):
+        original = json.dumps(self.catalog)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalogue.json"
+            for key, value in (("packing", 1), ("size", 12), ("offset", 0)):
+                token = f"{json.dumps(key)}: {json.dumps(value)}"
+                self.assertIn(token, original)
+                for earlier in (value, None):
+                    duplicate = f"{json.dumps(key)}: {json.dumps(earlier)}, {token}"
+                    payload = original.replace(token, duplicate, 1).encode()
+                    with self.subTest(key=key, earlier=earlier):
+                        path.write_bytes(payload)
+                        with self.assertRaisesRegex(ValueError, f"Duplicate JSON key: {key}"):
+                            telemetry.TelemetryDecoder(path)
+                        self.assertEqual(path.read_bytes(), payload)
+
+    def test_escaped_and_unused_nested_catalogue_duplicates_are_rejected(self):
+        original = json.dumps(self.catalog)
+        token = '"offset": 0'
+        self.assertIn(token, original)
+        cases = (
+            original.replace(token, '"offset": 0, "off\\u0073et": 0', 1),
+            original[:-1] + ', "extra": {"note": 1, "note": 2}}',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalogue.json"
+            for raw in cases:
+                with self.subTest(raw_suffix=raw[-80:]):
+                    payload = raw.encode()
+                    path.write_bytes(payload)
+                    with self.assertRaisesRegex(ValueError, "Duplicate JSON key"):
+                        telemetry.TelemetryDecoder(path)
+                    self.assertEqual(path.read_bytes(), payload)
+
 
 if __name__ == "__main__":
     unittest.main()
