@@ -14,12 +14,13 @@ from tools import marvin_session
 
 
 def header(*, event="S", transfer=3, endpoint=3, device=10, length=1,
-           captured=1, data_flag=0, status=-115, setup_flag=ord("-"), setup=b"\0" * 8):
+           captured=1, data_flag=0, status=-115, setup_flag=ord("-"), setup=b"\0" * 8,
+           bus=1):
     # Populate ABI offsets independently of the production HEADER format.
     value = bytearray(64)
     struct.pack_into("<Q", value, 0, 0x1234)
     struct.pack_into("<BBBBHBB", value, 8, ord(event), transfer, endpoint, device,
-                     1, setup_flag, data_flag)
+                     bus, setup_flag, data_flag)
     struct.pack_into("<qiiII", value, 16, 1788800000, 123456, status, length, captured)
     value[40:48] = setup
     struct.pack_into("<i", value, 48, 10)
@@ -27,6 +28,26 @@ def header(*, event="S", transfer=3, endpoint=3, device=10, length=1,
 
 
 class BinaryTests(unittest.TestCase):
+    def test_binary_zero_data_flag_normalizes_to_text_equals(self):
+        payload = b"abc"
+        raw = header(length=3, captured=3, data_flag=0)
+        normalized = binary.to_text(raw, payload)
+        self.assertIn(b" = 616263", normalized)
+        self.assertEqual(usbmon.parse_record(normalized).payload, payload)
+        with self.assertRaisesRegex(binary.BinaryError, "data flag"):
+            binary.to_text(header(length=3, captured=3, data_flag=ord("=")), payload)
+
+    def test_offline_header_bus_range_is_wider_than_live_character_device_minors(self):
+        for bus in (1, 127, 128, 65535):
+            raw = header(bus=bus)
+            self.assertEqual(binary.address(raw), (bus, 10))
+            self.assertEqual(usbmon.parse_record(binary.to_text(raw, b"\r")).busnum, bus)
+        with patch.object(binary.os, "open") as opening:
+            for bus in (0, 128, 65535):
+                with self.assertRaisesRegex(binary.BinaryError, "buses 1..127"):
+                    binary.open_monitor(bus)
+            opening.assert_not_called()
+
     def test_getx_uses_len_cap_at_36_not_length_at_32_or_setup_at_40(self):
         # Offsets from docs.kernel.org/usb/usbmon.html, not the production Struct.
         for length, captured in ((64, 0), (64, 7), (100, 100)):

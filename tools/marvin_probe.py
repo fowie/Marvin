@@ -47,6 +47,12 @@ class SerialSettingsRejected(serial.SerialException):
     """The host rejected line settings during open, before application writes."""
 
 
+def validate_boolean_flags(**flags):
+    for name, value in flags.items():
+        if type(value) is not bool:
+            raise ValueError(f"{name} must be an explicit boolean.")
+
+
 def validate_framing(bytesize, parity, stopbits):
     if type(bytesize) is not int or bytesize not in (7, 8):
         raise ValueError("Data bits must be 7 or 8.")
@@ -156,7 +162,12 @@ def capture(
     parity="N",
     stopbits=1,
 ):
-    if not actuators_isolated:
+    validate_boolean_flags(
+        actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
+        allow_telemetry_state_change=allow_telemetry_state_change,
+        dtr=dtr, rts=rts, line_state_at_open=line_state_at_open,
+    )
+    if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     if not math.isfinite(seconds) or not 0 < seconds <= 120:
         raise ValueError("Capture duration must be greater than 0 and at most 120 seconds.")
@@ -166,20 +177,20 @@ def capture(
     marvin_tx_policy.validate_profile(probe_profile)
     schedule = None
     if probe_schedule is not None:
-        if not allow_unknown_command:
+        if allow_unknown_command is not True:
             raise ValueError("A multi-probe schedule requires explicit authorization.")
         if probe is not None or probe_delay:
             raise ValueError("A schedule cannot be combined with a one-shot probe or delay.")
         schedule = validate_schedule(probe_schedule, seconds, profile=probe_profile)
     if probe is not None:
-        if not allow_unknown_command:
+        if allow_unknown_command is not True:
             raise ValueError("An unknown application command requires explicit authorization.")
         if not isinstance(probe, bytes) or not 1 <= len(probe) <= 16:
             raise ValueError("A one-shot probe must contain between 1 and 16 bytes.")
     transcript = b"".join(item.data for item in schedule) if schedule is not None else probe
     if transcript is not None:
         stateful = marvin_tx_policy.validate_transmit_stream(transcript, profile=probe_profile)
-        if stateful and not allow_telemetry_state_change:
+        if stateful and allow_telemetry_state_change is not True:
             raise ValueError("The selected query requires telemetry-state authorization.")
     validate_probe_delay(probe, seconds, probe_delay)
 

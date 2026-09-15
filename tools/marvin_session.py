@@ -216,7 +216,15 @@ def run_session(
     """
     if os.geteuid() == 0:
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
-    if not actuators_isolated:
+    marvin_probe.validate_boolean_flags(
+        actuators_isolated=actuators_isolated, sudo_usbmon=sudo_usbmon,
+        allow_unknown_command=allow_unknown_command,
+        allow_telemetry_state_change=allow_telemetry_state_change,
+        allow_line_state_trial=allow_line_state_trial, dtr=dtr, rts=rts,
+        probe_cr=probe_cr, probe_get_config=probe_get_config,
+        probe_get_unit_info=probe_get_unit_info, probe_get_sensor_info=probe_get_sensor_info,
+    )
+    if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     if not math.isfinite(seconds) or not 0 < seconds <= 90:
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
@@ -240,12 +248,12 @@ def run_session(
     if sum((probe_cr, probe_get_config, probe_get_unit_info, probe_get_sensor_info,
             probe_schedule is not None)) > 1:
         raise ValueError("Select only one probe per capture.")
-    if (probe_cr or probe_get_config or probe_get_unit_info or probe_get_sensor_info) and not allow_unknown_command:
+    if (probe_cr or probe_get_config or probe_get_unit_info or probe_get_sensor_info) and allow_unknown_command is not True:
         raise ValueError("An active probe requires explicit unknown-command authorization.")
-    if (probe_get_unit_info or probe_get_sensor_info) and not allow_telemetry_state_change:
+    if (probe_get_unit_info or probe_get_sensor_info) and allow_telemetry_state_change is not True:
         raise ValueError("GetUnitInfo and GetSensorInfo require acknowledgment of telemetry-state side effects.")
     if probe_schedule is not None:
-        if not allow_unknown_command or not allow_telemetry_state_change:
+        if allow_unknown_command is not True or allow_telemetry_state_change is not True:
             raise ValueError("Campaign schedules require command and telemetry-state authorization.")
         if probe_delay:
             raise ValueError("A campaign schedule already defines its own delays.")

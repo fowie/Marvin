@@ -301,6 +301,16 @@ class CampaignTests(unittest.TestCase):
         encoded = json.dumps(plan(), sort_keys=True, separators=(",", ":")).encode()
         self.assertEqual(result["plan_sha256"], hashlib.sha256(encoded).hexdigest())
 
+    def test_non_boolean_authorizations_stop_before_preflight(self):
+        for name in ("actuators_isolated", "allow_unknown_command",
+                     "allow_telemetry_state_change", "sudo_usbmon"):
+            for value in (1, 0, "false", "true", None, [], [True]):
+                with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "boolean"):
+                    self.run_campaign(**{name: value})
+        self.preflight.assert_not_called()
+        self.session.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_rx_stops_before_the_second_segment(self):
         self.rx = True
         result = self.run_campaign()

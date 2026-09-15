@@ -104,6 +104,16 @@ class ListenTests(unittest.TestCase):
             self.capture(actuators_isolated=False)
         self.factory.assert_not_called()
 
+    def test_non_boolean_flags_cannot_authorize_device_access(self):
+        for name in ("actuators_isolated", "allow_unknown_command", "allow_telemetry_state_change",
+                     "dtr", "rts", "line_state_at_open"):
+            for value in (1, 0, "false", "true", None, [], [True]):
+                with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "boolean"):
+                    self.capture(**{name: value})
+        self.udev.assert_not_called()
+        self.factory.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_initial_requested_line_state_has_no_post_open_changes(self):
         self.transport.open.side_effect = lambda: self.assertEqual(
             (self.transport.dtr, self.transport.rts), (True, True)

@@ -146,6 +146,19 @@ class SessionTests(unittest.TestCase):
         self.preflight.assert_not_called()
         self.popen.assert_not_called()
 
+    def test_non_boolean_acknowledgments_and_selectors_stop_before_preflight(self):
+        for name in (
+            "actuators_isolated", "sudo_usbmon", "allow_unknown_command",
+            "allow_telemetry_state_change", "allow_line_state_trial", "dtr", "rts",
+            "probe_cr", "probe_get_config", "probe_get_unit_info", "probe_get_sensor_info",
+        ):
+            for value in (1, 0, "false", "true", None, [], [True]):
+                with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "boolean"):
+                    self.run_capture(**{name: value})
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+
     def test_raw_schedule_is_allowlisted_before_any_hardware_preflight(self):
         for data in (b"\x80", b"erase\r", bytes.fromhex("efbe0000080000000000adde")):
             schedule = (

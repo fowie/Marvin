@@ -3,6 +3,10 @@
 The GETX ABI is documented in drivers/usb/mon/mon_bin.c. Only the first 32
 payload bytes are copied, matching the initial text-based diagnostic budget.
 This implementation explicitly supports the current little-endian x86-64 host.
+Binary captured-data flags are zero, not the text-format '=' marker. The kernel
+currently registers 128 monitor minors (0..127); all-buses minor0 is forbidden
+here. Offline event headers still carry the full uint16 bus field.
+Reference: https://github.com/torvalds/linux/blob/master/drivers/usb/mon/mon_bin.c
 """
 
 import ctypes
@@ -20,6 +24,9 @@ GETX = 0x4018920A  # _IOW(0x92, 10, three native 64-bit fields)
 STATS = 0x80089203  # _IOR(0x92, 3, two u32 fields)
 PAYLOAD_LIMIT = 32
 FILE_MAGIC = b"MVUSBBIN1\n"
+# Linux mon_bin.c registers MON_BIN_MAX_MINOR=128 character-device minors,
+# including the deliberately forbidden all-buses minor 0. The header is wider.
+MAX_MONITOR_BUS = 127
 
 
 class BinaryError(ValueError):
@@ -34,8 +41,8 @@ def check_abi():
 
 def open_monitor(busnum):
     check_abi()
-    if type(busnum) is not int or not 1 <= busnum <= 127:
-        raise BinaryError("Select a supported individual USB bus, never usbmon0.")
+    if type(busnum) is not int or not 1 <= busnum <= MAX_MONITOR_BUS:
+        raise BinaryError("Linux per-bus usbmon nodes support buses 1..127, never usbmon0.")
     path = Path(f"/dev/usbmon{busnum}")
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOFOLLOW)
@@ -88,12 +95,14 @@ def to_text(header, payload):
      seconds, micros, status, length, captured, setup, interval,
      start_frame, transfer_flags, descriptors) = HEADER.unpack(header)
     if (event not in (ord("S"), ord("C"), ord("E")) or transfer not in (1, 2, 3)
-            or endpoint & 0x70 or not 1 <= bus <= 127 or not 1 <= device <= 127):
+            or endpoint & 0x70 or not 1 <= bus <= 65535 or not 1 <= device <= 127):
         raise BinaryError("Unsupported or malformed target binary USB event.")
     if seconds < 0 or not 0 <= micros < 1000000 or length >= 2**31:
         raise BinaryError("Invalid target binary USB timestamp or transfer length.")
     if descriptors or len(payload) != min(captured, PAYLOAD_LIMIT) or len(payload) > length:
         raise BinaryError("Inconsistent target binary USB payload or ISO descriptors.")
+    # mon_bin_get_data uses zero for captured bytes; '=' is a text-format marker,
+    # not a binary flag (drivers/usb/mon/mon_bin.c).
     if data_flag not in (0, ord("<"), ord(">"), ord("Z"), ord("D"), ord("E")):
         raise BinaryError("Unsupported target binary USB data flag.")
     if data_flag and payload:

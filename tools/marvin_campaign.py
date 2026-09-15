@@ -221,7 +221,12 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
                  sudo_usbmon=False, switch_position=None, max_seconds=14400):
     if os.geteuid() == 0:
         raise ValueError("Run the campaign as the ordinary user, not under sudo.")
-    if not actuators_isolated or not allow_unknown_command or not allow_telemetry_state_change:
+    marvin_probe.validate_boolean_flags(
+        actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
+        allow_telemetry_state_change=allow_telemetry_state_change, sudo_usbmon=sudo_usbmon,
+    )
+    if (actuators_isolated is not True or allow_unknown_command is not True
+            or allow_telemetry_state_change is not True):
         raise ValueError("Campaign requires isolation, unknown-command and telemetry-state authorizations.")
     if switch_position != "RUN":
         raise ValueError("This campaign requires an explicit owner-reported RUN position.")
