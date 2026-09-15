@@ -237,8 +237,8 @@ The historical metadata limitation strings about 32-byte payloads and pySerial
 flushing do not describe this adapter: its binary budget was 4096, its complete
 IN bytes were verified, and it used raw termios without a flush.
 
-**Remaining operator hold:** no physical disconnect/reconnect was performed.
-A proposed next step is a separately authorized, cleanly closed USB reconnect
+**Hold at the end of this baseline:** no physical disconnect/reconnect had yet
+been performed. The proposed next step was a separately authorized, cleanly closed USB reconnect
 on only the same J10 host cable, preserving all four isolations and the reviewed
 port. Re-pin the returned connection and authorize a new bounded five-snapshot
 session with unused sequences (for example 768-772). An operator unplug/replug
@@ -246,3 +246,78 @@ may remove controller USB power or restart firmware; no software reset/power
 command is authorized. This would test explicit fresh-session reconnect after
 clean close, **not in-flight USB loss or a failure-injection experiment**.
 Do not close Epic #1 or the independent physical gates from this result alone.
+
+## Reviewed operator reconnect and fresh-session result
+
+After the baseline had closed, the operator was separately instructed to unplug
+only the same reviewed J10 host USB cable, leave it unplugged at least three
+seconds, and reconnect to the same port without changing any other connection
+or power switch. The operator confirmed reconnection, all four isolations still
+in place, and nothing unexpected.
+
+A private cached-only observer sampled at 2 Hz with a 120-second maximum,
+without opening any USB/tty device node or automatically reopening a session.
+It captured 14 missing samples and stopped after 72 samples, approximately
+36.17 seconds. First missing observation was **23:44:43.091825 UTC**, and the
+first complete returned identity was observed at **23:44:50.099639 UTC** on
+September 15, 2026. Monotonic sampling brackets were
+2766.751276590-2767.252129014 for disappearance and
+2773.758663916-2774.259926451 for return. These bracket sampled host presence,
+not exact cable, power or wire events.
+
+The same USB path/physical port, `045e:4444`, 71 descriptor bytes and approved
+descriptor hash returned. Bus 1/device **7 -> 10** and sysfs inode
+**44386 -> 65032** (sysfs device 25 unchanged) establish a changed host
+connection generation. The returned tty was `ttyACM0`, rdev 42496, inode 1353.
+Fresh cached udev/fuser preflight passed before any new application open.
+Private observer ID: `operator-reconnect-cached`; JSONL SHA256:
+`cdd44d6e07b0d373f4f7e94be45973092c80719752eba3e547b42572a9e3eeee`.
+
+Only after reviewing that evidence and the operator confirmation was **one new
+session explicitly authorized**, at `8a6de50a92d92f3972261262e3f07afd473aaa5b`
+(same implementation as `1e8378a5c287b023c7d22c38a7d8b661c388db2f`).
+The 23:45:23-43 UTC capture used previously unused sequences **768-772** with
+the same five-request, minimum one-second interval and bounded deadlines.
+It opened once, delivered five matching CRC-valid status-80/command-00 replies
+of 144 bytes each, and closed once. All 720 serial bytes exactly matched the
+adapter journal and ten complete binary USB-IN payloads; all five ten-byte
+OUT payloads matched the recorded requests and completed successfully.
+Accepted/completed OUT was 50 bytes, uncertain OUT zero. No setters or
+additional application commands were sent.
+
+Write spacings were 1.029992, 1.042893, 1.027977 and 1.036449 seconds; every
+measured post-correlation idle exceeded 1.013545 seconds. RX lower bounds were
+279-456 microseconds after submitted-at timestamps, with no clock/correlation
+faults. Close took approximately 36.254 milliseconds; USB recording retained
+another 13.782 seconds of tail and stopped normally after about 20.27 seconds.
+All 70 target USB records were retained with final queued/dropped counts zero.
+Capture hashes and collector seal verified. Post-capture cached preflight
+matched the new pre-capture identity and found no tty owner.
+
+CDC line requests were again **`3` then `0`**. Every snapshot again reported
+reverse PWM raw **100** on both sides, forward PWM zero and velocities zero.
+Ticks were 1095792, 1095894, 1095995, 1096097 and 1096198, with deltas
+102/101/102/101; these values do not establish physical stop, calibrated units,
+device timing, reset behavior or electrical readiness.
+
+Private evidence ID: `live-readraw-768-after-operator-reconnect`.
+Concatenated 720-byte RX SHA256:
+`68e4e56f6a835d16d26c18f72a1bd8e4599cafbb0f6986e55c9af03374514969`.
+Private manifest SHA256:
+`7c39c8ba300639ee38f33f895b37445925030843ed0c0acb6ba1bdac3179fed8`.
+No private raw files are published.
+
+**Scope and final hold:** the two successful batches establish ten repeatable
+low-rate read-only snapshots, explicit clean close, observed operator
+disconnect/return, fresh identity pinning and a separately initiated new session.
+They do **not** establish behavior under an in-flight cable pull, partial-write
+disconnect, controller power fault, physical emergency stop or motion.
+There is no automatic reconnect/resume and no failure-injection claim.
+All device handles are closed and further hardware work is stopped.
+
+Epic #1 still needs owner/maintainer review of this evidence and publication/
+review of the new adapter through an issue-linked PR; no issue is closed by
+this document. In-flight loss remains covered by software boundary tests, not
+this live experiment. The independent readiness, physical-stop and commissioning
+gates (#9, #11, #13) remain unresolved by successful communication. Do not
+reconnect actuator power/signals or begin another experiment from these results.

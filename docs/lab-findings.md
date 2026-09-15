@@ -15,6 +15,31 @@ Original successor-drive software explicitly supports this legacy USB identity.
 Legacy `S`/`E` framing and six read operations are now live-confirmed on this controller.
 No motor/servo command library exists yet.
 
+**Explicit operator reconnect and fresh session, September 15 at 23:44-45 UTC:**
+after clean close, the operator unplugged/replugged only the reviewed same-port
+J10 host USB cable and reconfirmed all four isolations with nothing unexpected.
+A bounded cached-only observer (no device opens) recorded disappearance and
+return at 23:44:43.091825 and 23:44:50.099639 UTC. The approved physical port
+and descriptor hash were unchanged; bus 1/device 7 became device 10, sysfs
+inode 44386 became 65032, and fresh cached preflight passed.
+
+One separately authorized fresh session at
+`8a6de50a92d92f3972261262e3f07afd473aaa5b` then completed sequences 768-772:
+five 144-byte correlated ReadRawData replies, full 720-byte serial/binary-IN
+equality, five completed ten-byte OUTs, zero uncertain TX. Minimum observed
+write spacing was 1.027977 seconds. One persistent open and same-owner close
+completed; the 70-record USB trace stopped normally with queued/dropped zero.
+Post-capture identity matched and no tty owner remained. All private hashes
+verified; raw 720-byte RX SHA256:
+`68e4e56f6a835d16d26c18f72a1bd8e4599cafbb0f6986e55c9af03374514969`.
+
+CDC requests remained `3` then `0`; both reverse-PWM fields remained raw `100`,
+forward PWM and velocities zero in all five samples. This is **not physical
+stop, electrical readiness or units evidence**. This was operator reconnect
+after clean close, not an in-flight loss/failure injection or automatic resume.
+All further hardware work is stopped. See the
+[reviewed reconnect result and remaining gates](legacy-live.md#reviewed-operator-reconnect-and-fresh-session-result).
+
 **Persistent isolated snapshots, September 15 at 23:41 UTC:** after a separately
 authorized initial attempt failed before application TX on a host termios
 readback comparison, the reviewed fix at
@@ -36,7 +61,8 @@ again `3` then `0`; requested low does not prevent transient assertions.
 **No physical stop claim:** both reverse-PWM fields remained raw `100`, both
 forward-PWM fields and velocities zero. Raw tick increments 102/101/102/101 and
 changing fields are not calibrated timing, units or electrical safety evidence.
-No cable removal, in-flight USB-loss experiment or operator reconnect was done.
+No cable removal, in-flight USB-loss experiment or operator reconnect was done
+within this baseline; the later separately authorized reconnect is recorded above.
 The [LIVE acceptance record](legacy-live.md#reviewed-persistent-snapshot-result)
 preserves the failed first attempt, successful bounded result and remaining
 operator gate. Private evidence ID: `live-readraw-512-readback-fix`; complete
