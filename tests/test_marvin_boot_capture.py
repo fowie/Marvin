@@ -66,9 +66,9 @@ class BootTests(unittest.TestCase):
         return {"status": "completed"}
 
     def run_boot(self, **kwargs):
-        return boot.run_boot_capture(
-            "/dev/test", self.output, actuators_isolated=True, **kwargs
-        )
+        options = {"actuators_isolated": True, "allow_line_state_change": True}
+        options.update(kwargs)
+        return boot.run_boot_capture("/dev/test", self.output, **options)
 
     def test_one_reconnect_and_no_application_probe(self):
         result = self.run_boot(sudo_usbmon=True)
@@ -85,6 +85,22 @@ class BootTests(unittest.TestCase):
         self.assertTrue((self.output / "after-cycle-ready.json").exists())
         self.assertTrue((self.output / "SHA256SUMS").exists())
         self.assertIn("initial_segment_error", result)
+        self.assertTrue(result["line_state_change_authorized"])
+
+    def test_line_state_requires_separate_exact_acknowledgment_before_preflight(self):
+        for value in (False, "true", "false", 1, 0, None, [True]):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "line.state.change"):
+                self.run_boot(allow_line_state_change=value)
+        self.preflight.assert_not_called()
+        self.segment.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_cli_passes_explicit_line_state_acknowledgment(self):
+        with patch("sys.argv", ["marvin_boot_capture", "--output", str(self.output),
+                               "--actuators-isolated", "--allow-line-state-change"]), \
+                patch.object(boot, "run_boot_capture", return_value={"status": "fixture"}) as capture:
+            self.assertEqual(boot.main(), 0)
+            self.assertTrue(capture.call_args.kwargs["allow_line_state_change"])
 
     def test_no_reenumeration_does_not_claim_power_cycle(self):
         self.disconnect = False

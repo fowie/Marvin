@@ -542,7 +542,7 @@ usbmon setup/authentication described above:
 
 ```sh
 .venv/bin/python tools/marvin_boot_capture.py \
-  --sudo-usbmon --actuators-isolated \
+  --sudo-usbmon --actuators-isolated --allow-line-state-change \
   --output /absolute/path/to/a/new/boot-observation
 ```
 
@@ -553,6 +553,9 @@ observer waits at most 90 seconds for one return on the same physical port
 with matching VID/PID and descriptors, then starts a new USB recorder before
 opening the returned serial port for 60 seconds. A second disconnect or an
 unrelated error stops the observation. No application bytes are sent.
+The separate `--allow-line-state-change` flag acknowledges both segments'
+DTR/RTS-high requests, which can affect or reset custom firmware despite the
+absence of application writes. Isolation alone does not authorize these effects.
 
 This is **segmented recording**, not a continuous capture of enumeration:
 there is a gap between device removal and readiness of the second recorder.

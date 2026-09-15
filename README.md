@@ -38,6 +38,9 @@ the default, the named legacy wrapper selects `legacy`, and historical campaign
 experiments select `experimental-successor`. Authorization flags do not bypass
 request-shape checks. The one-shot CLI accepts named requests, not arbitrary hex.
 Stateful identification queries require separate telemetry-state acknowledgment.
+The legacy `get-unit-info --run` command requires
+`--allow-telemetry-state-change`; boot observation separately requires
+`--allow-line-state-change` for its DTR/RTS requests.
 Safety acknowledgments and boolean selectors reject strings and integers rather
 than interpreting their truthiness as consent.
 

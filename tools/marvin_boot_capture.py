@@ -3,6 +3,8 @@
 Uses separate target-scoped USB/serial segments, not an uninterrupted bus trace.
 Enumeration and the gap before the second recorder is ready are not captured.
 No application bytes, reset requests, or power-control operations are sent.
+The separate --allow-line-state-change acknowledgment is required because both
+segments request DTR/RTS high; these line transitions can affect custom firmware.
 After a ready segment fails, allow at most two seconds of read-only polling
 for its USB directory to disappear or change before treating the failure as final.
 """
@@ -85,14 +87,18 @@ def wait_for_return(port, baseline, timeout=90):
     raise TimeoutError(f"Marvin did not return within {timeout} seconds; no further attempts.")
 
 
-def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=False):
+def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=False,
+                     allow_line_state_change=False):
     if os.geteuid() == 0:
         raise ValueError("Run the boot observer as the ordinary user, not under sudo.")
     marvin_probe.validate_boolean_flags(
         actuators_isolated=actuators_isolated, sudo_usbmon=sudo_usbmon,
+        allow_line_state_change=allow_line_state_change,
     )
     if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
+    if allow_line_state_change is not True:
+        raise ValueError("--allow-line-state-change must acknowledge DTR/RTS transitions and possible firmware effects.")
     baseline = marvin_session.preflight(port)
     output = Path(output).resolve()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -102,6 +108,7 @@ def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=Fals
         "baseline": baseline,
         "application_bytes_requested": 0,
         "maximum_usb_returns": 1,
+        "line_state_change_authorized": allow_line_state_change,
         "limitations": [
             "Segmented recording: USB enumeration and the reconnect gap are not captured.",
             "Each USB recorder is ready before its corresponding serial open.",
@@ -194,11 +201,14 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--actuators-isolated", action="store_true")
     parser.add_argument("--sudo-usbmon", action="store_true")
+    parser.add_argument("--allow-line-state-change", action="store_true",
+                        help="Acknowledge DTR/RTS high requests and possible firmware state/reset effects")
     args = parser.parse_args()
     try:
         result = run_boot_capture(
             args.port, args.output, actuators_isolated=args.actuators_isolated,
             sudo_usbmon=args.sudo_usbmon,
+            allow_line_state_change=args.allow_line_state_change,
         )
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"Boot observation failed: {error}", file=sys.stderr)

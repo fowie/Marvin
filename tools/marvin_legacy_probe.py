@@ -5,11 +5,13 @@
 
 Dry-run prints exact bytes/settings without importing transport modules, reading
 device identity, or creating output. --run acknowledges the selected query and
-possible line/handshake side effects. It requires ordinary-user coordination,
+possible line effects. GetUnitInfo additionally requires the separate
+--allow-telemetry-state-change acknowledgment for handshake effects.
+Execution requires ordinary-user coordination,
 physical power AND signal isolation, an expected physical USB port and privileged
 usbmon recording. Only the recorder uses sudo, via the existing run_session.
 
-Settings and timing are fixed: 57600/8N1, DTR/RTS false, no flow control, one10B
+Settings and timing are fixed: 57600/8N1, DTR/RTS false, no flow control, one 10-byte
 write at5s, serial observation20s, USB tail5s, maximum close grace30s. There is
 no retry, reconnect, reset, arbitrary command/payload, setter or settings sweep.
 Any early RX suppresses the scheduled query in the existing serial coordinator.
@@ -60,6 +62,7 @@ def prepare(query, sequence=0):
         "usb_tail_seconds": 5, "usb_close_grace_seconds": 30,
         "usb_nominal_seconds": 25, "usb_maximum_seconds": 55,
         "automatic_retries": False, "automatic_reconnect": False,
+        "telemetry_state_change_acknowledgment_required": packet.command == protocol.GET_UNIT_INFO,
         "application_acknowledgment": "not_established",
         "identity_policy": {
             "idVendor": "045e", "idProduct": "4444", "descriptors_bytes": 71,
@@ -68,10 +71,12 @@ def prepare(query, sequence=0):
         },
         "source": "Legacy S/E packet facts and four independently reviewed2026-09-14 query/reply captures; no recovered program executed.",
         "required_run_acknowledgments": [
-            "--run (selected query and possible line/handshake effects)",
+            "--run (selected query and possible line effects)",
             "--actuators-isolated (motor/servo power AND signals)",
             "--sudo-usbmon (privileged recorder only, ordinary-user coordinator)",
             "--expected-physical-port and --output NEWDIR",
+            *(["--allow-telemetry-state-change (GetUnitInfo handshake effects)"]
+              if packet.command == protocol.GET_UNIT_INFO else []),
         ],
         "limitations": [
             "A source/live-supported getter is not a guarantee of every firmware's semantics.",
@@ -149,13 +154,17 @@ def _check_capture_result(result, baseline):
 
 
 def run_probe(query, output, *, sequence=0, expected_physical_port=None,
-              actuators_isolated=False, sudo_usbmon=False):
+              actuators_isolated=False, sudo_usbmon=False, allow_telemetry_state_change=False):
     """Run only after explicit guards; transport and cleanup remain in run_session."""
     review = prepare(query, sequence)
     if actuators_isolated is not True:
         raise ValueError("--actuators-isolated must acknowledge motor/servo power AND signal isolation.")
     if sudo_usbmon is not True:
         raise ValueError("--sudo-usbmon is required; only the recorder may use sudo.")
+    if type(allow_telemetry_state_change) is not bool:
+        raise ValueError("allow_telemetry_state_change must be an explicit boolean.")
+    if review["telemetry_state_change_acknowledgment_required"] and allow_telemetry_state_change is not True:
+        raise ValueError("--allow-telemetry-state-change is required for GetUnitInfo handshake effects.")
     if (not isinstance(expected_physical_port, str) or len(expected_physical_port) > 100
             or not re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*(?:\.[1-9][0-9]*)*", expected_physical_port)):
         raise ValueError("--expected-physical-port must name the reviewed physical USB port.")
@@ -173,6 +182,7 @@ def run_probe(query, output, *, sequence=0, expected_physical_port=None,
         "maximum_application_bytes": 10, "automatic_retries": False,
         "expected_physical_port": expected_physical_port,
         "actuator_power_and_signal_isolation_acknowledged": True,
+        "telemetry_state_change_authorized": allow_telemetry_state_change,
         "privileged_recorder_only": True, "application_acknowledgment": "not_established",
         "usb_out_validation": "Not established by this wrapper; inspect the complete trace separately.",
     }
@@ -183,7 +193,8 @@ def run_probe(query, output, *, sequence=0, expected_physical_port=None,
         result = session.run_session(
             probe.DEFAULT_PORT, output / "capture", seconds=20,
             actuators_isolated=True, sudo_usbmon=True, usbmon_backend="binary",
-            probe_schedule=schedule, allow_unknown_command=True, allow_telemetry_state_change=True,
+            probe_schedule=schedule, allow_unknown_command=True,
+            allow_telemetry_state_change=allow_telemetry_state_change,
             probe_profile="legacy",
             expected_usb_identity=deepcopy(baseline["usb"]),
             ready_callback=lambda _ready: session.check_identity(probe.DEFAULT_PORT, baseline),
@@ -230,7 +241,9 @@ def main(argv=None):
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--actuators-isolated", action="store_true", help="Acknowledge motor/servo power AND signal isolation")
     parser.add_argument("--sudo-usbmon", action="store_true", help="Authorize privileged recorder only, not a root coordinator")
-    parser.add_argument("--run", action="store_true", help="Authorize this query and possible line/handshake effects; otherwise dry-run")
+    parser.add_argument("--allow-telemetry-state-change", action="store_true",
+                        help="Separately acknowledge GetUnitInfo handshake/telemetry effects")
+    parser.add_argument("--run", action="store_true", help="Authorize this query and possible line effects; otherwise dry-run")
     args = parser.parse_args(argv)
     try:
         if not args.run:
@@ -242,6 +255,7 @@ def main(argv=None):
                 args.query, args.output, sequence=args.sequence,
                 expected_physical_port=args.expected_physical_port,
                 actuators_isolated=args.actuators_isolated, sudo_usbmon=args.sudo_usbmon,
+                allow_telemetry_state_change=args.allow_telemetry_state_change,
             )
     except (OSError, ValueError, ImportError, subprocess.SubprocessError) as error:
         print(json.dumps({"status": "failed", "error": str(error), "automatic_retry": False,

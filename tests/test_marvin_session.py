@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from tools import marvin_session
+from tools import marvin_legacy_protocol, marvin_session
 
 
 BASELINE = {
@@ -170,6 +170,23 @@ class SessionTests(unittest.TestCase):
                                  allow_telemetry_state_change=True)
         self.preflight.assert_not_called()
         self.popen.assert_not_called()
+        self.serial.assert_not_called()
+
+    def test_stateless_legacy_schedule_does_not_invent_state_authorization(self):
+        schedule = (marvin_session.marvin_probe.ScheduledWrite(
+            0.1, marvin_legacy_protocol.get_config_request(), "legacy-config"),)
+        result = self.run_capture(probe_schedule=schedule, probe_profile="legacy",
+                                  allow_unknown_command=True)
+        self.assertFalse(result["telemetry_state_change_authorized"])
+        self.assertFalse(self.serial.call_args.kwargs["allow_telemetry_state_change"])
+
+    def test_stateful_legacy_schedule_still_requires_explicit_authorization(self):
+        schedule = (marvin_session.marvin_probe.ScheduledWrite(
+            0.1, marvin_legacy_protocol.get_unit_info_request(), "legacy-unit"),)
+        with self.assertRaisesRegex(ValueError, "telemetry-state"):
+            self.run_capture(probe_schedule=schedule, probe_profile="legacy",
+                             allow_unknown_command=True)
+        self.preflight.assert_not_called()
         self.serial.assert_not_called()
 
     def test_approved_probe_uses_existing_one_shot_path_after_usb_readiness(self):

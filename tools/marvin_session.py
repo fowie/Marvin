@@ -253,11 +253,15 @@ def run_session(
     if (probe_get_unit_info or probe_get_sensor_info) and allow_telemetry_state_change is not True:
         raise ValueError("GetUnitInfo and GetSensorInfo require acknowledgment of telemetry-state side effects.")
     if probe_schedule is not None:
-        if allow_unknown_command is not True or allow_telemetry_state_change is not True:
-            raise ValueError("Campaign schedules require command and telemetry-state authorization.")
+        if allow_unknown_command is not True:
+            raise ValueError("Campaign schedules require command authorization.")
         if probe_delay:
             raise ValueError("A campaign schedule already defines its own delays.")
         probe_schedule = marvin_probe.validate_schedule(probe_schedule, seconds, profile=probe_profile)
+        stateful = marvin_tx_policy.validate_transmit_stream(
+            b"".join(item.data for item in probe_schedule), profile=probe_profile)
+        if (probe_profile != "legacy" or stateful) and allow_telemetry_state_change is not True:
+            raise ValueError("This schedule requires telemetry-state authorization.")
     if allow_line_state_trial and not probe_get_config:
         raise ValueError("Line-state trials are restricted to GetConfig.")
     if (probe_get_config or probe_get_unit_info or probe_get_sensor_info) and (

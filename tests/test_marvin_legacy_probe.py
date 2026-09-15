@@ -38,6 +38,7 @@ class LegacyProbeDryRunTests(unittest.TestCase):
                 review = legacy.prepare(name, sequence)
                 self.assertEqual(bytes.fromhex(review["request_hex"]), frame(command=command, sequence=sequence, status=0))
                 self.assertEqual(review["maximum_application_bytes"], 10)
+                self.assertEqual(review["telemetry_state_change_acknowledgment_required"], command == 0x1B)
                 self.assertEqual(review["settings"], {
                     "baudrate": 57600, "bytesize": 8, "parity": "N", "stopbits": 1,
                     "dtr": False, "rts": False, "flow_control": "none",
@@ -181,7 +182,7 @@ class LegacyProbeRunTests(unittest.TestCase):
         })
         for key, value in {"baudrate": 57600, "bytesize": 8, "parity": "N", "stopbits": 1,
                            "dtr": False, "rts": False, "actuators_isolated": True, "sudo_usbmon": True,
-                           "allow_unknown_command": True, "allow_telemetry_state_change": True,
+                           "allow_unknown_command": True, "allow_telemetry_state_change": False,
                            "usbmon_backend": "binary", "probe_profile": "legacy"}.items():
             self.assertEqual(options[key], value)
         self.assertEqual(options["expected_usb_identity"], self.baseline["usb"])
@@ -198,6 +199,31 @@ class LegacyProbeRunTests(unittest.TestCase):
         self.assert_manifest()
         self.serial_open.assert_not_called()
         self.process.assert_not_called()
+
+    def test_unit_info_needs_separate_exact_acknowledgment_before_runtime_import(self):
+        for value in (False, "false", "true", 1, 0, None, [True]):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "telemetry.state.change"):
+                legacy.run_probe(
+                    "get-unit-info", self.output, expected_physical_port="1-1.1.3.3",
+                    actuators_isolated=True, sudo_usbmon=True, allow_telemetry_state_change=value,
+                )
+        self.runtime.assert_not_called()
+        self.session.preflight.assert_not_called()
+        self.assertFalse(self.output.exists())
+        result = legacy.run_probe(
+            "get-unit-info", self.output, expected_physical_port="1-1.1.3.3",
+            actuators_isolated=True, sudo_usbmon=True, allow_telemetry_state_change=True,
+        )
+        self.assertTrue(result["telemetry_state_change_authorized"])
+        self.assertTrue(self.session.run_session.call_args.kwargs["allow_telemetry_state_change"])
+
+    def test_cli_forwards_unit_info_state_acknowledgment(self):
+        with patch.object(legacy, "run_probe", return_value={"status": "fixture"}) as run, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(legacy.main([
+                "get-unit-info", "--run", "--allow-telemetry-state-change",
+            ]), 0)
+            self.assertTrue(run.call_args.kwargs["allow_telemetry_state_change"])
 
     def test_all_run_flags_root_and_sequence_rejected_before_runtime_import(self):
         for options in (
