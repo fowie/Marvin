@@ -257,13 +257,17 @@ not hang waiting for a password. Do not run the coordinator or a GUI as root,
 make all USB monitors readable, or disable ModemManager globally.
 
 Before runtime identity/ownership preflight or output creation, the coordinator,
-boot wrapper, campaign, trials, and direct serial capture validate the new output
-destination. Existing destinations (including dangling links), symlink or
-non-directory ancestors, and `/dev`, `/proc`, or `/sys` paths are rejected.
+boot wrapper, campaign, trials, direct serial capture, and direct USB recorder
+validate the new output destination. Existing destinations (including dangling
+links), symlink or non-directory ancestors, and `/dev`, `/proc`, or `/sys` paths
+are rejected.
 Every supplied component is checked, including ancestors hidden by `..`;
-links are not resolved. Modern captures still allow missing nested parents,
-created only after preflight. The legacy probe shares these checks but continues
-to require existing parent directories, before loading its transport runtime.
+links are not resolved. The coordinator, boot wrapper, campaign, trials, and direct
+serial capture still allow missing nested parents, created only after preflight.
+The legacy probe requires existing parent directories and checks them before
+loading its transport runtime. The direct USB recorder also requires existing
+parents and validates its destination before identity checks, monitor access, or
+privilege drop; evidence-directory creation remains after privilege drop.
 These are snapshot checks, not protection against concurrent ancestor replacement.
 Final directory creation remains exclusive: a destination created after the
 precheck is not overwritten or resumed.
@@ -545,6 +549,11 @@ truncated outgoing evidence, and uncertain/short writes prevent continuation.
 A narrowly identified host line-setting rejection is recorded as
 `unsupported_settings`, never as a tested exchange; continuation requires
 proof of zero application I/O, stable identity, and intact USB evidence.
+Unexpected USB completion statuses, other negative submission statuses, and
+submission-error (`E`) events prevent silent or rejected-setting continuation
+across campaign and trial assessments. Existing handling of known, matched
+zero-length IN cancellation/shutdown completions is unchanged; these events do
+not establish application delivery or acknowledgment.
 No failed write or segment is automatically retried.
 
 The observed write-timeout path can spend about 30 seconds closing the tty.
@@ -798,6 +807,24 @@ This attempts exactly one 12-byte frame, `ef be 00 00 04 00 00 00 11 33 ad de`,
 only after USB recording is ready. It never retries or sends initialization,
 heartbeats, resets, or firmware-update commands. GetConfig mode requires the
 recovered 115200/8N1 and DTR/RTS-high settings; it cannot be combined with CR.
+
+This named-query settings policy is shared by the coordinator and direct serial
+capture, before output validation or runtime preflight. It covers all
+modern-profile GetConfig/GetUnitInfo/GetSensorInfo request sequences, including
+fragmented or combined modern schedules, not just the fixed CLI sequence bytes.
+Generic `--allow-line-state-change` consent does not waive the settings policy.
+Only a GetConfig-only modern request or schedule may use lower DTR/RTS levels,
+with genuine `allow_line_state_trial=True` API authorization (or the coordinator's
+existing `--allow-line-state-trial`); it must still use 115200/8N1. The direct CLI
+does not expose that trial exception. GetUnitInfo/GetSensorInfo still require
+high/high lines and separate telemetry-state authorization.
+
+The coordinator forwards generic and trial consent separately; serial metadata
+records `line_state_trial_authorized` rather than inferring it from generic
+consent. Receive-only and CR operation retain their existing settings rules.
+Explicit legacy-profile getters keep their legacy framing and low-line behavior,
+and separately authorized historical `experimental-successor` schedules retain
+their broader settings. These profiles are never selected by guessing from bytes.
 
 The examined successor firmware returns **108 payload bytes / 120 frame
 bytes**, with a 12-byte UnitInfo prefix (three little-endian uint32 values:

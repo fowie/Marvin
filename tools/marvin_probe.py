@@ -75,6 +75,32 @@ def validate_capture_limits(seconds, baudrate, max_bytes):
             raise ValueError(f"{name} must be a positive integer.")
 
 
+def validate_named_query_settings(transcript, *, profile, scheduled, baudrate,
+                                  bytesize, parity, stopbits, dtr, rts, allow_line_state_trial,
+                                  allow_telemetry_state_change):
+    """Validate the transcript and modern query settings, independent of sequence.
+
+    The allowlist decodes every frame. Only GetConfig-only modern transcripts
+    can use the low-line exception; historical experimental and legacy profiles
+    retain their separate settings policy.
+    """
+    stateful = (marvin_tx_policy.validate_transmit_stream(transcript, profile=profile)
+                if transcript is not None else False)
+    if stateful and allow_telemetry_state_change is not True:
+        raise ValueError("The selected query requires telemetry-state authorization.")
+    modern_query = profile == "modern" and transcript is not None and transcript != b"\r"
+    # GetConfig is the modern allowlist's only stateless binary request.
+    config_only = modern_query and not stateful
+    if allow_line_state_trial and not (config_only or scheduled):
+        raise ValueError("Line-state trials require GetConfig or an explicitly validated schedule.")
+    if modern_query and (
+        baudrate != 115200 or (bytesize, parity, stopbits) != (8, "N", 1)
+        or (not (dtr and rts) and not (config_only and allow_line_state_trial))
+    ):
+        raise ValueError("Source-derived queries require 115200/8N1 and DTR/RTS high unless a GetConfig line-state trial is authorized.")
+    return stateful
+
+
 def validate_schedule(schedule, seconds, *, profile="modern"):
     if not isinstance(schedule, (tuple, list)) or not 1 <= len(schedule) <= 256:
         raise ValueError("A schedule must contain 1 to 256 bounded writes.")
@@ -187,6 +213,7 @@ def capture(
     allow_unknown_command=False,
     line_state_at_open=False,
     allow_line_state_change=False,
+    allow_line_state_trial=False,
     guard=None,
     probe_delay=0,
     probe_schedule=None,
@@ -201,11 +228,13 @@ def capture(
         actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
         allow_telemetry_state_change=allow_telemetry_state_change,
         allow_line_state_change=allow_line_state_change,
+        allow_line_state_trial=allow_line_state_trial,
         dtr=dtr, rts=rts, line_state_at_open=line_state_at_open,
     )
     if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
-    if (dtr or rts) and allow_line_state_change is not True:
+    line_state_authorized = allow_line_state_change or allow_line_state_trial
+    if (dtr or rts) and line_state_authorized is not True:
         raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
     validate_capture_limits(seconds, baudrate, max_bytes)
     validate_framing(bytesize, parity, stopbits)
@@ -223,10 +252,12 @@ def capture(
         if not isinstance(probe, bytes) or not 1 <= len(probe) <= 16:
             raise ValueError("A one-shot probe must contain between 1 and 16 bytes.")
     transcript = b"".join(item.data for item in schedule) if schedule is not None else probe
-    if transcript is not None:
-        stateful = marvin_tx_policy.validate_transmit_stream(transcript, profile=probe_profile)
-        if stateful and allow_telemetry_state_change is not True:
-            raise ValueError("The selected query requires telemetry-state authorization.")
+    validate_named_query_settings(
+        transcript, profile=probe_profile, scheduled=schedule is not None,
+        baudrate=baudrate, bytesize=bytesize, parity=parity, stopbits=stopbits,
+        dtr=dtr, rts=rts, allow_line_state_trial=allow_line_state_trial,
+        allow_telemetry_state_change=allow_telemetry_state_change,
+    )
     validate_probe_delay(probe, seconds, probe_delay)
 
     output = new_output_path(output, allow_missing_parents=True)
@@ -264,7 +295,8 @@ def capture(
         "application_bytes_written": 0,
         "bytes_received": 0,
         "line_state_at_open": line_state_at_open,
-        "line_state_change_authorized": allow_line_state_change,
+        "line_state_change_authorized": line_state_authorized,
+        "line_state_trial_authorized": allow_line_state_trial,
         "ownership_check": "fuser; best effort, other-user processes may be invisible",
         "limitations": [
             "Opening changes CDC line coding and control lines.",
@@ -569,7 +601,7 @@ def main():
     )
     parser.add_argument("--actuators-isolated", action="store_true", required=True)
     parser.add_argument("--probe", choices=("cr", "get-config", "get-unit-info", "get-sensor-info"),
-                        help="One fixed modern-profile request; no arbitrary hexadecimal input")
+                        help="One fixed modern request; binary queries require 115200/8N1 and DTR/RTS high")
     parser.add_argument("--allow-unknown-command", action="store_true")
     parser.add_argument("--allow-telemetry-state-change", action="store_true")
     parser.add_argument("--allow-line-state-change", action="store_true",

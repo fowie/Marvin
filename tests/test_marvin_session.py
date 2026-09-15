@@ -242,6 +242,25 @@ class SessionTests(unittest.TestCase):
         self.assertIs(result["line_state_trial_authorized"], False)
         self.assertEqual(result["requested_application_bytes"], 0)
 
+    def test_modern_schedule_settings_cannot_bypass_shared_named_query_policy(self):
+        config = marvin_session.marvin_protocol.get_config_request(65535)
+        unit = marvin_session.marvin_protocol.get_unit_info_request(42)
+        for data in (config, unit, config + unit):
+            schedule = tuple(marvin_session.marvin_probe.ScheduledWrite(
+                0.1 + index * 0.1, data[offset:offset + 12], f"query-{index}")
+                for index, offset in enumerate(range(0, len(data), 12)))
+            for invalid in ({"dtr": False}, {"rts": False}, {"baudrate": 9600}, {"bytesize": 7}):
+                with self.subTest(data=data, invalid=invalid), self.assertRaisesRegex(ValueError, "115200/8N1"):
+                    self.run_capture(**({
+                        "probe_schedule": schedule, "allow_unknown_command": True,
+                        "allow_telemetry_state_change": True, "allow_line_state_change": True,
+                        "dtr": True, "rts": True,
+                    } | invalid))
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def run_real_consent_chain(self, runner, *, disconnect_first=False):
         real_session = marvin_session.run_session
         transport = Mock()
@@ -303,6 +322,41 @@ class SessionTests(unittest.TestCase):
                     self.assertEqual(serial["application_bytes_written"], 0)
                     self.assertIsNone(session["probe_name"])
 
+    def test_named_queries_forward_actual_consent_through_real_serial_validation(self):
+        cases = [
+            ("probe_get_config", marvin_session.marvin_protocol.get_config_request(),
+             dtr, rts, False, True)
+            for dtr, rts in ((False, False), (False, True), (True, False), (True, True))
+        ]
+        cases.extend((name, encode(), True, True, True, False) for name, encode in (
+            ("probe_get_config", marvin_session.marvin_protocol.get_config_request),
+            ("probe_get_unit_info", marvin_session.marvin_protocol.get_unit_info_request),
+            ("probe_get_sensor_info", marvin_session.marvin_protocol.get_sensor_info_request),
+        ))
+        for index, (name, data, dtr, rts, generic, trial) in enumerate(cases):
+            with self.subTest(name=name, dtr=dtr, rts=rts, generic=generic, trial=trial):
+                output = Path(self.temp.name) / f"named-{index}"
+                self.clock.now = 0
+                result, transport, calls = self.run_real_consent_chain(
+                    lambda: marvin_session.run_session(
+                        "/dev/test-marvin", output, seconds=0.5, probe_delay=0.1,
+                        actuators_isolated=True, expected_usb_identity=BASELINE["usb"],
+                        allow_unknown_command=True, allow_telemetry_state_change=True,
+                        dtr=dtr, rts=rts, allow_line_state_change=generic,
+                        allow_line_state_trial=trial, **{name: True},
+                    )
+                )
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(len(calls), 1)
+                transport.write.assert_called_once_with(data)
+                forwarded = self.serial.call_args.kwargs
+                self.assertIs(forwarded["allow_line_state_change"], generic)
+                self.assertIs(forwarded["allow_line_state_trial"], trial)
+                serial = json.loads((output / "serial/metadata.json").read_text())
+                self.assertIs(serial["line_state_trial_authorized"], trial)
+                self.assertEqual(serial["requested_probe_hex"], data.hex())
+                self.assertEqual(serial["application_bytes_written"], 12)
+
     def test_boot_does_not_accept_a_success_shaped_recorder_with_an_unread_tail(self):
         output = Path(self.temp.name) / "boot-queued"
         self.usb_final_overrides = {"monitor_final_stats": {"queued": 1, "dropped": 0}}
@@ -350,6 +404,7 @@ class SessionTests(unittest.TestCase):
                 transport.write.assert_called_once_with(data)
                 serial = json.loads((calls[0].args[1] / "serial/metadata.json").read_text())
                 self.assertIs(serial["line_state_change_authorized"], True)
+                self.assertIs(serial["line_state_trial_authorized"], True)
                 self.assertEqual(serial["application_bytes_written"], len(data))
                 self.assertEqual(serial["transmit_status"], "written")
 
@@ -590,7 +645,8 @@ class SessionTests(unittest.TestCase):
                     recorded = json.loads((self.output / "metadata.json").read_text())
                     self.assertIs(recorded["line_state_trial_authorized"], True)
                     options = self.serial.call_args.kwargs
-                    self.assertIs(options["allow_line_state_change"], True)
+                    self.assertIs(options["allow_line_state_change"], False)
+                    self.assertIs(options["allow_line_state_trial"], True)
                     self.assertIs(result["line_state_change_authorized"], True)
                     self.assertIs(options["dtr"], dtr)
                     self.assertIs(options["rts"], rts)
@@ -862,6 +918,8 @@ class SessionTests(unittest.TestCase):
                                   allow_line_state_trial=True, dtr=False, rts=True, probe_delay=0.2)
         self.assertEqual(self.serial.call_args.kwargs["probe_delay"], 0.2)
         self.assertFalse(self.serial.call_args.kwargs["dtr"])
+        self.assertIs(self.serial.call_args.kwargs["allow_line_state_trial"], True)
+        self.assertIs(self.serial.call_args.kwargs["allow_line_state_change"], False)
         self.assertTrue(result["line_state_trial_authorized"])
         self.assertEqual(result["probe_delay_seconds"], 0.2)
 

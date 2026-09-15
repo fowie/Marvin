@@ -295,17 +295,6 @@ def run_session(
         if probe_delay:
             raise ValueError("A campaign schedule already defines its own delays.")
         probe_schedule = marvin_probe.validate_schedule(probe_schedule, seconds, profile=probe_profile)
-        stateful = marvin_tx_policy.validate_transmit_stream(
-            b"".join(item.data for item in probe_schedule), profile=probe_profile)
-        if (probe_profile != "legacy" or stateful) and allow_telemetry_state_change is not True:
-            raise ValueError("This schedule requires telemetry-state authorization.")
-    if allow_line_state_trial and not (probe_get_config or probe_schedule is not None):
-        raise ValueError("Line-state trials require GetConfig or an explicitly validated schedule.")
-    if (probe_get_config or probe_get_unit_info or probe_get_sensor_info) and (
-        baudrate != 115200 or (bytesize, parity, stopbits) != (8, "N", 1)
-        or (not (dtr and rts) and not allow_line_state_trial)
-    ):
-        raise ValueError("Source-derived queries require 115200/8N1 and DTR/RTS high unless a GetConfig line-state trial is authorized.")
     probe = None
     probe_name = None
     expected_payload_bytes = None
@@ -326,6 +315,16 @@ def run_session(
         probe_name = "CR"
     elif probe_schedule is not None:
         probe_name = "Campaign"
+    stateful = marvin_probe.validate_named_query_settings(
+        b"".join(item.data for item in probe_schedule) if probe_schedule is not None else probe,
+        profile=probe_profile, scheduled=probe_schedule is not None,
+        baudrate=baudrate, bytesize=bytesize, parity=parity, stopbits=stopbits,
+        dtr=dtr, rts=rts, allow_line_state_trial=allow_line_state_trial,
+        allow_telemetry_state_change=allow_telemetry_state_change,
+    )
+    if (probe_schedule is not None and (probe_profile != "legacy" or stateful)
+            and allow_telemetry_state_change is not True):
+        raise ValueError("This schedule requires telemetry-state authorization.")
     marvin_probe.validate_probe_delay(probe, seconds, probe_delay)
     output = new_output_path(output, allow_missing_parents=True)
     marvin_probe.remaining_time(deadline)
@@ -444,7 +443,8 @@ def run_session(
                     baudrate=baudrate, max_bytes=65536,
                     actuators_isolated=True, dtr=dtr, rts=rts,
                     line_state_at_open=True, guard=guard,
-                    allow_line_state_change=line_state_authorized,
+                    allow_line_state_change=allow_line_state_change,
+                    allow_line_state_trial=allow_line_state_trial,
                     probe_delay=probe_delay,
                     bytesize=bytesize, parity=parity, stopbits=stopbits,
                     probe_profile=probe_profile,

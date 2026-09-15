@@ -123,7 +123,7 @@ class ListenTests(unittest.TestCase):
 
     def test_non_boolean_flags_cannot_authorize_device_access(self):
         for name in ("actuators_isolated", "allow_unknown_command", "allow_telemetry_state_change",
-                     "allow_line_state_change", "dtr", "rts", "line_state_at_open"):
+                     "allow_line_state_change", "allow_line_state_trial", "dtr", "rts", "line_state_at_open"):
             for value in (1, 0, "false", "true", None, [], [True]):
                 with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "boolean"):
                     self.capture(**{name: value})
@@ -350,6 +350,168 @@ class ListenTests(unittest.TestCase):
         self.udev.assert_not_called()
         self.factory.assert_not_called()
 
+    def test_modern_named_settings_are_checked_for_every_sequence_and_fragmented_schedule(self):
+        with patch.object(marvin_probe, "new_output_path", side_effect=AssertionError("output validation")) as output:
+            for encode in (marvin_protocol.get_config_request, marvin_protocol.get_unit_info_request,
+                           marvin_protocol.get_sensor_info_request):
+                for sequence in (0, 17, 65535):
+                    data = encode(sequence)
+                    for selection in ({"probe": data}, {"probe_schedule": (
+                        marvin_probe.ScheduledWrite(0.1, data[:5], "prefix"),
+                        marvin_probe.ScheduledWrite(0.2, data[5:], "suffix"),
+                    )}):
+                        for invalid in ({"baudrate": 9600}, {"bytesize": 7}, {"parity": "E"},
+                                        {"stopbits": 2}, {"dtr": False}, {"rts": False},
+                                        {"dtr": False, "rts": False}):
+                            for at_open in (False, True):
+                                with self.subTest(command=encode.__name__, sequence=sequence,
+                                                  selection=selection, invalid=invalid, at_open=at_open), \
+                                        self.assertRaisesRegex(ValueError, "115200/8N1"):
+                                    self.capture(**({
+                                        "allow_unknown_command": True, "allow_telemetry_state_change": True,
+                                        "dtr": True, "rts": True, "allow_line_state_change": True,
+                                        "line_state_at_open": at_open,
+                                    } | selection | invalid))
+        output.assert_not_called()
+        self.udev.assert_not_called()
+        self.ownership.assert_not_called()
+        self.factory.assert_not_called()
+        self.ioctl.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_valid_modern_sequences_keep_exact_bytes_and_requested_open_timing(self):
+        for encode in (marvin_protocol.get_config_request, marvin_protocol.get_unit_info_request,
+                       marvin_protocol.get_sensor_info_request):
+            for sequence in (0, 17, 65535):
+                for at_open in (False, True):
+                    with self.subTest(command=encode.__name__, sequence=sequence, at_open=at_open):
+                        self.output = Path(self.directory.name) / f"{encode.__name__}-{sequence}-{at_open}"
+                        data = encode(sequence)
+                        self.transport.write.reset_mock()
+                        self.transport.write.return_value = len(data)
+                        result = self.capture(
+                            probe=data, dtr=True, rts=True, allow_line_state_change=True,
+                            line_state_at_open=at_open, allow_unknown_command=True,
+                            allow_telemetry_state_change=True,
+                        )
+                        self.transport.write.assert_called_once_with(data)
+                        self.assertEqual(result["requested_probe_hex"], data.hex())
+                        self.assertEqual(result["application_bytes_written"], 12)
+                        self.assertIs(result["dtr_initial_requested"], at_open)
+                        self.assertIs(result["rts_initial_requested"], at_open)
+                        self.assertIs(result["line_state_trial_authorized"], False)
+                        self.assertEqual((self.output / "received.bin").read_bytes(), b"abc")
+
+    def test_get_config_low_lines_require_genuine_exact_trial_consent(self):
+        data = marvin_protocol.get_config_request(65535)
+        for dtr, rts in ((False, False), (False, True), (True, False), (True, True)):
+            for at_open in (False, True):
+                with self.subTest(dtr=dtr, rts=rts, at_open=at_open):
+                    self.output = Path(self.directory.name) / f"trial-{dtr}-{rts}-{at_open}"
+                    self.transport.write.reset_mock()
+                    self.transport.write.return_value = len(data)
+                    result = self.capture(
+                        probe=data, dtr=dtr, rts=rts, line_state_at_open=at_open,
+                        allow_unknown_command=True, allow_line_state_trial=True,
+                    )
+                    self.transport.write.assert_called_once_with(data)
+                    self.assertIs(result["line_state_trial_authorized"], True)
+                    self.assertIs(result["line_state_change_authorized"], True)
+                    self.assertFalse(result["telemetry_state_change_authorized"])
+                    self.assertIs(result["dtr_initial_requested"], dtr and at_open)
+                    self.assertIs(result["rts_initial_requested"], rts and at_open)
+
+    def test_trial_flag_never_authorizes_wrong_named_command_or_nonstandard_framing(self):
+        data = marvin_protocol.get_config_request(42)
+        with patch.object(marvin_probe, "new_output_path", side_effect=AssertionError("output validation")):
+            for value in (1, 0, "true", "false", None, [], [True]):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "allow_line_state_trial"):
+                    self.capture(probe=data, allow_unknown_command=True, dtr=True, rts=True,
+                                 allow_line_state_change=True, allow_line_state_trial=value)
+            for selection in ({}, {"probe": b"\r"},
+                              {"probe": marvin_protocol.get_unit_info_request(42)},
+                              {"probe": marvin_protocol.get_sensor_info_request(42)},
+                              {"probe": marvin_legacy_protocol.get_config_request(42), "probe_profile": "legacy"}):
+                with self.subTest(selection=selection), self.assertRaisesRegex(ValueError, "Line-state trials"):
+                    self.capture(allow_unknown_command=True, allow_telemetry_state_change=True,
+                                 dtr=True, rts=True, allow_line_state_trial=True, **selection)
+            for invalid in ({"baudrate": 9600}, {"bytesize": 7}, {"parity": "E"}, {"stopbits": 2}):
+                with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "115200/8N1"):
+                    self.capture(probe=data, allow_unknown_command=True, allow_line_state_trial=True, **invalid)
+            for encode in (marvin_protocol.get_unit_info_request, marvin_protocol.get_sensor_info_request):
+                schedule = (marvin_probe.ScheduledWrite(0.1, data, "config"),
+                            marvin_probe.ScheduledWrite(0.2, encode(42), "stateful"))
+                with self.subTest(command=encode.__name__), self.assertRaisesRegex(ValueError, "115200/8N1"):
+                    self.capture(probe_schedule=schedule, allow_unknown_command=True,
+                                 allow_telemetry_state_change=True, allow_line_state_trial=True)
+        self.udev.assert_not_called()
+        self.ownership.assert_not_called()
+        self.factory.assert_not_called()
+
+    def test_cli_named_queries_cannot_use_generic_consent_as_a_settings_exception(self):
+        for name in ("get-config", "get-unit-info", "get-sensor-info"):
+            for at_open in ([], ["--line-state-at-open"]):
+                for lines, baud in (([], "115200"), (["--dtr"], "115200"),
+                                    (["--rts"], "115200"), (["--dtr", "--rts"], "9600"),
+                                    (["--dtr", "--rts"], "115200")):
+                    with self.subTest(name=name, at_open=at_open, lines=lines, baud=baud):
+                        self.output = Path(self.directory.name) / f"cli-query-{len(list(Path(self.directory.name).iterdir()))}"
+                        self.udev.reset_mock()
+                        self.ownership.reset_mock()
+                        self.factory.reset_mock()
+                        self.transport.write.reset_mock()
+                        self.transport.write.return_value = 12
+                        args = ["marvin_probe", "--actuators-isolated", "--output", str(self.output),
+                                "--probe", name, "--allow-unknown-command", "--allow-telemetry-state-change",
+                                "--allow-line-state-change", "--baudrate", baud, "--max-bytes", "3",
+                                *lines, *at_open]
+                        with patch.object(sys, "argv", args), patch.object(sys, "stdout"), patch.object(sys, "stderr"):
+                            code = marvin_probe.main()
+                        valid = len(lines) == 2 and baud == "115200"
+                        self.assertEqual(code, 0 if valid else 1)
+                        if valid:
+                            self.assertEqual(self.transport.write.call_count, 1)
+                            self.assertFalse(json.loads((self.output / "metadata.json").read_text())[
+                                "line_state_trial_authorized"])
+                        else:
+                            self.udev.assert_not_called()
+                            self.ownership.assert_not_called()
+                            self.factory.assert_not_called()
+                            self.assertFalse(self.output.exists())
+
+    def test_config_trial_and_separate_profile_schedules_keep_their_exact_fragments(self):
+        for profile, data, trial, settings in (
+            ("modern", marvin_protocol.get_config_request(65535), True, {}),
+            ("legacy", marvin_legacy_protocol.get_config_request(65535), False, {}),
+            ("experimental-successor", marvin_protocol.get_unit_info_request(65535), True,
+             {"baudrate": 9600, "bytesize": 7, "parity": "E", "stopbits": 2}),
+        ):
+            with self.subTest(profile=profile):
+                self.output = Path(self.directory.name) / f"fragments-{profile}"
+                clock = [0.0]
+                self.transport.write.reset_mock()
+                self.transport.write.side_effect = len
+
+                def read(size):
+                    clock[0] += self.transport.timeout
+                    return b""
+
+                self.transport.read.side_effect = read
+                schedule = (marvin_probe.ScheduledWrite(0.1, data[:5], "prefix"),
+                            marvin_probe.ScheduledWrite(0.2, data[5:], "suffix"))
+                with patch.object(marvin_probe.time, "monotonic", side_effect=lambda: clock[0]):
+                    result = self.capture(
+                        seconds=0.4, probe_schedule=schedule, probe_profile=profile,
+                        allow_unknown_command=True, allow_line_state_trial=trial,
+                        allow_telemetry_state_change=profile == "experimental-successor", **settings,
+                    )
+                self.assertEqual([call.args[0] for call in self.transport.write.call_args_list], [data[:5], data[5:]])
+                self.assertEqual(result["application_bytes_written"], len(data))
+                self.assertEqual(result["scheduled_writes_completed"], 2)
+                self.assertIs(result["line_state_trial_authorized"], trial)
+                self.assertFalse(result["dtr_requested"])
+                self.assertFalse(result["rts_requested"])
+
     def test_cli_exposes_fixed_named_requests_and_rejects_raw_hex(self):
         for name, expected in (
             ("cr", b"\r"), ("get-config", marvin_protocol.get_config_request()),
@@ -357,7 +519,8 @@ class ListenTests(unittest.TestCase):
             ("get-sensor-info", marvin_protocol.get_sensor_info_request()),
         ):
             args = ["marvin_probe", "--actuators-isolated", "--output", str(self.output),
-                    "--probe", name, "--allow-unknown-command", "--allow-telemetry-state-change"]
+                    "--probe", name, "--allow-unknown-command", "--allow-telemetry-state-change",
+                    "--dtr", "--rts", "--allow-line-state-change"]
             with self.subTest(name=name), patch.object(sys, "argv", args), \
                     patch.object(sys, "stdout"), patch.object(marvin_probe, "capture", return_value={
                         "bytes_received": 1, "application_bytes_written": len(expected),
