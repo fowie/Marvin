@@ -315,6 +315,22 @@ class CampaignTests(unittest.TestCase):
         options.update(overrides)
         return campaign.run_campaign(plan(), self.output, **options)
 
+    def test_dangling_output_symlink_cannot_redirect_evidence(self):
+        root = Path(self.temp.name)
+        for relative in (False, True):
+            with self.subTest(relative=relative):
+                target = root / f"missing-target-{relative}"
+                self.output = root / f"output-link-{relative}"
+                destination = Path(target.name) if relative else target
+                self.output.symlink_to(destination, target_is_directory=True)
+                with self.assertRaises(FileExistsError) as raised:
+                    self.run_campaign()
+                self.assertEqual(raised.exception.filename, str(self.output))
+                self.assertEqual(self.output.readlink(), destination)
+                self.assertFalse(target.exists())
+        self.identity.assert_not_called()
+        self.session.assert_not_called()
+
     def test_silent_campaign_records_all_segments_and_hashes(self):
         result = self.run_campaign()
         self.assertEqual(result["status"], "completed_silent")

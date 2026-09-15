@@ -126,6 +126,7 @@ class TrialTests(unittest.TestCase):
         result = self.run_trials()
         self.assertEqual(result["status"], "completed_silent")
         self.assertEqual(result["initial_power_state"], "existing-unverified")
+        self.assertIs(result["line_state_trials_authorized"], True)
         self.assertEqual(len(self.calls), 4)
         self.assertEqual([(c["dtr"], c["rts"]) for c in self.calls],
                          [(True, True), (True, False), (False, False), (False, True)])

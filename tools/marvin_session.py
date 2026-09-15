@@ -202,6 +202,7 @@ def run_session(
     probe_get_sensor_info=False,
     allow_unknown_command=False, allow_telemetry_state_change=False,
     probe_delay=0, allow_line_state_trial=False,
+    allow_line_state_change=False,
     ready_callback=None, expected_usb_identity=None,
     probe_schedule=None, bytesize=8, parity="N", stopbits=1,
     probe_profile="modern",
@@ -213,9 +214,9 @@ def run_session(
     usb_nominal_duration_seconds excludes grace. With grace enabled, the normal
     stop is based on recorder readiness, after serial close and a short drain.
     Grace changes only host recording, never serial timing, writes, or retries.
-    Schedules retain the low/low line defaults; asserting either line requires
-    separate allow_line_state_trial=True consent, regardless of transmit profile.
-    Named query line/framing restrictions remain independent of schedule consent.
+    Asserting either line requires separate allow_line_state_change=True consent
+    or an authorized GetConfig/schedule line-state trial. Generic consent never
+    waives named query line/framing restrictions. Low/low defaults are unchanged.
     """
     if os.geteuid() == 0:
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
@@ -224,11 +225,15 @@ def run_session(
         allow_unknown_command=allow_unknown_command,
         allow_telemetry_state_change=allow_telemetry_state_change,
         allow_line_state_trial=allow_line_state_trial, dtr=dtr, rts=rts,
+        allow_line_state_change=allow_line_state_change,
         probe_cr=probe_cr, probe_get_config=probe_get_config,
         probe_get_unit_info=probe_get_unit_info, probe_get_sensor_info=probe_get_sensor_info,
     )
     if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
+    line_state_authorized = allow_line_state_change or allow_line_state_trial
+    if (dtr or rts) and line_state_authorized is not True:
+        raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
     if not math.isfinite(seconds) or not 0 < seconds <= 90:
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
     if baudrate <= 0:
@@ -265,8 +270,6 @@ def run_session(
             b"".join(item.data for item in probe_schedule), profile=probe_profile)
         if (probe_profile != "legacy" or stateful) and allow_telemetry_state_change is not True:
             raise ValueError("This schedule requires telemetry-state authorization.")
-        if (dtr or rts) and allow_line_state_trial is not True:
-            raise ValueError("Schedules with DTR or RTS high require separate line-state authorization.")
     if allow_line_state_trial and not (probe_get_config or probe_schedule is not None):
         raise ValueError("Line-state trials require GetConfig or an explicitly validated schedule.")
     if (probe_get_config or probe_get_unit_info or probe_get_sensor_info) and (
@@ -298,7 +301,7 @@ def run_session(
     baseline = preflight(port)
     if expected_usb_identity is not None and baseline["usb"] != expected_usb_identity:
         raise OSError("USB identity changed before the requested capture segment.")
-    output = Path(output).resolve()
+    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     usb_output = output / "usb"
     metadata = {
@@ -322,6 +325,7 @@ def run_session(
         ),
         "probe_delay_seconds": probe_delay,
         "line_state_trial_authorized": allow_line_state_trial,
+        "line_state_change_authorized": line_state_authorized,
         "serial_duration_seconds": seconds,
         "usb_duration_seconds": usb_max_seconds,
         "usb_nominal_duration_seconds": usb_nominal_seconds,
@@ -402,6 +406,7 @@ def run_session(
                     baudrate=baudrate, max_bytes=65536,
                     actuators_isolated=True, dtr=dtr, rts=rts,
                     line_state_at_open=True, guard=guard,
+                    allow_line_state_change=line_state_authorized,
                     probe_delay=probe_delay,
                     bytesize=bytesize, parity=parity, stopbits=stopbits,
                     probe_profile=probe_profile,
@@ -509,6 +514,8 @@ def main():
     parser.add_argument("--probe-delay", type=float, default=0)
     parser.add_argument("--allow-line-state-trial", action="store_true",
                         help="Allow nondefault DTR/RTS levels for a GetConfig-only trial")
+    parser.add_argument("--allow-line-state-change", action="store_true",
+                        help="Acknowledge DTR/RTS assertions without relaxing named-query line/framing restrictions")
     args = parser.parse_args()
     try:
         if args.preflight:
@@ -528,6 +535,7 @@ def main():
             allow_unknown_command=args.allow_unknown_command,
             allow_telemetry_state_change=args.allow_telemetry_state_change,
             probe_delay=args.probe_delay, allow_line_state_trial=args.allow_line_state_trial,
+            allow_line_state_change=args.allow_line_state_change,
         )
     except (OSError, ValueError, subprocess.SubprocessError, marvin_probe.serial.SerialException) as error:
         print(f"Session failed: {error}", file=sys.stderr)

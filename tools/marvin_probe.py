@@ -153,6 +153,7 @@ def capture(
     probe=None,
     allow_unknown_command=False,
     line_state_at_open=False,
+    allow_line_state_change=False,
     guard=None,
     probe_delay=0,
     probe_schedule=None,
@@ -165,10 +166,13 @@ def capture(
     validate_boolean_flags(
         actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
         allow_telemetry_state_change=allow_telemetry_state_change,
+        allow_line_state_change=allow_line_state_change,
         dtr=dtr, rts=rts, line_state_at_open=line_state_at_open,
     )
     if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
+    if (dtr or rts) and allow_line_state_change is not True:
+        raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
     if not math.isfinite(seconds) or not 0 < seconds <= 120:
         raise ValueError("Capture duration must be greater than 0 and at most 120 seconds.")
     if baudrate <= 0 or max_bytes <= 0:
@@ -225,6 +229,7 @@ def capture(
         "application_bytes_written": 0,
         "bytes_received": 0,
         "line_state_at_open": line_state_at_open,
+        "line_state_change_authorized": allow_line_state_change,
         "ownership_check": "fuser; best effort, other-user processes may be invisible",
         "limitations": [
             "Opening changes CDC line coding and control lines.",
@@ -495,6 +500,8 @@ def main():
                         help="One fixed modern-profile request; no arbitrary hexadecimal input")
     parser.add_argument("--allow-unknown-command", action="store_true")
     parser.add_argument("--allow-telemetry-state-change", action="store_true")
+    parser.add_argument("--allow-line-state-change", action="store_true",
+                        help="Separately acknowledge DTR/RTS assertions and possible firmware state/reset effects")
     parser.add_argument("--probe-delay", type=float, default=0,
                         help="Listen before writing; any received byte suppresses the probe. Included in --seconds.")
     parser.add_argument(
@@ -522,6 +529,7 @@ def main():
             allow_unknown_command=args.allow_unknown_command,
             allow_telemetry_state_change=args.allow_telemetry_state_change,
             line_state_at_open=args.line_state_at_open,
+            allow_line_state_change=args.allow_line_state_change,
             probe_delay=args.probe_delay,
         )
     except (ValueError, OSError, serial.SerialException, subprocess.SubprocessError) as error:

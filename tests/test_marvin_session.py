@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from tools import marvin_legacy_protocol, marvin_session
+from tools import marvin_boot_capture, marvin_campaign, marvin_legacy_protocol, marvin_session, marvin_trials
 
 
 BASELINE = {
@@ -52,6 +52,7 @@ class SessionTests(unittest.TestCase):
         self.preflight = patch.object(marvin_session, "preflight", return_value=BASELINE).start()
         self.identity = patch.object(marvin_session, "check_identity").start()
         self.popen = patch.object(marvin_session.subprocess, "Popen", side_effect=self.spawn).start()
+        self.real_serial_capture = marvin_session.marvin_probe.capture
         self.serial = patch.object(marvin_session.marvin_probe, "capture", side_effect=self.capture).start()
         self.addCleanup(patch.stopall)
 
@@ -107,8 +108,25 @@ class SessionTests(unittest.TestCase):
         defaults.update(kwargs)
         return marvin_session.run_session("/dev/test-marvin", self.output, **defaults)
 
+    def test_dangling_output_symlink_cannot_redirect_evidence(self):
+        root = Path(self.temp.name)
+        for relative in (False, True):
+            with self.subTest(relative=relative):
+                target = root / f"missing-target-{relative}"
+                self.output = root / f"output-link-{relative}"
+                destination = Path(target.name) if relative else target
+                self.output.symlink_to(destination, target_is_directory=True)
+                with self.assertRaises(FileExistsError) as raised:
+                    self.run_capture()
+                self.assertEqual(raised.exception.filename, str(self.output))
+                self.assertEqual(self.output.readlink(), destination)
+                self.assertFalse(target.exists())
+        self.identity.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+
     def test_ready_before_one_serial_open_and_trace_lasts_through_close(self):
-        result = self.run_capture(dtr=True, rts=True)
+        result = self.run_capture(dtr=True, rts=True, allow_line_state_change=True)
         self.assertEqual(result["status"], "completed")
         self.serial.assert_called_once()
         self.assertTrue(self.serial.call_args.kwargs["line_state_at_open"])
@@ -146,10 +164,173 @@ class SessionTests(unittest.TestCase):
         self.preflight.assert_not_called()
         self.popen.assert_not_called()
 
+    def test_asserted_lines_cannot_infer_consent_from_isolation_or_any_probe(self):
+        schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, b"\r", "query"),)
+        for selection in ({}, {"probe_cr": True}, {"probe_get_config": True},
+                          {"probe_get_unit_info": True}, {"probe_get_sensor_info": True},
+                          {"probe_schedule": schedule}):
+            for dtr, rts in ((True, False), (False, True), (True, True)):
+                with self.subTest(selection=selection, lines=(dtr, rts)):
+                    with self.assertRaisesRegex(ValueError, "line-state authorization"):
+                        self.run_capture(dtr=dtr, rts=rts, allow_unknown_command=True,
+                                         allow_telemetry_state_change=True, **selection)
+        self.preflight.assert_not_called()
+        self.identity.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_generic_consent_never_relaxes_named_query_or_trial_restrictions(self):
+        for probe in ("probe_get_config", "probe_get_unit_info", "probe_get_sensor_info"):
+            for invalid in ({"dtr": False}, {"rts": False}, {"baudrate": 9600},
+                            {"bytesize": 7}, {"probe_profile": "legacy"}):
+                with self.subTest(probe=probe, invalid=invalid), self.assertRaises(ValueError):
+                    self.run_capture(**({
+                        probe: True, "dtr": True, "rts": True,
+                        "allow_unknown_command": True, "allow_telemetry_state_change": True,
+                        "allow_line_state_change": True,
+                    } | invalid))
+        for selection in ({}, {"probe_cr": True}, {"probe_get_unit_info": True},
+                          {"probe_get_sensor_info": True}):
+            with self.subTest(selection=selection), self.assertRaisesRegex(ValueError, "Line-state trials"):
+                self.run_capture(dtr=True, rts=True, allow_line_state_change=True,
+                                 allow_line_state_trial=True, allow_unknown_command=True,
+                                 allow_telemetry_state_change=True, **selection)
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_either_valid_consent_does_not_mask_malformed_other_consent(self):
+        for bad_flag, valid_flag in (("allow_line_state_change", "allow_line_state_trial"),
+                                     ("allow_line_state_trial", "allow_line_state_change")):
+            for value in (1, 0, "true", "false", None, [], [True], object()):
+                with self.subTest(flag=bad_flag, value=value), self.assertRaisesRegex(ValueError, bad_flag):
+                    self.run_capture(probe_get_config=True, allow_unknown_command=True, dtr=True, rts=True,
+                                     **{valid_flag: True, bad_flag: value})
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_generic_line_only_cli_requires_consent_without_a_fabricated_trial(self):
+        argv = ["marvin_session", "--output", str(self.output), "--actuators-isolated",
+                "--dtr", "--rts", "--seconds", "0.5"]
+        with patch("sys.argv", argv), redirect_stderr(io.StringIO()):
+            self.assertEqual(marvin_session.main(), 1)
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.assertFalse(self.output.exists())
+        with patch("sys.argv", [*argv, "--allow-line-state-change"]), redirect_stdout(io.StringIO()):
+            self.assertEqual(marvin_session.main(), 0)
+        self.assertIs(self.serial.call_args.kwargs["allow_line_state_change"], True)
+        self.assertNotIn("probe", self.serial.call_args.kwargs)
+        result = json.loads((self.output / "metadata.json").read_text())
+        self.assertIs(result["line_state_change_authorized"], True)
+        self.assertIs(result["line_state_trial_authorized"], False)
+        self.assertEqual(result["requested_application_bytes"], 0)
+
+    def run_real_consent_chain(self, runner, *, disconnect_first=False):
+        real_session = marvin_session.run_session
+        transport = Mock()
+        transport.write.side_effect = lambda data: len(data)
+
+        def read(size):
+            if disconnect_first and self.output.name == "before-cycle":
+                raise OSError("synthetic disconnect")
+            self.clock.sleep(transport.timeout)
+            return b""
+
+        def segment(port, output, **options):
+            self.output = output
+            self.finished = False
+            self.preflight.return_value = dict(BASELINE, usb=options["expected_usb_identity"])
+            self.ready = dict(options["expected_usb_identity"], pid=9999, monotonic=self.clock.now)
+            self.usb_finish_time = self.clock.now + options["seconds"] + options.get("usb_tail_seconds", 30)
+            return real_session(port, output, **options)
+
+        transport.read.side_effect = read
+        self.serial.side_effect = self.real_serial_capture
+        with patch.object(marvin_session, "run_session", side_effect=segment) as sessions, \
+                patch.object(marvin_session.marvin_probe, "check_device", return_value={}), \
+                patch.object(marvin_session.marvin_probe, "check_port_available"), \
+                patch.object(marvin_session.marvin_probe.serial, "Serial", return_value=transport), \
+                patch.object(marvin_session.marvin_probe.fcntl, "ioctl"), redirect_stdout(io.StringIO()):
+            result = runner()
+        return result, transport, sessions.call_args_list
+
+    def test_boot_runs_real_session_and_serial_validation_without_fake_trial_or_probe(self):
+        returned = dict(BASELINE, usb=dict(BASELINE["usb"], devnum=9))
+        for reconnect in (False, True):
+            with self.subTest(reconnect=reconnect):
+                output = Path(self.temp.name) / f"boot-{reconnect}"
+                self.clock.now = 0
+                self.preflight.return_value = BASELINE
+                with patch.object(marvin_boot_capture, "wait_for_identity_change", return_value=True), \
+                        patch.object(marvin_boot_capture, "wait_for_return", return_value=returned):
+                    result, transport, calls = self.run_real_consent_chain(
+                        lambda: marvin_boot_capture.run_boot_capture(
+                            "/dev/test-marvin", output, actuators_isolated=True,
+                            allow_line_state_change=True,
+                        ),
+                        disconnect_first=reconnect,
+                    )
+                self.assertEqual(result["status"], (
+                    "completed_with_reconnect_gap" if reconnect else "completed_without_reenumeration"))
+                self.assertEqual(len(calls), 2 if reconnect else 1)
+                transport.write.assert_not_called()
+                self.assertEqual(transport.open.call_count, len(calls))
+                for call in calls:
+                    self.assertIs(call.kwargs["allow_line_state_change"], True)
+                    self.assertNotIn("allow_line_state_trial", call.kwargs)
+                    session = json.loads((call.args[1] / "metadata.json").read_text())
+                    serial = json.loads((call.args[1] / "serial/metadata.json").read_text())
+                    self.assertIs(session["line_state_change_authorized"], True)
+                    self.assertIs(session["line_state_trial_authorized"], False)
+                    self.assertIs(serial["line_state_change_authorized"], True)
+                    self.assertEqual(serial["application_bytes_written"], 0)
+                    self.assertIsNone(session["probe_name"])
+
+    def test_campaign_and_trials_delegate_consent_through_real_session_and_serial_validation(self):
+        data = marvin_session.marvin_protocol.get_config_request()
+        for wrapper in ("campaign", "trials"):
+            with self.subTest(wrapper=wrapper):
+                output = Path(self.temp.name) / wrapper
+                self.clock.now = 0
+                self.preflight.return_value = dict(
+                    BASELINE, usb=dict(BASELINE["usb"], descriptors_sha256=marvin_campaign.DESCRIPTOR_HASH))
+                assessment = {"outcome": "silent_out_confirmed", "usb_out_confirmed_bytes": len(data)}
+                if wrapper == "campaign":
+                    plan = {"schema_version": 1, "segments": [{
+                        "id": "query", "baudrate": 115200, "bytesize": 8, "parity": "N",
+                        "stopbits": 1, "dtr": True, "rts": False, "steps": [{
+                            "id": "config", "chunks_hex": [data.hex()], "interval_seconds": 0,
+                            "response_seconds": 0.2, "classification": "query", "rationale": "synthetic",
+                        }],
+                    }]}
+                    runner = lambda: marvin_campaign.run_campaign(
+                        plan, output, actuators_isolated=True, allow_unknown_command=True,
+                        allow_telemetry_state_change=True, allow_line_state_trials=True, switch_position="RUN")
+                else:
+                    runner = lambda: marvin_trials.run_trials(
+                        "/dev/test-marvin", output, case_names=["low-high"], actuators_isolated=True,
+                        allow_unknown_command=True, allow_line_state_trials=True)
+                with patch.object(marvin_campaign, "assess_segment", return_value=assessment), \
+                        patch.object(marvin_trials, "assess_case", return_value=assessment):
+                    result, transport, calls = self.run_real_consent_chain(runner)
+                self.assertEqual(result["status"], "completed_silent")
+                self.assertEqual(len(calls), 1)
+                self.assertIs(calls[0].kwargs["allow_line_state_trial"], True)
+                transport.write.assert_called_once_with(data)
+                serial = json.loads((calls[0].args[1] / "serial/metadata.json").read_text())
+                self.assertIs(serial["line_state_change_authorized"], True)
+                self.assertEqual(serial["application_bytes_written"], len(data))
+                self.assertEqual(serial["transmit_status"], "written")
+
     def test_non_boolean_acknowledgments_and_selectors_stop_before_preflight(self):
         for name in (
             "actuators_isolated", "sudo_usbmon", "allow_unknown_command",
-            "allow_telemetry_state_change", "allow_line_state_trial", "dtr", "rts",
+            "allow_telemetry_state_change", "allow_line_state_trial", "allow_line_state_change", "dtr", "rts",
             "probe_cr", "probe_get_config", "probe_get_unit_info", "probe_get_sensor_info",
         ):
             for value in (1, 0, "false", "true", None, [], [True]):
@@ -180,6 +361,8 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(result["telemetry_state_change_authorized"])
         self.assertFalse(self.serial.call_args.kwargs["allow_telemetry_state_change"])
         self.assertFalse(result["line_state_trial_authorized"])
+        self.assertFalse(result["line_state_change_authorized"])
+        self.assertFalse(self.serial.call_args.kwargs["allow_line_state_change"])
         self.assertFalse(self.serial.call_args.kwargs["dtr"])
         self.assertFalse(self.serial.call_args.kwargs["rts"])
 
@@ -211,12 +394,13 @@ class SessionTests(unittest.TestCase):
         )
         for options in cases:
             with self.subTest(options=options), self.assertRaises(ValueError):
-                self.run_capture(probe_get_config=True, **options)
+                self.run_capture(probe_get_config=True, allow_line_state_change=True, **options)
         self.preflight.assert_not_called()
         self.popen.assert_not_called()
 
     def test_get_config_uses_one_exact_frame_after_recorder_readiness(self):
-        result = self.run_capture(probe_get_config=True, allow_unknown_command=True, dtr=True, rts=True)
+        result = self.run_capture(probe_get_config=True, allow_unknown_command=True,
+                                  dtr=True, rts=True, allow_line_state_change=True)
         self.serial.assert_called_once()
         self.assertEqual(self.serial.call_args.kwargs["probe"].hex(), "efbe0000040000001133adde")
         self.assertTrue(self.serial.call_args.kwargs["line_state_at_open"])
@@ -228,7 +412,8 @@ class SessionTests(unittest.TestCase):
     def test_get_config_uncertain_write_is_never_retried(self):
         self.serial.side_effect = marvin_session.marvin_probe.serial.SerialTimeoutException("write outcome unknown")
         with self.assertRaisesRegex(OSError, "outcome unknown"):
-            self.run_capture(probe_get_config=True, allow_unknown_command=True, dtr=True, rts=True)
+            self.run_capture(probe_get_config=True, allow_unknown_command=True,
+                             dtr=True, rts=True, allow_line_state_change=True)
         self.serial.assert_called_once()
         self.process.send_signal.assert_called_once_with(signal.SIGINT)
         result = json.loads((self.output / "metadata.json").read_text())
@@ -239,12 +424,13 @@ class SessionTests(unittest.TestCase):
         for extra in ({}, {"probe_get_config": True}, {"probe_cr": True}):
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 self.run_capture(probe_get_unit_info=True, allow_unknown_command=True,
-                                 dtr=True, rts=True, **extra)
+                                 dtr=True, rts=True, allow_line_state_change=True, **extra)
         self.preflight.assert_not_called()
 
     def test_unit_info_is_one_explicit_stateful_request_not_a_handshake_sequence(self):
         result = self.run_capture(probe_get_unit_info=True, allow_unknown_command=True,
-                                  allow_telemetry_state_change=True, dtr=True, rts=True)
+                                  allow_telemetry_state_change=True, dtr=True, rts=True,
+                                  allow_line_state_change=True)
         self.serial.assert_called_once()
         self.assertEqual(self.serial.call_args.kwargs["probe"].hex(), "efbe01001b0000001736adde")
         self.assertEqual(result["probe_name"], "GetUnitInfo")
@@ -255,13 +441,15 @@ class SessionTests(unittest.TestCase):
         self.serial.side_effect = marvin_session.marvin_probe.serial.SerialTimeoutException("write outcome unknown")
         with self.assertRaisesRegex(OSError, "outcome unknown"):
             self.run_capture(probe_get_unit_info=True, allow_unknown_command=True,
-                             allow_telemetry_state_change=True, dtr=True, rts=True)
+                             allow_telemetry_state_change=True, dtr=True, rts=True,
+                             allow_line_state_change=True)
         self.serial.assert_called_once()
         self.assertEqual(json.loads((self.output / "metadata.json").read_text())["status"], "failed")
 
     def test_sensor_info_requires_all_guards_before_hardware(self):
         defaults = {"probe_get_sensor_info": True, "allow_unknown_command": True,
-                    "allow_telemetry_state_change": True, "dtr": True, "rts": True}
+                    "allow_telemetry_state_change": True, "dtr": True, "rts": True,
+                    "allow_line_state_change": True}
         for invalid in (
             {"allow_unknown_command": False}, {"allow_telemetry_state_change": False},
             {"dtr": False}, {"rts": False}, {"baudrate": 9600},
@@ -277,6 +465,7 @@ class SessionTests(unittest.TestCase):
     def test_sensor_info_sends_one_frame_not_an_automatic_handshake(self):
         result = self.run_capture(probe_get_sensor_info=True, allow_unknown_command=True,
                                   allow_telemetry_state_change=True, dtr=True, rts=True,
+                                  allow_line_state_change=True,
                                   probe_delay=0.2)
         self.serial.assert_called_once()
         request = self.serial.call_args.kwargs["probe"]
@@ -295,7 +484,8 @@ class SessionTests(unittest.TestCase):
         self.serial.side_effect = marvin_session.marvin_probe.serial.SerialTimeoutException("write outcome unknown")
         with self.assertRaisesRegex(OSError, "outcome unknown"):
             self.run_capture(probe_get_sensor_info=True, allow_unknown_command=True,
-                             allow_telemetry_state_change=True, dtr=True, rts=True)
+                             allow_telemetry_state_change=True, dtr=True, rts=True,
+                             allow_line_state_change=True)
         self.serial.assert_called_once()
         self.assertEqual(json.loads((self.output / "metadata.json").read_text())["status"], "failed")
 
@@ -303,6 +493,7 @@ class SessionTests(unittest.TestCase):
         argv = ["marvin_session", "--output", str(self.output), "--actuators-isolated",
                 "--probe-get-sensor-info", "--allow-unknown-command",
                 "--allow-telemetry-state-change", "--dtr", "--rts",
+                "--allow-line-state-change",
                 "--seconds", "15", "--probe-delay", "5"]
         with patch.object(marvin_session, "run_session", return_value={"status": "completed"}) as run:
             with patch("sys.argv", argv), redirect_stdout(io.StringIO()):
@@ -373,6 +564,8 @@ class SessionTests(unittest.TestCase):
                     recorded = json.loads((self.output / "metadata.json").read_text())
                     self.assertIs(recorded["line_state_trial_authorized"], True)
                     options = self.serial.call_args.kwargs
+                    self.assertIs(options["allow_line_state_change"], True)
+                    self.assertIs(result["line_state_change_authorized"], True)
                     self.assertIs(options["dtr"], dtr)
                     self.assertIs(options["rts"], rts)
                     self.assertEqual(options["probe_schedule"], schedule)
@@ -393,6 +586,23 @@ class SessionTests(unittest.TestCase):
         self.popen.assert_not_called()
         self.serial.assert_not_called()
         self.assertFalse(self.output.exists())
+
+    def test_generic_consent_also_authorizes_valid_schedules_without_a_trial(self):
+        for profile in ("modern", "legacy", "experimental-successor"):
+            with self.subTest(profile=profile):
+                self.output = Path(self.temp.name) / profile
+                self.clock.now = 0
+                data = marvin_legacy_protocol.get_config_request() if profile == "legacy" else b"\r"
+                schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, data, "query"),)
+                result = self.run_capture(
+                    probe_schedule=schedule, probe_profile=profile, dtr=True,
+                    allow_unknown_command=True, allow_telemetry_state_change=profile != "legacy",
+                    allow_line_state_change=True,
+                )
+                self.assertIs(result["line_state_trial_authorized"], False)
+                self.assertIs(result["line_state_change_authorized"], True)
+                self.assertIs(self.serial.call_args.kwargs["allow_line_state_change"], True)
+                self.assertEqual(self.serial.call_args.kwargs["probe_schedule"], schedule)
 
     def test_campaign_forwards_schedule_framing_and_short_bounded_usb_tail(self):
         schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, b"help\r", "help/0"),)
@@ -422,6 +632,7 @@ class SessionTests(unittest.TestCase):
             with self.subTest(probe=probe), self.assertRaises(ValueError):
                 self.run_capture(**{probe: True}, allow_unknown_command=True,
                                  allow_telemetry_state_change=True, dtr=True, rts=True,
+                                 allow_line_state_change=True,
                                  bytesize=7, parity="E")
         self.preflight.assert_not_called()
 

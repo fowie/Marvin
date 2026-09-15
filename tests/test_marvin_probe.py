@@ -79,7 +79,7 @@ class ListenTests(unittest.TestCase):
 
     def test_dtr_is_asserted_only_after_open_when_requested(self):
         self.transport.open.side_effect = lambda: self.assertFalse(self.transport.dtr)
-        result = self.capture(dtr=True)
+        result = self.capture(dtr=True, allow_line_state_change=True)
         self.assertTrue(self.transport.dtr)
         self.assertFalse(self.transport.rts)
         self.assertFalse(result["dtr_initial_requested"])
@@ -91,7 +91,7 @@ class ListenTests(unittest.TestCase):
         self.transport.open.side_effect = lambda: self.assertEqual(
             (self.transport.dtr, self.transport.rts), (False, False)
         )
-        result = self.capture(dtr=True, rts=True)
+        result = self.capture(dtr=True, rts=True, allow_line_state_change=True)
         self.assertTrue(self.transport.dtr)
         self.assertTrue(self.transport.rts)
         self.assertFalse(result["rts_initial_requested"])
@@ -106,7 +106,7 @@ class ListenTests(unittest.TestCase):
 
     def test_non_boolean_flags_cannot_authorize_device_access(self):
         for name in ("actuators_isolated", "allow_unknown_command", "allow_telemetry_state_change",
-                     "dtr", "rts", "line_state_at_open"):
+                     "allow_line_state_change", "dtr", "rts", "line_state_at_open"):
             for value in (1, 0, "false", "true", None, [], [True]):
                 with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "boolean"):
                     self.capture(**{name: value})
@@ -118,7 +118,7 @@ class ListenTests(unittest.TestCase):
         self.transport.open.side_effect = lambda: self.assertEqual(
             (self.transport.dtr, self.transport.rts), (True, True)
         )
-        result = self.capture(dtr=True, rts=True, line_state_at_open=True)
+        result = self.capture(dtr=True, rts=True, line_state_at_open=True, allow_line_state_change=True)
         self.assertTrue(result["dtr_initial_requested"])
         self.assertTrue(result["rts_initial_requested"])
         events = (self.output / "events.jsonl").read_text()
@@ -126,6 +126,70 @@ class ListenTests(unittest.TestCase):
         self.assertNotIn("rts_change_attempt", events)
         self.transport.open.assert_called_once()
         self.transport.write.assert_not_called()
+
+    def test_line_assertions_require_exact_separate_consent_before_any_device_or_output(self):
+        for profile in ("modern", "legacy", "experimental-successor"):
+            data = (marvin_legacy_protocol.get_config_request() if profile == "legacy"
+                    else marvin_protocol.get_config_request())
+            for dtr, rts in ((True, False), (False, True), (True, True)):
+                for at_open in (False, True):
+                    for selection in ({}, {"probe": data}, {"probe_schedule": (
+                        marvin_probe.ScheduledWrite(0, data, "config"),)}):
+                        for consent in ({}, {"allow_line_state_change": False},
+                                        *({"allow_line_state_change": value}
+                                          for value in (1, 0, "true", "false", None, [], [True], object()))):
+                            with self.subTest(profile=profile, lines=(dtr, rts), at_open=at_open,
+                                              selection=selection, consent=consent):
+                                with self.assertRaisesRegex(ValueError, "line-state|allow_line_state_change"):
+                                    self.capture(
+                                        dtr=dtr, rts=rts, line_state_at_open=at_open,
+                                        probe_profile=profile, allow_unknown_command=True,
+                                        allow_telemetry_state_change=True, **selection, **consent,
+                                    )
+        self.udev.assert_not_called()
+        self.ownership.assert_not_called()
+        self.factory.assert_not_called()
+        self.ioctl.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_authorized_lines_and_unconsented_low_defaults_keep_open_timing_and_metadata(self):
+        for dtr, rts in ((False, False), (True, False), (False, True), (True, True)):
+            for at_open in (False, True):
+                with self.subTest(lines=(dtr, rts), at_open=at_open):
+                    self.output = Path(self.directory.name) / f"lines-{dtr}-{rts}-{at_open}"
+                    initial = (dtr, rts) if at_open else (False, False)
+                    self.transport.open.side_effect = lambda: self.assertEqual(
+                        (self.transport.dtr, self.transport.rts), initial)
+                    result = self.capture(
+                        dtr=dtr, rts=rts, line_state_at_open=at_open,
+                        allow_line_state_change=dtr or rts,
+                    )
+                    self.assertEqual((self.transport.dtr, self.transport.rts), (dtr, rts))
+                    self.assertIs(result["line_state_change_authorized"], dtr or rts)
+                    recorded = json.loads((self.output / "metadata.json").read_text())
+                    self.assertIs(recorded["line_state_change_authorized"], dtr or rts)
+                    self.transport.write.assert_not_called()
+
+    def test_cli_asserted_lines_require_and_forward_separate_consent(self):
+        for lines in (["--dtr"], ["--rts"], ["--dtr", "--rts"]):
+            for at_open in ([], ["--line-state-at-open"]):
+                with self.subTest(lines=lines, at_open=at_open):
+                    self.output = Path(self.directory.name) / f"cli-{len(list(Path(self.directory.name).iterdir()))}"
+                    argv = ["marvin_probe", "--actuators-isolated", "--output", str(self.output),
+                            "--seconds", "1", "--max-bytes", "3", *lines, *at_open]
+                    self.udev.reset_mock()
+                    self.factory.reset_mock()
+                    with patch.object(sys, "argv", argv), patch.object(sys, "stderr"):
+                        self.assertEqual(marvin_probe.main(), 1)
+                    self.udev.assert_not_called()
+                    self.factory.assert_not_called()
+                    self.assertFalse(self.output.exists())
+                    with patch.object(sys, "argv", [*argv, "--allow-line-state-change"]), \
+                            patch.object(sys, "stdout"):
+                        self.assertEqual(marvin_probe.main(), 0)
+                    self.factory.assert_called_once()
+                    self.assertIs(json.loads((self.output / "metadata.json").read_text())[
+                        "line_state_change_authorized"], True)
 
     def test_guard_failure_prevents_open(self):
         guard = Mock(side_effect=OSError("USB recorder stopped"))
@@ -240,13 +304,14 @@ class ListenTests(unittest.TestCase):
                      marvin_legacy_protocol.get_config_request(),
                      bytes.fromhex("efbe0000040000001033adde")):
             with self.subTest(data=data), self.assertRaises(ValueError):
-                self.capture(probe=data, allow_unknown_command=True, allow_telemetry_state_change=True)
+                self.capture(probe=data, allow_unknown_command=True, allow_telemetry_state_change=True,
+                             dtr=True, allow_line_state_change=True)
             schedule = [marvin_probe.ScheduledWrite(0, data[:1], "a")]
             if len(data) > 1:
                 schedule.append(marvin_probe.ScheduledWrite(0.1, data[1:], "b"))
             with self.subTest(schedule=schedule), self.assertRaises(ValueError):
                 self.capture(probe_schedule=schedule, allow_unknown_command=True,
-                             allow_telemetry_state_change=True)
+                             allow_telemetry_state_change=True, dtr=True, allow_line_state_change=True)
         self.udev.assert_not_called()
         self.factory.assert_not_called()
         self.assertFalse(self.output.exists())
@@ -355,7 +420,8 @@ class ListenTests(unittest.TestCase):
             result = self.capture(seconds=0.9, max_bytes=64, allow_unknown_command=True,
                                   probe_schedule=schedule, guard=guard, line_state_at_open=True,
                                   probe_profile="experimental-successor",
-                                  dtr=True, rts=True, bytesize=7, parity="E", stopbits=2)
+                                  dtr=True, rts=True, allow_line_state_change=True,
+                                  bytesize=7, parity="E", stopbits=2)
         return result, writes
 
     def test_schedule_keeps_one_open_and_preserves_minimum_response_spacing(self):

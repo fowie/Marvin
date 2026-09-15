@@ -100,7 +100,7 @@ def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=Fals
     if allow_line_state_change is not True:
         raise ValueError("--allow-line-state-change must acknowledge DTR/RTS transitions and possible firmware effects.")
     baseline = marvin_session.preflight(port)
-    output = Path(output).resolve()
+    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     metadata = {
         "status": "incomplete",
@@ -138,6 +138,7 @@ def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=Fals
     options = {
         "actuators_isolated": True, "sudo_usbmon": sudo_usbmon,
         "usbmon_backend": "binary", "baudrate": 115200, "dtr": True, "rts": True,
+        "allow_line_state_change": allow_line_state_change,
     }
     marvin_session.write_json(output / "metadata.json", metadata)
     try:

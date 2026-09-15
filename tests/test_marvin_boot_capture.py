@@ -81,6 +81,8 @@ class BootTests(unittest.TestCase):
             self.assertNotIn("probe_cr", call.kwargs)
             self.assertTrue(call.kwargs["dtr"])
             self.assertTrue(call.kwargs["rts"])
+            self.assertIs(call.kwargs["allow_line_state_change"], True)
+            self.assertNotIn("allow_line_state_trial", call.kwargs)
         self.assertTrue((self.output / "before-cycle-ready.json").exists())
         self.assertTrue((self.output / "after-cycle-ready.json").exists())
         self.assertTrue((self.output / "SHA256SUMS").exists())
@@ -184,6 +186,23 @@ class BootTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.run_boot()
         self.segment.assert_not_called()
+
+    def test_dangling_output_symlink_cannot_redirect_evidence(self):
+        root = Path(self.temp.name)
+        for relative in (False, True):
+            with self.subTest(relative=relative):
+                target = root / f"missing-target-{relative}"
+                self.output = root / f"output-link-{relative}"
+                destination = Path(target.name) if relative else target
+                self.output.symlink_to(destination, target_is_directory=True)
+                with self.assertRaises(FileExistsError) as raised:
+                    self.run_boot()
+                self.assertEqual(raised.exception.filename, str(self.output))
+                self.assertEqual(self.output.readlink(), destination)
+                self.assertFalse(target.exists())
+        self.segment.assert_not_called()
+        self.changed.assert_not_called()
+        self.returned.assert_not_called()
 
     def test_accepts_same_physical_device_with_new_address(self):
         boot.validate_return(BASELINE, RETURNED)

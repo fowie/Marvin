@@ -40,12 +40,16 @@ request-shape checks. The one-shot CLI accepts named requests, not arbitrary hex
 Stateful identification queries require separate telemetry-state acknowledgment.
 The legacy `get-unit-info --run` command requires
 `--allow-telemetry-state-change`; boot observation separately requires
-`--allow-line-state-change` for its DTR/RTS requests.
+`--allow-line-state-change` for its DTR/RTS requests and forwards it through
+the coordinator to the serial capture boundary. Direct serial capture and
+coordinator sessions likewise require separate `--allow-line-state-change`
+consent whenever DTR or RTS is asserted, before or after opening the port.
 Historical campaign execution requires `--allow-line-state-trials`, recorded
-and forwarded to each segment. Direct coordinator schedules that assert DTR or
-RTS require `allow_line_state_trial=True`; low/low schedule defaults, including
-the fixed legacy wrapper settings, remain unchanged. Named query restrictions
-are unchanged; this acknowledgment never widens a transmit profile.
+and forwarded to each segment. Validated coordinator GetConfig/schedule
+`allow_line_state_trial=True` consent also authorizes the serial line request.
+Generic consent never waives named-query line/framing restrictions. Low/low
+defaults, including the fixed legacy wrapper settings, remain usable without
+fabricated consent. Neither acknowledgment widens a transmit profile.
 Safety acknowledgments and boolean selectors reject strings and integers rather
 than interpreting their truthiness as consent.
 

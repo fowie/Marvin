@@ -125,6 +125,7 @@ def run_trials(
     metadata = {
         "status": "incomplete", "started_at": marvin_probe.utc_now(),
         "plan": plan, "baseline": baseline, "initial_power_state": power_state,
+        "line_state_trials_authorized": allow_line_state_trials,
         "cases": [], "automatic_retries": False,
     }
     path = output / "metadata.json"
@@ -141,7 +142,7 @@ def run_trials(
                 baudrate=115200, dtr=case["dtr"], rts=case["rts"],
                 actuators_isolated=True, sudo_usbmon=sudo_usbmon,
                 probe_get_config=True, allow_unknown_command=True,
-                allow_line_state_trial=True, expected_usb_identity=baseline["usb"],
+                allow_line_state_trial=allow_line_state_trials, expected_usb_identity=baseline["usb"],
             )
             assessment = assess_case(output / case["name"], result)
             entry.update(status="completed", assessment=assessment)

@@ -245,7 +245,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
     baseline = marvin_session.preflight(port)
     if baseline["usb"]["descriptors_sha256"] != DESCRIPTOR_HASH:
         raise ValueError("Marvin's descriptor fingerprint changed; review it before transmitting.")
-    output = Path(output).resolve()
+    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     marvin_session.write_json(output / "plan.json", plan)
     metadata = {

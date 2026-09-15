@@ -220,7 +220,7 @@ that our installed firmware accepts the same commands:
 
 ```sh
 .venv/bin/python tools/marvin_session.py \
-  --actuators-isolated --dtr --rts \
+  --actuators-isolated --dtr --rts --allow-line-state-change \
   --seconds 60 --baudrate 115200 \
   --output /absolute/path/to/a/new/observation
 ```
@@ -244,7 +244,7 @@ so the sudo authentication applies to the capture subprocess:
 ```sh
 sudo -v &&
 .venv/bin/python tools/marvin_session.py \
-  --sudo-usbmon --actuators-isolated --dtr --rts \
+  --sudo-usbmon --actuators-isolated --dtr --rts --allow-line-state-change \
   --seconds 60 --baudrate 115200 \
   --output /absolute/path/to/a/new/observation
 ```
@@ -374,11 +374,15 @@ or identity change stops the series. It never resumes or retries a case.
 For named coordinator queries, departures from DTR/RTS high/high require the
 separate `--allow-line-state-trial` option; that exception still applies only
 to GetConfig at 115200/8N1, not GetUnitInfo or GetSensorInfo. The coordinator's
-Python schedule API separately requires `allow_line_state_trial=True` whenever
-DTR or RTS is asserted, for every transmit profile. Its existing low/low
-schedule defaults, including the fixed legacy wrapper settings, remain
-unchanged. Authorization never bypasses byte/profile validation or permits
-combining a schedule with a named probe.
+Python schedule API requires `allow_line_state_trial=True` or the generic
+`allow_line_state_change=True` whenever DTR or RTS is asserted, for every
+transmit profile. Generic line-state consent also supports passive sessions,
+CR, and named queries using their required settings; it never waives the
+GetConfig-only exception or the named-query line/framing restrictions. Valid
+trial consent is forwarded as explicit line-state consent to serial capture.
+Its existing low/low defaults, including the fixed legacy wrapper settings,
+remain unchanged. Authorization never bypasses byte/profile validation or
+permits combining a schedule with a named probe.
 
 Reopening the port does not reset the controller: firmware/parser state can
 carry across cases, and kernel-open line transients remain possible.
@@ -418,6 +422,7 @@ approved second stage can use a fresh output directory:
 ```sh
 .venv/bin/python tools/marvin_session.py --sudo-usbmon \
   --actuators-isolated --dtr --rts --seconds 15 --probe-delay 5 \
+  --allow-line-state-change \
   --probe-get-sensor-info --allow-unknown-command \
   --allow-telemetry-state-change \
   --output /absolute/path/to/a/new/sensor-info-capture
@@ -489,7 +494,9 @@ and telemetry-state consent do not imply line-state consent. Missing/false or
 non-boolean consent fails before identity preflight, output creation, or a
 capture. Campaign metadata records `line_state_trials_authorized`, and every
 segment receives the corresponding coordinator `allow_line_state_trial` flag,
-recorded as `line_state_trial_authorized`. This acknowledges possible DTR/RTS
+recorded as `line_state_trial_authorized`. The coordinator forwards this
+validated consent to serial capture as `allow_line_state_change=True`;
+both record `line_state_change_authorized`. This acknowledges possible DTR/RTS
 firmware state/reset effects; it does not establish safety or eliminate
 kernel-open transients. Planned bytes, line settings, and segment timing are
 unchanged.
@@ -600,6 +607,9 @@ unrelated error stops the observation. No application bytes are sent.
 The separate `--allow-line-state-change` flag acknowledges both segments'
 DTR/RTS-high requests, which can affect or reset custom firmware despite the
 absence of application writes. Isolation alone does not authorize these effects.
+The wrapper forwards that same explicit consent through both coordinator
+segments to serial capture; no synthetic probe, schedule, or GetConfig trial
+is needed or selected for a line-only observation.
 
 This is **segmented recording**, not a continuous capture of enumeration:
 there is a gap between device removal and readiness of the second recorder.
@@ -660,6 +670,18 @@ states, not automatic hardware flow control.
 Use `--line-state-at-open` to request the selected DTR/RTS values before open
 instead of making those additional post-open transitions.
 
+Both direct serial capture and the coordinator require separate
+`--allow-line-state-change` consent whenever either line is asserted, regardless
+of whether the assertion is requested before or after open. In Python use
+`allow_line_state_change=True`; strings, integers, and other truthy values are
+rejected before identity/device access or output creation. Isolation,
+telemetry-state consent, and selection/authorization of a query or schedule do
+not imply line-state consent. `--line-state-at-open` with both lines low does
+not require it. Serial metadata records the exact forwarded consent as
+`line_state_change_authorized`; coordinator metadata records the effective
+generic or valid trial consent and separately records trial authorization.
+Neither consent guarantees freedom from kernel-open/close transients.
+
 **Receive-only is not electrically passive.** Opening sets CDC line coding and
 control lines, driver transients may occur, and pySerial discards queued input
 during open. A very early startup banner could therefore be missed. Silence
@@ -682,7 +704,7 @@ do not substitute this 12-byte request:
 ```sh
 sudo -v &&
 .venv/bin/python tools/marvin_session.py \
-  --sudo-usbmon --actuators-isolated --dtr --rts \
+  --sudo-usbmon --actuators-isolated --dtr --rts --allow-line-state-change \
   --probe-get-config --allow-unknown-command \
   --seconds 10 --baudrate 115200 \
   --output /absolute/path/to/a/new/get-config-observation
@@ -734,7 +756,7 @@ For an independently authorized single carriage-return experiment:
 
 ```sh
 .venv/bin/python tools/marvin_probe.py \
-  --actuators-isolated --dtr \
+  --actuators-isolated --dtr --allow-line-state-change \
   --probe cr --allow-unknown-command \
   --output /path/to/a/new/carriage-return-capture
 ```
@@ -752,7 +774,7 @@ the coordinated recorder rather than sending an untraced probe:
 ```sh
 sudo -v &&
 .venv/bin/python tools/marvin_session.py \
-  --sudo-usbmon --actuators-isolated --dtr --rts \
+  --sudo-usbmon --actuators-isolated --dtr --rts --allow-line-state-change \
   --probe-cr --allow-unknown-command \
   --seconds 10 --baudrate 115200 \
   --output /absolute/path/to/a/new/traced-cr-observation

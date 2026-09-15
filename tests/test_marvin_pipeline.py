@@ -206,6 +206,7 @@ class PipelineTests(unittest.TestCase):
                         allow_unknown_command=probe_cr or query,
                         allow_telemetry_state_change=sensor_response,
                         allow_line_state_trial=campaign_pair,
+                        allow_line_state_change=not campaign_pair,
                         probe_delay=probe_delay,
                     )
                 self.assertEqual(result["status"], "completed")
