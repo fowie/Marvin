@@ -122,6 +122,23 @@ class TrialTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             return marvin_trials.run_trials("/dev/fake", self.output, **kwargs)
 
+    def test_dangling_output_symlink_cannot_redirect_evidence(self):
+        root = Path(self.temp.name)
+        for relative in (False, True):
+            with self.subTest(relative=relative):
+                target = root / f"missing-target-{relative}"
+                self.output = root / f"output-link-{relative}"
+                destination = Path(target.name) if relative else target
+                self.output.symlink_to(destination, target_is_directory=True)
+                with self.assertRaises(FileExistsError) as raised:
+                    self.run_trials()
+                self.assertEqual(raised.exception.filename, str(self.output))
+                self.assertEqual(self.output.readlink(), destination)
+                self.assertFalse(target.exists())
+        self.identity.assert_not_called()
+        self.run_session.assert_not_called()
+        self.assertEqual(self.calls, [])
+
     def test_four_fixed_cases_are_bounded_and_pin_identity(self):
         result = self.run_trials()
         self.assertEqual(result["status"], "completed_silent")

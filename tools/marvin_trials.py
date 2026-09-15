@@ -120,7 +120,7 @@ def run_trials(
     if power_state not in POWER_STATES:
         raise ValueError("Power state must be explicit and supported.")
     baseline = marvin_session.preflight(port)
-    output = Path(output).resolve()
+    output = Path(output).absolute()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     metadata = {
         "status": "incomplete", "started_at": marvin_probe.utc_now(),
