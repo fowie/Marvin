@@ -54,6 +54,7 @@ def wait_for_identity_change(baseline, timeout=IDENTITY_TRANSITION_SECONDS):
     deadline = _poll_deadline(timeout, IDENTITY_TRANSITION_SECONDS)
     while time.monotonic() < deadline:
         if identity_changed(baseline):
+            # A metadata lookup begun on time can still finish after the deadline.
             return time.monotonic() < deadline
         remaining = deadline - time.monotonic()
         if remaining > 0:

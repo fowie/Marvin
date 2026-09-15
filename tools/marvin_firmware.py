@@ -6,6 +6,8 @@ Inputs must be finished local regular files, not symlinks, special files or
 /dev, /proc, /sys interfaces. Images are limited to the 256-KiB flash region;
 register-snapshot JSON retains its 64-KiB limit. Oversized inputs are rejected,
 never truncated. Duplicate JSON keys are rejected, even with identical values.
+Report destinations use the same symlink-free path checks and exclusive creation.
+Parent checks are snapshots, not protection against concurrent path replacement.
 """
 
 import argparse
@@ -19,6 +21,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.marvin_json import unique_object
+from tools.marvin_paths import new_output_path
 from tools.marvin_stream import read_regular_file
 
 
@@ -100,9 +103,9 @@ def inspect_read_protection(path):
 
 
 def audit(first, second, *, registers=None):
+    images = [inspect_image(first), inspect_image(second)]
     if Path(first).samefile(second):
         raise ValueError("Select two distinct acquisition files, not the same file twice.")
-    images = [inspect_image(first), inspect_image(second)]
     protection = inspect_read_protection(registers)
     consistent = images[0]["sha256"] == images[1]["sha256"]
     problems = []
@@ -139,10 +142,11 @@ def main():
     parser.add_argument("--output", type=Path, help="Optional new JSON report; never overwrites")
     args = parser.parse_args()
     try:
+        output = new_output_path(args.output) if args.output is not None else None
         result = audit(args.first, args.second, registers=args.registers)
         text = json.dumps(result, indent=2) + "\n"
-        if args.output is not None:
-            with args.output.open("x", encoding="utf-8") as stream:
+        if output is not None:
+            with output.open("x", encoding="utf-8") as stream:
                 stream.write(text)
         print(text, end="")
     except (OSError, ValueError, RecursionError) as error:

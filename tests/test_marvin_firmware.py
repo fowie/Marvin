@@ -1,6 +1,7 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import stat
 import struct
@@ -189,6 +190,106 @@ class FirmwareTests(unittest.TestCase):
         for second in (self.first, alias):
             with self.subTest(second=second), self.assertRaisesRegex(ValueError, "distinct"):
                 marvin_firmware.audit(self.first, second)
+
+    def test_audit_rejects_both_image_boundaries_before_samefile(self):
+        special = self.root / "special"
+        real_lstat = Path.lstat
+        cases = [(Path(root) / "not-an-image", None) for root in ("/dev", "/proc", "/sys")]
+        cases.extend((special, mode) for mode in (
+            stat.S_IFCHR, stat.S_IFBLK, stat.S_IFIFO, stat.S_IFSOCK,
+        ))
+        for unsafe, mode in cases:
+            def inspect(path):
+                if any(path.is_relative_to(root) for root in ("/dev", "/proc", "/sys")):
+                    raise AssertionError("kernel metadata accessed")
+                if path == special:
+                    return SimpleNamespace(st_mode=mode, st_size=0)
+                return real_lstat(path)
+
+            for first, second in ((unsafe, self.second), (self.first, unsafe), (unsafe, unsafe)):
+                with self.subTest(first=first, second=second, mode=mode), \
+                        patch.object(Path, "lstat", autospec=True, side_effect=inspect), \
+                        patch.object(Path, "samefile", side_effect=AssertionError("samefile before validation")) as same:
+                    with self.assertRaises(ValueError):
+                        marvin_firmware.audit(first, second)
+                    same.assert_not_called()
+
+    def test_invalid_report_destinations_fail_before_audit_or_creation(self):
+        directory = self.root / "reports"
+        directory.mkdir()
+        link = self.root / "linked"
+        link.symlink_to(directory, target_is_directory=True)
+        dangling = self.root / "dangling"
+        dangling.symlink_to("missing")
+        outputs = (
+            self.first, directory, link, dangling, link / "new.json", link / ".." / "new.json",
+            dangling / "new.json", self.first / "new.json", self.root / "missing" / "new.json",
+            Path("/dev/new.json"), Path("/proc/new.json"), Path("/sys/new.json"),
+        )
+        before = self.first.read_bytes()
+        for output in outputs:
+            relative = Path(os.path.relpath(output.anchor)) / output.relative_to(output.anchor)
+            for spelling in (str(output), str(relative)):
+                stderr, stdout = io.StringIO(), io.StringIO()
+                with self.subTest(output=spelling), \
+                        patch.object(sys, "argv", ["marvin_firmware", str(self.first), str(self.second),
+                                                  "--output", spelling]), \
+                        patch.object(marvin_firmware, "audit", side_effect=AssertionError("unexpected audit")) as audit, \
+                        patch.object(Path, "open", side_effect=AssertionError("unexpected output open")) as opening, \
+                        patch.object(Path, "resolve", side_effect=AssertionError("unexpected link resolution")), \
+                        redirect_stderr(stderr), redirect_stdout(stdout):
+                    self.assertEqual(marvin_firmware.main(), 1)
+                self.assertIn("Firmware screening failed:", stderr.getvalue())
+                self.assertEqual(stdout.getvalue(), "")
+                audit.assert_not_called()
+                opening.assert_not_called()
+        self.assertEqual(self.first.read_bytes(), before)
+        self.assertEqual(list(directory.iterdir()), [])
+        self.assertFalse((self.root / "missing").exists())
+        self.assertFalse((self.root / "new.json").exists())
+
+    def test_report_creation_remains_exclusive_after_prevalidation(self):
+        actual_audit = marvin_firmware.audit
+        for kind in ("file", "link"):
+            report = self.root / f"raced-{kind}.json"
+
+            def racing_audit(*args, **kwargs):
+                result = actual_audit(*args, **kwargs)
+                if kind == "file":
+                    report.write_bytes(b"another report")
+                else:
+                    report.symlink_to(self.first)
+                return result
+
+            with self.subTest(kind=kind), \
+                    patch.object(sys, "argv", ["marvin_firmware", str(self.first), str(self.second),
+                                              "--output", str(report)]), \
+                    patch.object(marvin_firmware, "audit", side_effect=racing_audit), \
+                    redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+                self.assertEqual(marvin_firmware.main(), 1)
+            if kind == "file":
+                self.assertEqual(report.read_bytes(), b"another report")
+            else:
+                self.assertEqual(report.readlink(), self.first)
+            self.assertEqual(self.first.read_bytes(), self.image)
+            self.assertEqual(self.second.read_bytes(), self.image)
+
+    def test_valid_report_paths_keep_cli_output_and_never_overwrite(self):
+        for relative in (False, True):
+            report = self.root / f"report-{relative}.json"
+            spelling = os.path.relpath(report) if relative else str(report)
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with patch.object(sys, "argv", [
+                "marvin_firmware", str(self.first), str(self.second),
+                "--registers", str(self.registers), "--output", spelling,
+            ]), redirect_stdout(stdout), redirect_stderr(stderr):
+                self.assertEqual(marvin_firmware.main(), 0)
+                self.assertEqual(report.read_text(), stdout.getvalue())
+                self.assertEqual(json.loads(report.read_text())["status"], "passed_preliminary_screen")
+                self.assertEqual(stderr.getvalue(), "")
+                previous = report.read_bytes()
+                self.assertEqual(marvin_firmware.main(), 1)
+                self.assertEqual(report.read_bytes(), previous)
 
     def test_different_images_require_investigation(self):
         self.image[-1] = 0

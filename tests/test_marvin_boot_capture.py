@@ -443,13 +443,16 @@ class ReturnTests(unittest.TestCase):
             self.assertEqual(self.sleep.call_count, 3)
             self.assertEqual(self.clock.now, 0.25)
 
-    def test_identity_transition_reported_after_deadline_is_not_accepted(self):
-        def late_change(baseline):
-            self.clock.now = boot.IDENTITY_TRANSITION_SECONDS
-            return True
+    def test_identity_transition_must_finish_strictly_before_deadline(self):
+        for offset in (-0.001, 0, 0.001):
+            self.clock.now = 0
 
-        with patch.object(boot, "identity_changed", side_effect=late_change):
-            self.assertFalse(boot.wait_for_identity_change(BASELINE))
+            def observe_change(baseline):
+                self.clock.now = boot.IDENTITY_TRANSITION_SECONDS + offset
+                return True
+
+            with self.subTest(offset=offset), patch.object(boot, "identity_changed", side_effect=observe_change):
+                self.assertEqual(boot.wait_for_identity_change(BASELINE), offset < 0)
         self.sleep.assert_not_called()
 
     def test_permission_failure_is_not_device_removal(self):

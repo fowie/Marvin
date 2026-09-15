@@ -16,11 +16,12 @@ def new_output_path(output, *, allow_missing_parents=False):
 
     Every supplied ancestor must be a directory, never a symlink or special
     file. Modern callers can allow missing parents; legacy callers require
-    existing parents. Nothing is created here. Callers must still use exclusive
-    mkdir: these checks cannot lock ancestors against concurrent replacement.
+    existing parents. Nothing is created here. Directory and file writers must
+    still use exclusive creation: these checks cannot lock ancestors against
+    concurrent replacement.
     """
     if output is None:
-        raise ValueError("A new output directory is required.")
+        raise ValueError("A new output destination is required.")
     if type(allow_missing_parents) is not bool:
         raise ValueError("allow_missing_parents must be an explicit boolean.")
     supplied = Path(output)
