@@ -162,7 +162,7 @@ The `Transport` protocol is intentionally stricter than a serial file handle:
 | `identity(deadline=...) -> bytes` | Current pinned identity, including a connection-generation marker that changes on disappearance/re-enumeration; return 1..1024 immutable bytes or raise `OSError` on loss. |
 | `write(data, deadline=...) -> int` | Submit exactly once; return the accepted byte count. No internal retry, reconnect or hidden extra writes. |
 | `read(max_bytes, deadline=...) -> Received or None` | Return at most `max_bytes` immutable bytes in stream order with trustworthy, conservative ingestion-time bounds; `None` means no input, not disconnect. |
-| `close(deadline=...)` | Bounded release, also after failure; report operational errors as `OSError`. No hidden reset, writes or retry. |
+| `close(deadline=...) -> None` | Bounded release, also after failure; return exactly `None` or report operational errors as `OSError`. Any other return is a cleanup error and invalidates the session. No hidden reset, writes or retry. |
 
 Every method and the clock must return within its bound. Python cannot preempt
 a blocking/uncooperative adapter; post-call checks detect overruns but are not a

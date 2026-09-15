@@ -552,6 +552,35 @@ class LegacyClientTests(unittest.TestCase):
                     self.assertEqual(session.state, "invalid")
                     self.assertEqual((session.accepted_bytes, session.uncertain_bytes), (0, 10))
 
+    def test_invalid_close_results_invalidate_without_masking_primary_failure(self):
+        for result in (True, False, 0, 1, "", b"", [], {}, object()):
+            for primary_failure in (False, True):
+                with self.subTest(result=result, primary_failure=primary_failure):
+                    session, transport, _ = self.make_client()
+                    with patch.object(transport, "close", return_value=result) as close:
+                        session.start()
+                        with self.assertRaises(client.SessionError) as raised:
+                            if primary_failure:
+                                transport.count = 3
+                                session.request("get-config", timeout=1)
+                            else:
+                                session.close()
+                        expected_code = "short_write" if primary_failure else "cleanup_failed"
+                        self.assertEqual(raised.exception.code, expected_code)
+                        self.assertEqual(session.failure.code, expected_code)
+                        self.assertEqual(session.state, "invalid")
+                        self.assertEqual(session.cleanup_errors, (
+                            client.Failure("close_result", "Adapter close must return exactly None."),
+                        ))
+                        self.assertEqual((session.accepted_bytes, session.uncertain_bytes),
+                                         (3, 7) if primary_failure else (0, 0))
+                        session.close()
+                        close.assert_called_once()
+                    # A failed close releases local claims, but a new session must revalidate.
+                    fresh, _, _ = self.make_client()
+                    with fresh:
+                        self.assertEqual(fresh.state, "active")
+
     def test_cleanup_deadline_and_caller_exception(self):
         session, transport, clock = self.make_client()
         transport.on_close = lambda: setattr(clock, "now", clock.now + 2)

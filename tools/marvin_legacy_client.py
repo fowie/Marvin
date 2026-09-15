@@ -464,7 +464,9 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                 self._cleanup_errors.append(Failure("cleanup_clock", str(error)[:1024]))
                 now = self._last_now
             try:
-                self._transport.close(deadline=now + self._cleanup_timeout)
+                result = self._transport.close(deadline=now + self._cleanup_timeout)
+                if result is not None:
+                    self._cleanup_errors.append(Failure("close_result", "Adapter close must return exactly None."))
                 if self._now() >= now + self._cleanup_timeout:
                     self._cleanup_errors.append(Failure("close_deadline", "Adapter close exceeded its deadline."))
             except (OSError, ValueError, TypeError, RuntimeError) as error:
