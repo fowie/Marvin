@@ -185,6 +185,53 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             protocol.decode_packet(data + b"\x00")
 
+    def test_mutable_inputs_produce_detached_immutable_validated_payloads(self):
+        payload = struct.pack("<III", 45949, 0x10300, 0x01020304) + bytes(range(96))
+        for wrap in (bytes, bytearray, memoryview, lambda data: memoryview(data).toreadonly()):
+            with self.subTest(wrap=wrap):
+                source = bytearray(response(payload))
+                packet = protocol.decode_packet(wrap(source))
+                self.assertIsInstance(packet.payload, bytes)
+                self.assertEqual(packet.payload, payload)
+                source[8:20] = b"\xff" * 12
+                self.assertEqual(packet.payload, payload)
+                self.assertEqual(packet.unit_info(), {
+                    "fw_version": 45949, "comm_version": 66304, "serial_number": 16909060,
+                })
+                with self.assertRaises(TypeError):
+                    packet.payload[0] = 0
+
+    def test_mutation_during_crc_validation_cannot_change_the_returned_snapshot(self):
+        payload = b"validated before mutation"
+        source = bytearray(response(payload))
+        expected = protocol.decode_packet(bytes(source))
+        crc16 = protocol.crc16
+
+        def mutate_original(data):
+            self.assertIsInstance(data, bytes)
+            source[8] ^= 0xFF
+            return crc16(data)
+
+        with patch.object(protocol, "crc16", side_effect=mutate_original):
+            self.assertEqual(protocol.decode_packet(source), expected)
+        self.assertNotEqual(source[8:-4], payload)
+
+    def test_packet_snapshot_rejects_non_byte_inputs_and_oversize_frames(self):
+        valid = response(b"\0" * 4)
+        invalid = (None, True, 1000000000, "not bytes", list(valid),
+                   memoryview(valid)[::2], memoryview(valid).cast("H"))
+        with patch.object(protocol, "crc16") as crc:
+            for data in invalid:
+                with self.subTest(kind=type(data)), self.assertRaises(TypeError):
+                    protocol.decode_packet(data)
+            with self.assertRaisesRegex(ValueError, "payload length"):
+                protocol.decode_packet(bytearray(12 + 0xFFFF + 1))
+            crc.assert_not_called()
+        payload = b"x" * 0xFFFF
+        packet = protocol.decode_packet(bytearray(response(payload, command=250)))
+        self.assertIsInstance(packet.payload, bytes)
+        self.assertEqual(packet.payload, payload)
+
     def test_embedded_delimiters_are_not_frame_boundaries(self):
         payload = bytes.fromhex("addeefbe") * 27
         self.assertEqual(protocol.decode_packet(response(payload)).payload, payload)

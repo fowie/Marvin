@@ -78,7 +78,15 @@ class Packet:
         return {"fw_version": fw, "comm_version": comm, "serial_number": serial}
 
 
-def decode_packet(data: bytes) -> Packet:
+def decode_packet(data: bytes | bytearray | memoryview) -> Packet:
+    """Validate one immutable snapshot; returned payload bytes cannot change."""
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError("decode_packet expects bytes, bytearray, or a contiguous byte memoryview.")
+    if isinstance(data, memoryview) and (data.ndim != 1 or data.itemsize != 1 or not data.c_contiguous):
+        raise TypeError("decode_packet requires a contiguous one-dimensional byte memoryview.")
+    if len(data) > 12 + 0xFFFF:
+        raise ValueError("Actual packet size does not match its declared payload length.")
+    data = bytes(data)
     if len(data) < 12 or data[:2] != HEADER:
         raise ValueError("Packet has a missing or invalid header.")
     sequence, command, response_field, length = struct.unpack_from("<HBBH", data, 2)
