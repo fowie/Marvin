@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from tools import marvin_control_scenario as scenario
 
@@ -47,7 +48,11 @@ class ControlScenarioTests(unittest.TestCase):
                          b"SYNTHETIC".hex())
         self.assertEqual(report["records"][5]["before"], report["records"][4]["after"])
         self.assertEqual(report["records"][5]["before"]["pending"]["status"], "submitted")
+        self.assertIsNone(report["records"][2]["before"]["armed_at"])
+        self.assertEqual(report["records"][2]["after"]["armed_at"], 0)
         self.assertEqual(report["records"][6]["before"]["mode"], "armed")
+        self.assertEqual(report["records"][6]["before"]["armed_at"], 0)
+        self.assertIsNone(report["records"][6]["after"]["armed_at"])
         self.assertIsNotNone(report["records"][6]["before"]["token"])
         self.assertIsNone(report["records"][6]["after"]["token"])
         with tempfile.TemporaryDirectory() as directory:
@@ -195,6 +200,76 @@ class ControlScenarioTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stdout)
             self.assertEqual(path.read_bytes(), before)
             self.assertFalse((parent / "output.json").exists())
+
+    def test_every_review_is_schema_checked_even_when_unused(self):
+        base = self.example()
+        invalid = []
+        for field, values in (
+            ("kind", ("unknown", True)),
+            ("reference", ("",)),
+            ("reviewer", (" ",)),
+            ("policy_reference", ("",)),
+            ("measured", (1, "true", None)),
+            ("reviewed", (0, "false", None)),
+            ("source", ("recorded", None)),
+            ("valid_from", (True, -1, float("nan"), 20, 21)),
+            ("expires_at", (False, float("inf"), 1e13, 0, -1)),
+            ("scope", (None, {}, {**base["scope"], "extra": "unknown"})),
+        ):
+            for value in values:
+                invalid.append({**base["reviews"][0], field: value})
+        for field in base["scope"]:
+            for value in ("", 1, None):
+                invalid.append({**base["reviews"][0], "scope": {**base["scope"], field: value}})
+        with tempfile.TemporaryDirectory() as directory:
+            path, output = Path(directory) / "scenario.json", Path(directory) / "report.json"
+            for used in (False, True):
+                for index, review in enumerate(invalid):
+                    with self.subTest(used=used, case=index):
+                        doc = self.example()
+                        doc["reviews"][0] = review
+                        if not used:
+                            doc["events"] = [doc["events"][0], {"kind": "tick", "at": 0.1}]
+                        with patch.object(scenario.model, "Model") as constructing:
+                            with self.assertRaises(ValueError):
+                                scenario.run_scenario(doc)
+                            constructing.assert_not_called()
+                        path.write_text(json.dumps(doc))
+                        result = self.cli(path, "--output", output)
+                        self.assertEqual(result.returncode, 2, result.stdout)
+                        self.assertEqual(result.stdout, "")
+                        error = json.loads(result.stderr)
+                        self.assertFalse(error["complete"])
+                        self.assertEqual(error["result"], "input_or_output_error")
+                        self.assertNotIn("records", error)
+                        self.assertFalse(output.exists())
+
+            for changes, code in (
+                ({"measured": False, "reviewed": False}, "unreviewed_evidence"),
+                ({"valid_from": 1, "expires_at": 2}, "stale_evidence"),
+                ({"valid_from": 0, "expires_at": 0.001}, "stale_evidence"),
+                ({"policy_reference": "SYNTHETIC-other"}, "policy_mismatch"),
+                ({"scope": {**base["scope"], "identity": "SYNTHETIC-other"}}, "identity_changed"),
+                ({"scope": {**base["scope"], "profile": "SYNTHETIC-other"}}, "profile_mismatch"),
+                ({"scope": {**base["scope"], "velocity_unit": "SYNTHETIC-other"}}, "unknown_units"),
+            ):
+                for used in (False, True):
+                    with self.subTest(used=used, changes=changes):
+                        doc = self.example()
+                        doc["reviews"][0].update(changes)
+                        doc["events"] = doc["events"][:2 if used else 1]
+                        for event in doc["events"]:
+                            event["at"] = 0.1
+                        doc["events"].append({"kind": "tick", "at": 0.1})
+                        scenario.parse_scenario(doc)
+                        path.write_text(json.dumps(doc))
+                        result = self.cli(path)
+                        self.assertEqual(result.returncode, int(used), result.stderr)
+                        report = json.loads(result.stdout)
+                        self.assertTrue(report["complete"])
+                        self.assertEqual(report["state"]["fault"], code if used else None)
+                        self.assertEqual(report["physical_stop"], "not_established")
+                        self.assertEqual(report["physical_authorization"], "not_granted")
 
 
 if __name__ == "__main__":

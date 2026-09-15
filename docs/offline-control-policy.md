@@ -30,19 +30,22 @@ work through those gates interactively, use the
 | `State`, `Pending`, `Record` | Immutable snapshots of state, outstanding work and event audit. Old snapshots never update retroactively. |
 | `transition(state, event)` | Pure reducer returning `(new_state, result)` with explicit event time; no wall clock, transport, background timer or side effect. |
 | `validate_event(event)` | Validate a bounded immutable event schema without executing a transition. |
+| `validate_review(review)` | Validate every declaration's structural schema, including source and interval; does not grant approval or check current scope/policy/time applicability. Also applied to reviews by `validate_event`. |
 | `EVENT_FIELDS` | Read-only exact event payload schema shared by the reducer and CLI. |
 | `Model(policy, scope).step(event)` | Owns current state and bounded records; constructing thread object owns every operation. Foreign-thread/reentrant access raises `OwnershipError` before mutation. |
 | `Model.state`, `Model.records` | Frozen state and tuple snapshots, without consuming evidence. |
 | `Token` | In-memory model-only capability issued by explicit authorization. Pass the actual issued object; reconstructed or cross-model tokens are rejected. Not an OS lock, security sandbox, authentication or physical approval. |
 | `to_json(value)` | JSON-safe immutable evidence rendering; exact synthetic bytes become `raw_hex`, length and source. Invalid nonfinite model inputs become explicit diagnostic objects, never nonstandard JSON numbers. |
 
-`ModelError` means an invalid policy or a structurally unretainable input, not
+`ModelError` means an invalid policy, structural schema or unretainable input, not
 success. The facade visibly faults on an invalid event (or retains an existing
 terminal state and primary fault); that rejected event is
 not added to its history. The pure reducer raises without changing its input.
 Semantic violations (including bounded nonfinite/bool numeric inputs) retain
-the event and return a fault record. `Record.result` distinguishes rejection from
-acceptance; a parseable trace is not a successful policy transition.
+the event and return a fault record. Review declarations are stricter: invalid
+field types, empty text, unknown kinds, non-SYNTHETIC source or invalid intervals
+are schema errors, not modeled approval failures. `Record.result` distinguishes
+rejection from acceptance; a parseable trace is not a successful policy transition.
 
 The model assumes cooperative application code: frozen dataclasses, thread
 ownership and process-local object capabilities do not protect against callers
@@ -114,9 +117,24 @@ measurement. A future integration must supply a separately validated trajectory
 and actual-state contract; there is no such integration here.
 
 An intent must not be future-dated, must be strictly younger than
-`max_command_age`, and must still be inside its issued-time duration. Sequences
-start at zero, are consumed on accepted intent and never wrap/reuse, even across
-model restart. Replays, skips and uint16 exhaustion fault. No retry exists.
+`max_command_age`, and must still be inside its issued-time duration. Its
+`issued_at` must also be **strictly greater than `State.armed_at`**, the latest
+accepted arm time. Revocation clears this boundary; only an explicit new arm
+sets it. It does not move on keepalive or subsequent intents.
+
+Exact equality with the arm time is rejected as `stale_intent`, even for an
+intent submitted after that arm event: equal timestamps cannot distinguish
+pre-arm queued work from post-arm creation. This conservative rule also applies
+when disarm/rearm or reset/restart/connect/authorize/arm share a timestamp.
+Under the nondecreasing model clock, a pre-session intention cannot be revived
+by attaching a fresh event token or using a still-unconsumed sequence. Stale
+event tokens still fail ownership first. Callers must create a new intention
+strictly after the current arm boundary; there is no relabeling or automatic
+resume. These are declared model timestamps, not authenticated creation times
+or proof about external queues.
+
+Sequences start at zero, are consumed on accepted intent and never wrap/reuse,
+even across model restart. Replays, skips and uint16 exhaustion fault. No retry exists.
 
 At **exact equality** with a dead-man, intent, review or pending-reply deadline,
 that condition has expired. The reply deadline is the earliest of explicit reply
@@ -143,6 +161,12 @@ an existing terminal state/primary failure rather than replacing it. All lifetim
 records remain; there is no eviction, retry, recorder or unbounded work queue.
 One pending request is allowed. Each raw field is at most 4096 immutable bytes,
 each text field at most 256 characters, and immutable tuples at most 32 items.
+Structural validation is iterative, with a maximum depth of 16 (root depth 0)
+and 1024 visited value occurrences per input, counting the root, dataclass
+fields, tuple items and repeated references. Both tuple and model-dataclass
+nesting consume these budgets; exceeding either raises `ModelError` before
+retention, without recursing through arbitrary input. Existing terminal state,
+primary failure, pending evidence and bounded history remain preserved.
 The numeric time domain is 0..1e12; integer event values are at most 128 bits.
 Larger/mutable inputs are rejected structurally, without retaining arbitrary
 objects. This is a bounded model audit, not a raw transport capture.
@@ -233,6 +257,18 @@ the same syntax. Authorization names root reviews and creates a unique
 `save_token` alias. Later `token` fields reference it; aliases cannot be
 overwritten. Failed authorization produces no usable capability. Old aliases
 remain available to demonstrate replay rejection after revocation.
+
+Every root review is schema-checked before execution, even if no authorization
+references it. Kinds must be `calibration`, `physical_stop` or `limits`;
+measurement/review flags must be exact booleans; all reference/reviewer/scope
+fields must be nonempty bounded text; source must be exactly `SYNTHETIC`.
+Validity endpoints must be finite non-boolean numbers in 0..1e12 with
+`valid_from < expires_at`. False flags, an interval not current at authorization,
+or nonempty but mismatched policy/scope/profile/unit declarations remain valid
+synthetic negative scenarios: when used they produce modeled faults (exit 1),
+not schema errors. Malformed declarations instead produce exit 2 with no
+trace/output file, whether used or unused. Schema version 1 and the `Intent`
+fields are unchanged; serialized state snapshots additionally include `armed_at`.
 
 The CLI reuses `unique_object`, `read_regular_file` and `new_output_path`: no
 duplicate/unknown JSON keys, nonstandard numbers, input symlinks (including

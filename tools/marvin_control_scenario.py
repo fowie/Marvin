@@ -80,6 +80,7 @@ def parse_scenario(document):
     for row in document["reviews"]:
         _object(row, {field.name for field in fields(model.Review)})
         review = model.Review(**{**row, "scope": _scope(row["scope"], expected)})
+        model.validate_review(review)
         name = _name(review.kind)
         if name in reviews:
             raise ValueError("Duplicate review kind.")
