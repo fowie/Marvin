@@ -62,6 +62,7 @@ def read_event(fd):
     # in the ioctl argument itself. Strong local references keep both alive.
     fcntl.ioctl(fd, GETX, request)
     raw_header = header.raw
+    # Linux usbmon_packet: length at 32, len_cap at 36, setup/ISO union at 40.
     captured = struct.unpack_from("<I", raw_header, 36)[0]
     return raw_header, payload.raw[:min(captured, PAYLOAD_LIMIT)]
 

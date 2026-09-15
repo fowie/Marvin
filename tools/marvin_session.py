@@ -27,7 +27,7 @@ import time
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import marvin_probe, marvin_protocol, marvin_usbmon
+from tools import marvin_probe, marvin_protocol, marvin_tx_policy, marvin_usbmon
 
 
 USB_POST_CLOSE_DRAIN_SECONDS = 0.25
@@ -204,6 +204,7 @@ def run_session(
     probe_delay=0, allow_line_state_trial=False,
     ready_callback=None, expected_usb_identity=None,
     probe_schedule=None, bytesize=8, parity="N", stopbits=1,
+    probe_profile="modern",
     usb_tail_seconds=30, usb_close_grace_seconds=0,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
@@ -222,6 +223,9 @@ def run_session(
     if baudrate <= 0:
         raise ValueError("Baud rate must be positive.")
     marvin_probe.validate_framing(bytesize, parity, stopbits)
+    marvin_tx_policy.validate_profile(probe_profile)
+    if probe_profile != "modern" and probe_schedule is None:
+        raise ValueError("Named coordinator probes require the modern profile.")
     if not math.isfinite(usb_tail_seconds) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
     if (type(usb_close_grace_seconds) not in (int, float)
@@ -245,7 +249,7 @@ def run_session(
             raise ValueError("Campaign schedules require command and telemetry-state authorization.")
         if probe_delay:
             raise ValueError("A campaign schedule already defines its own delays.")
-        probe_schedule = marvin_probe.validate_schedule(probe_schedule, seconds)
+        probe_schedule = marvin_probe.validate_schedule(probe_schedule, seconds, profile=probe_profile)
     if allow_line_state_trial and not probe_get_config:
         raise ValueError("Line-state trials are restricted to GetConfig.")
     if (probe_get_config or probe_get_unit_info or probe_get_sensor_info) and (
@@ -290,6 +294,7 @@ def run_session(
         ),
         "requested_probe_hex": probe.hex() if probe is not None else None,
         "probe_name": probe_name,
+        "probe_profile": probe_profile,
         "source_expected_response_payload_bytes": expected_payload_bytes,
         "telemetry_state_change_authorized": bool(
             (probe_get_unit_info or probe_get_sensor_info or probe_schedule is not None)
@@ -382,6 +387,8 @@ def run_session(
                     line_state_at_open=True, guard=guard,
                     probe_delay=probe_delay,
                     bytesize=bytesize, parity=parity, stopbits=stopbits,
+                    probe_profile=probe_profile,
+                    allow_telemetry_state_change=allow_telemetry_state_change,
                     **probe_options,
                 )
             finally:

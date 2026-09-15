@@ -146,6 +146,19 @@ class SessionTests(unittest.TestCase):
         self.preflight.assert_not_called()
         self.popen.assert_not_called()
 
+    def test_raw_schedule_is_allowlisted_before_any_hardware_preflight(self):
+        for data in (b"\x80", b"erase\r", bytes.fromhex("efbe0000080000000000adde")):
+            schedule = (
+                marvin_session.marvin_probe.ScheduledWrite(0.1, data[:1], "first"),
+                marvin_session.marvin_probe.ScheduledWrite(0.2, data[1:] or b"\x80", "second"),
+            )
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                self.run_capture(probe_schedule=schedule, allow_unknown_command=True,
+                                 allow_telemetry_state_change=True)
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+
     def test_approved_probe_uses_existing_one_shot_path_after_usb_readiness(self):
         result = self.run_capture(probe_cr=True, allow_unknown_command=True)
         self.serial.assert_called_once()
@@ -291,10 +304,13 @@ class SessionTests(unittest.TestCase):
         schedule = (marvin_session.marvin_probe.ScheduledWrite(0.1, b"help\r", "help/0"),)
         self.usb_finish_time = 5.5
         result = self.run_capture(probe_schedule=schedule, allow_unknown_command=True,
+                                  probe_profile="experimental-successor",
                                   allow_telemetry_state_change=True, baudrate=9600,
                                   bytesize=7, parity="E", stopbits=2, usb_tail_seconds=5)
         self.serial.assert_called_once()
         self.assertEqual(self.serial.call_args.kwargs["probe_schedule"], schedule)
+        self.assertEqual(self.serial.call_args.kwargs["probe_profile"], "experimental-successor")
+        self.assertTrue(self.serial.call_args.kwargs["allow_telemetry_state_change"])
         self.assertEqual(self.serial.call_args.kwargs["bytesize"], 7)
         self.assertEqual(self.serial.call_args.kwargs["parity"], "E")
         self.assertEqual(self.serial.call_args.kwargs["stopbits"], 2)

@@ -182,7 +182,7 @@ class LegacyProbeRunTests(unittest.TestCase):
         for key, value in {"baudrate": 57600, "bytesize": 8, "parity": "N", "stopbits": 1,
                            "dtr": False, "rts": False, "actuators_isolated": True, "sudo_usbmon": True,
                            "allow_unknown_command": True, "allow_telemetry_state_change": True,
-                           "usbmon_backend": "binary"}.items():
+                           "usbmon_backend": "binary", "probe_profile": "legacy"}.items():
             self.assertEqual(options[key], value)
         self.assertEqual(options["expected_usb_identity"], self.baseline["usb"])
         self.assertIsNot(options["expected_usb_identity"], self.baseline["usb"])

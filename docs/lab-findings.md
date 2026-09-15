@@ -688,12 +688,13 @@ For an independently authorized single carriage-return experiment:
 ```sh
 .venv/bin/python tools/marvin_probe.py \
   --actuators-isolated --dtr \
-  --probe-hex 0d --allow-unknown-command \
+  --probe cr --allow-unknown-command \
   --output /path/to/a/new/carriage-return-capture
 ```
 
 Only one application write is attempted, with no automatic retries. Probes are
-limited to 16 bytes. Metadata records the requested bytes, write result, and
+restricted to named fixed requests (the earlier raw-hex CLI was removed).
+Metadata records the requested bytes, write result, and
 response capture. A timeout may leave the number of bytes written unknown;
 never blindly retry such a probe. A completed write only means acceptance by
 the serial driver, not acknowledgment or successful execution by Marvin.

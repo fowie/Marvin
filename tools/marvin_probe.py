@@ -2,8 +2,9 @@
 
 Opening the port sets CDC line coding and control lines. Driver transients may
 still occur, and pySerial discards queued input during open. Isolate actuators
-before use. Default operation transmits no application bytes. An unknown probe
-may change firmware state or settings, even with actuators disconnected.
+before use. Default operation transmits no application bytes. Only exact
+profile-specific requests are accepted; authorization flags never allow arbitrary
+bytes. Even an allowlisted query may have unknown effects on another firmware.
 """
 
 import argparse
@@ -22,6 +23,11 @@ import termios
 import time
 
 import serial
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools import marvin_protocol, marvin_tx_policy
 
 
 DEFAULT_PORT = (
@@ -50,7 +56,7 @@ def validate_framing(bytesize, parity, stopbits):
         raise ValueError("Stop bits must be 1 or 2.")
 
 
-def validate_schedule(schedule, seconds):
+def validate_schedule(schedule, seconds, *, profile="modern"):
     if not isinstance(schedule, (tuple, list)) or not 1 <= len(schedule) <= 256:
         raise ValueError("A schedule must contain 1 to 256 bounded writes.")
     previous = -1
@@ -71,6 +77,7 @@ def validate_schedule(schedule, seconds):
         total += len(item.data)
     if total > 4096:
         raise ValueError("A schedule may send at most 4096 bytes.")
+    marvin_tx_policy.validate_transmit_stream(b"".join(item.data for item in schedule), profile=profile)
     return tuple(schedule)
 
 
@@ -143,6 +150,8 @@ def capture(
     guard=None,
     probe_delay=0,
     probe_schedule=None,
+    probe_profile="modern",
+    allow_telemetry_state_change=False,
     bytesize=8,
     parity="N",
     stopbits=1,
@@ -154,18 +163,24 @@ def capture(
     if baudrate <= 0 or max_bytes <= 0:
         raise ValueError("Baud rate and byte limit must be positive.")
     validate_framing(bytesize, parity, stopbits)
+    marvin_tx_policy.validate_profile(probe_profile)
     schedule = None
     if probe_schedule is not None:
         if not allow_unknown_command:
             raise ValueError("A multi-probe schedule requires explicit authorization.")
         if probe is not None or probe_delay:
             raise ValueError("A schedule cannot be combined with a one-shot probe or delay.")
-        schedule = validate_schedule(probe_schedule, seconds)
+        schedule = validate_schedule(probe_schedule, seconds, profile=probe_profile)
     if probe is not None:
         if not allow_unknown_command:
             raise ValueError("An unknown application command requires explicit authorization.")
         if not isinstance(probe, bytes) or not 1 <= len(probe) <= 16:
             raise ValueError("A one-shot probe must contain between 1 and 16 bytes.")
+    transcript = b"".join(item.data for item in schedule) if schedule is not None else probe
+    if transcript is not None:
+        stateful = marvin_tx_policy.validate_transmit_stream(transcript, profile=probe_profile)
+        if stateful and not allow_telemetry_state_change:
+            raise ValueError("The selected query requires telemetry-state authorization.")
     validate_probe_delay(probe, seconds, probe_delay)
 
     properties = check_device(port)
@@ -191,6 +206,8 @@ def capture(
         "duration_limit_seconds": seconds,
         "byte_limit": max_bytes,
         "requested_probe_hex": probe.hex() if probe is not None else None,
+        "probe_profile": probe_profile,
+        "telemetry_state_change_authorized": bool(allow_telemetry_state_change),
         "probe_delay_seconds": probe_delay,
         "suppress_probe_on_early_rx": bool(probe is not None and probe_delay),
         "transmit_status": "not_requested",
@@ -463,8 +480,10 @@ def main():
         help="Assert RTS after open; may affect custom firmware behavior",
     )
     parser.add_argument("--actuators-isolated", action="store_true", required=True)
-    parser.add_argument("--probe-hex", help="One explicitly authorized probe, at most 16 bytes")
+    parser.add_argument("--probe", choices=("cr", "get-config", "get-unit-info", "get-sensor-info"),
+                        help="One fixed modern-profile request; no arbitrary hexadecimal input")
     parser.add_argument("--allow-unknown-command", action="store_true")
+    parser.add_argument("--allow-telemetry-state-change", action="store_true")
     parser.add_argument("--probe-delay", type=float, default=0,
                         help="Listen before writing; any received byte suppresses the probe. Included in --seconds.")
     parser.add_argument(
@@ -473,7 +492,12 @@ def main():
     )
     args = parser.parse_args()
     try:
-        probe = bytes.fromhex(args.probe_hex) if args.probe_hex is not None else None
+        probes = {
+            "cr": b"\r", "get-config": marvin_protocol.get_config_request(),
+            "get-unit-info": marvin_protocol.get_unit_info_request(),
+            "get-sensor-info": marvin_protocol.get_sensor_info_request(),
+        }
+        probe = probes[args.probe] if args.probe is not None else None
         result = capture(
             args.port,
             args.output,
@@ -485,6 +509,7 @@ def main():
             rts=args.rts,
             probe=probe,
             allow_unknown_command=args.allow_unknown_command,
+            allow_telemetry_state_change=args.allow_telemetry_state_change,
             line_state_at_open=args.line_state_at_open,
             probe_delay=args.probe_delay,
         )

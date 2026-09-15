@@ -20,13 +20,10 @@ import time
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import marvin_probe, marvin_session, marvin_usbmon
+from tools import marvin_probe, marvin_session, marvin_tx_policy, marvin_usbmon
 
 
 DESCRIPTOR_HASH = "7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b"
-QUERY_COMMANDS = frozenset((3, 4, 27, 29, 38, 46))
-TEXT_QUERIES = frozenset((b"", b"?", b"H", b"HELP", b"VER", b"HWVER", b"ADC", b"READ",
-                          b"VERSION", b"INFO", b"STATUS"))
 ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,110}")
 USB_TAIL_SECONDS = 5
 USB_CLOSE_GRACE_SECONDS = 30
@@ -76,18 +73,12 @@ def compile_segment(segment):
                 offset += step["interval_seconds"]
         if len(payload) > 256:
             raise ValueError("A step cannot exceed 256 application bytes.")
-        if all(byte < 128 for byte in payload) and bytes(payload).strip(b"\r\n").upper() not in TEXT_QUERIES:
-            raise ValueError("A text step contains an unaudited command or control sequence.")
-        # This is defense in depth, not proof of safety in an unknown protocol.
-        for match in re.finditer(b"\xef\xbe", payload):
-            command_index = match.start() + 4
-            if command_index >= len(payload) or payload[command_index] not in QUERY_COMMANDS:
-                raise ValueError("A canonical header contains an unaudited command opcode.")
+        marvin_tx_policy.validate_transmit_stream(bytes(payload), profile="experimental-successor")
         offset += step["response_seconds"]
     seconds = offset + 2.0
     if seconds > 85:
         raise ValueError("A segment's scheduled response windows exceed 85 seconds.")
-    return marvin_probe.validate_schedule(schedule, seconds), seconds
+    return marvin_probe.validate_schedule(schedule, seconds, profile="experimental-successor"), seconds
 
 
 def validate_plan(plan):
@@ -286,6 +277,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
                     parity=segment["parity"], stopbits=segment["stopbits"],
                     actuators_isolated=True, sudo_usbmon=sudo_usbmon,
                     probe_schedule=schedule, allow_unknown_command=True,
+                    probe_profile="experimental-successor",
                     allow_telemetry_state_change=True, expected_usb_identity=baseline["usb"],
                     usb_tail_seconds=USB_TAIL_SECONDS, usb_close_grace_seconds=USB_CLOSE_GRACE_SECONDS,
                 )

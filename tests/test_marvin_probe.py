@@ -2,11 +2,12 @@ import itertools
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from tools import marvin_probe
+from tools import marvin_legacy_protocol, marvin_probe, marvin_protocol
 
 
 IDENTITY = (
@@ -223,6 +224,59 @@ class ListenTests(unittest.TestCase):
                 self.capture(probe=probe, allow_unknown_command=True)
         self.factory.assert_not_called()
 
+    def test_authorization_never_allows_arbitrary_bytes_or_cross_profile_requests(self):
+        getter = marvin_protocol.get_config_request()
+        for data in (b"\x80", b"erase\r", b"\xef", getter[:-1], getter + b"\x80",
+                     marvin_legacy_protocol.get_config_request(),
+                     bytes.fromhex("efbe0000040000001033adde")):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                self.capture(probe=data, allow_unknown_command=True, allow_telemetry_state_change=True)
+            schedule = [marvin_probe.ScheduledWrite(0, data[:1], "a")]
+            if len(data) > 1:
+                schedule.append(marvin_probe.ScheduledWrite(0.1, data[1:], "b"))
+            with self.subTest(schedule=schedule), self.assertRaises(ValueError):
+                self.capture(probe_schedule=schedule, allow_unknown_command=True,
+                             allow_telemetry_state_change=True)
+        self.udev.assert_not_called()
+        self.factory.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_stateful_raw_getter_requires_its_own_acknowledgment(self):
+        with self.assertRaisesRegex(ValueError, "telemetry-state"):
+            self.capture(probe=marvin_protocol.get_unit_info_request(), allow_unknown_command=True)
+        self.udev.assert_not_called()
+        self.factory.assert_not_called()
+
+    def test_cli_exposes_fixed_named_requests_and_rejects_raw_hex(self):
+        for name, expected in (
+            ("cr", b"\r"), ("get-config", marvin_protocol.get_config_request()),
+            ("get-unit-info", marvin_protocol.get_unit_info_request()),
+            ("get-sensor-info", marvin_protocol.get_sensor_info_request()),
+        ):
+            args = ["marvin_probe", "--actuators-isolated", "--output", str(self.output),
+                    "--probe", name, "--allow-unknown-command", "--allow-telemetry-state-change"]
+            with self.subTest(name=name), patch.object(sys, "argv", args), \
+                    patch.object(sys, "stdout"), patch.object(marvin_probe, "capture", return_value={
+                        "bytes_received": 1, "application_bytes_written": len(expected),
+                        "stop_reason": "byte_limit",
+                    }) as capture:
+                marvin_probe.main()
+                self.assertEqual(capture.call_args.kwargs["probe"], expected)
+                self.assertTrue(capture.call_args.kwargs["allow_telemetry_state_change"])
+        with patch.object(sys, "argv", ["marvin_probe", "--actuators-isolated",
+                                      "--output", str(self.output), "--probe-hex", "80"]), \
+                patch.object(sys, "stderr"), patch.object(marvin_probe, "capture") as capture, \
+                self.assertRaises(SystemExit):
+            marvin_probe.main()
+        capture.assert_not_called()
+
+    def test_explicit_legacy_profile_accepts_only_a_complete_getter(self):
+        data = marvin_legacy_protocol.get_config_request(12)
+        self.transport.write.return_value = len(data)
+        result = self.capture(probe=data, probe_profile="legacy", allow_unknown_command=True)
+        self.transport.write.assert_called_once_with(data)
+        self.assertEqual(result["probe_profile"], "legacy")
+
     def test_short_write_is_not_retried(self):
         self.transport.write.return_value = 0
         with self.assertRaises(marvin_probe.serial.SerialTimeoutException):
@@ -284,18 +338,19 @@ class ListenTests(unittest.TestCase):
         self.transport.read.side_effect = read
         self.transport.write.side_effect = write
         schedule = (
-            marvin_probe.ScheduledWrite(0.1, b"one", "first/0"),
-            marvin_probe.ScheduledWrite(0.3, b"two", "second/0"),
+            marvin_probe.ScheduledWrite(0.1, b"h\r\n", "first/0"),
+            marvin_probe.ScheduledWrite(0.3, b"?\r\n", "second/0"),
         )
         with patch.object(marvin_probe.time, "monotonic", side_effect=lambda: clock[0]):
             result = self.capture(seconds=0.9, max_bytes=64, allow_unknown_command=True,
                                   probe_schedule=schedule, guard=guard, line_state_at_open=True,
+                                  probe_profile="experimental-successor",
                                   dtr=True, rts=True, bytesize=7, parity="E", stopbits=2)
         return result, writes
 
     def test_schedule_keeps_one_open_and_preserves_minimum_response_spacing(self):
         result, writes = self.scheduled_capture(stall_first=True)
-        self.assertEqual([data for _, data in writes], [b"one", b"two"])
+        self.assertEqual([data for _, data in writes], [b"h\r\n", b"?\r\n"])
         self.assertGreaterEqual(writes[0][0], 0.4)
         self.assertGreaterEqual(writes[1][0], writes[0][0] + (0.3 - 0.1))
         self.transport.open.assert_called_once()
@@ -319,7 +374,7 @@ class ListenTests(unittest.TestCase):
 
     def test_rx_after_first_write_suppresses_all_remaining_writes(self):
         result, writes = self.scheduled_capture(rx="after-first")
-        self.assertEqual([data for _, data in writes], [b"one"])
+        self.assertEqual([data for _, data in writes], [b"h\r\n"])
         self.assertEqual(result["scheduled_writes_completed"], 1)
         self.assertEqual(result["application_bytes_written"], 3)
         self.assertEqual(result["transmit_status"], "suppressed_schedule_rx")

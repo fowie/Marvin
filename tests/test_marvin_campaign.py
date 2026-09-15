@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from tools import marvin_campaign as campaign
-from tools import marvin_probe, marvin_protocol, marvin_session
+from tools import marvin_campaign_plan, marvin_probe, marvin_protocol, marvin_session
 
 
 BASELINE = {"usb": {"usb_path": "/fake/1-3.3", "busnum": 1, "devnum": 18,
@@ -136,6 +136,32 @@ class PlanValidationTests(unittest.TestCase):
             value["segments"][0]["steps"][0]["chunks_hex"] = [payload]
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 campaign.validate_plan(value)
+
+    def test_all_generated_profiles_still_validate_including_fixed_experiments(self):
+        for profile in ("quick", "full"):
+            generated = marvin_campaign_plan.make_plan(profile)
+            coverage = campaign.validate_plan(generated)
+            self.assertEqual(coverage["application_bytes"], generated["summary"]["tx_bytes"])
+
+    def test_unframed_bytes_split_headers_and_unterminated_text_are_rejected(self):
+        for chunks in (["80"], ["beef0000080000000000adde"], ["ef", "be0000080000000000adde"],
+                       ["efbe0000040000001133adde80"], ["68656c70"], ["0b68656c700d"]):
+            value = plan()
+            value["segments"][0]["steps"][0]["chunks_hex"] = chunks
+            with self.subTest(chunks=chunks), self.assertRaises(ValueError):
+                campaign.validate_plan(value)
+        value = plan()
+        value["segments"][0]["steps"][0]["chunks_hex"] = ["ef"]
+        value["segments"][0]["steps"][1]["chunks_hex"] = ["be0000080000000000adde"]
+        with self.assertRaises(ValueError):
+            campaign.validate_plan(value)
+
+    def test_fixed_malformed_cases_cannot_prefix_more_bytes_or_steps(self):
+        segment = marvin_campaign_plan.make_plan("quick")["segments"][-1]
+        campaign.compile_segment(segment)
+        segment["steps"].append(plan()["segments"][0]["steps"][0])
+        with self.assertRaises(ValueError):
+            campaign.compile_segment(segment)
 
     def test_cli_without_run_only_prints_the_plan(self):
         fake = SimpleNamespace(make_plan=Mock(return_value=plan()))

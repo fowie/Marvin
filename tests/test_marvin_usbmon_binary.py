@@ -27,6 +27,28 @@ def header(*, event="S", transfer=3, endpoint=3, device=10, length=1,
 
 
 class BinaryTests(unittest.TestCase):
+    def test_getx_uses_len_cap_at_36_not_length_at_32_or_setup_at_40(self):
+        # Offsets from docs.kernel.org/usb/usbmon.html, not the production Struct.
+        for length, captured in ((64, 0), (64, 7), (100, 100)):
+            raw_header = header(endpoint=0x82, length=length, captured=captured,
+                                data_flag=ord("<") if captured == 0 else 0,
+                                setup=b"\xff" * 8)
+            expected = b"a" * min(captured, 32)
+
+            def ioctl(fd, command, request):
+                hdr, data, limit = struct.unpack("<QQQ", request)
+                self.assertEqual(limit, 32)
+                ctypes.memmove(hdr, raw_header, 64)
+                ctypes.memmove(data, expected, len(expected))
+
+            with self.subTest(length=length, captured=captured), \
+                    patch.object(binary.fcntl, "ioctl", side_effect=ioctl):
+                actual_header, payload = binary.read_event(99)
+                self.assertEqual(payload, expected)
+                parsed = usbmon.parse_record(binary.to_text(actual_header, payload))
+                self.assertEqual(parsed.length, length)
+                self.assertEqual(parsed.payload, expected)
+
     def test_getx_copies_header_and_only_bounded_payload_from_pointers(self):
         raw_header = header(length=100, captured=100)
 

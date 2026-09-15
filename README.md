@@ -33,6 +33,12 @@ Existing modern-protocol defaults and behavior are preserved, not silently
 switched to legacy. Historical broad-sweep tools remain experimental and are
 **not recommended for the known-working legacy device**.
 
+Transmit APIs validate every byte against an explicit profile: `modern` remains
+the default, the named legacy wrapper selects `legacy`, and historical campaign
+experiments select `experimental-successor`. Authorization flags do not bypass
+request-shape checks. The one-shot CLI accepts named requests, not arbitrary hex.
+Stateful identification queries require separate telemetry-state acknowledgment.
+
 Hardware work requires separate operator authorization and a reviewed physical
 test plan. Keep actuator power and signals isolated; software cannot verify that
 isolation. Routine development never authorizes firmware programming, resets,
