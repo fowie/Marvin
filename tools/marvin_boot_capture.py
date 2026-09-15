@@ -53,7 +53,7 @@ def wait_for_identity_change(baseline, timeout=IDENTITY_TRANSITION_SECONDS):
     deadline = _poll_deadline(timeout, IDENTITY_TRANSITION_SECONDS)
     while time.monotonic() < deadline:
         if identity_changed(baseline):
-            return True
+            return time.monotonic() < deadline
         remaining = deadline - time.monotonic()
         if remaining > 0:
             time.sleep(min(POLL_SECONDS, remaining))
@@ -71,20 +71,27 @@ def validate_return(baseline, returned):
 
 def wait_for_return(port, baseline, timeout=90):
     deadline = _poll_deadline(timeout, 90)
+    timeout_message = f"Marvin did not return within {timeout} seconds; no further attempts."
     while time.monotonic() < deadline:
         if Path(port).exists():
             try:
-                returned = marvin_session.preflight(port)
+                returned = marvin_session.preflight(port, deadline=deadline)
             except (FileNotFoundError, marvin_usbmon.IdentityError):
                 # Cached attributes/descriptors can be incomplete during enumeration.
                 pass
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(timeout_message) from error
+                raise
             else:
+                if time.monotonic() >= deadline:
+                    break
                 validate_return(baseline, returned)
                 return returned
         remaining = deadline - time.monotonic()
         if remaining > 0:
             time.sleep(min(POLL_SECONDS, remaining))
-    raise TimeoutError(f"Marvin did not return within {timeout} seconds; no further attempts.")
+    raise TimeoutError(timeout_message)
 
 
 def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=False,

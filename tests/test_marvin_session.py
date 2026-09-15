@@ -889,6 +889,21 @@ class SessionTests(unittest.TestCase):
                 self.run_capture(seconds=seconds)
         self.preflight.assert_not_called()
 
+    def test_numeric_type_validation_precedes_coordinator_preflight(self):
+        for field, values in (
+            ("seconds", (True, False, None, "1", [], float("inf"), float("nan"))),
+            ("baudrate", (True, False, 1.5, 115200.0, None, "115200", [], float("inf"))),
+            ("usb_tail_seconds", (True, False, None, "5", [])),
+            ("probe_delay", (True, False, None, "0", [])),
+        ):
+            for value in values:
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    self.run_capture(**{field: value})
+        self.preflight.assert_not_called()
+        self.popen.assert_not_called()
+        self.serial.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_no_clobber(self):
         self.output.mkdir()
         with self.assertRaises(FileExistsError):

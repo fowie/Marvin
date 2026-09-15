@@ -62,6 +62,14 @@ def validate_framing(bytesize, parity, stopbits):
         raise ValueError("Stop bits must be 1 or 2.")
 
 
+def validate_capture_limits(seconds, baudrate, max_bytes):
+    if type(seconds) not in (int, float) or not 0 < seconds <= 120:
+        raise ValueError("Capture duration must be finite, greater than 0 and at most 120 seconds.")
+    for name, value in (("Baud rate", baudrate), ("Byte limit", max_bytes)):
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"{name} must be a positive integer.")
+
+
 def validate_schedule(schedule, seconds, *, profile="modern"):
     if not isinstance(schedule, (tuple, list)) or not 1 <= len(schedule) <= 256:
         raise ValueError("A schedule must contain 1 to 256 bounded writes.")
@@ -95,14 +103,28 @@ def save_metadata(path, metadata):
     path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
-def check_device(port):
+def preflight_timeout(deadline=None):
+    """Bound each subprocess by its usual limit and an optional shared deadline."""
+    if deadline is None:
+        return 5
+    if (type(deadline) not in (int, float)
+            or not -sys.float_info.max <= deadline <= sys.float_info.max):
+        raise ValueError("Preflight deadline must be a finite monotonic time.")
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Cached-identity preflight deadline expired.")
+    return min(5, remaining)
+
+
+def check_device(port, *, deadline=None):
     result = subprocess.run(
         ["udevadm", "info", "--query=property", f"--name={port}"],
         check=True,
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=preflight_timeout(deadline),
     )
+    preflight_timeout(deadline)
     properties = dict(
         line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
     )
@@ -122,11 +144,12 @@ def check_device(port):
     return properties
 
 
-def check_port_available(port):
+def check_port_available(port, *, deadline=None):
     result = subprocess.run(
         ["fuser", str(Path(port).absolute())],
-        capture_output=True, text=True, timeout=5,
+        capture_output=True, text=True, timeout=preflight_timeout(deadline),
     )
+    preflight_timeout(deadline)
     if result.returncode == 0:
         raise ValueError(f"Serial port already has an owner (PID(s): {result.stdout.strip()}).")
     if result.returncode != 1 or result.stderr.strip() or result.stdout.strip():
@@ -134,7 +157,7 @@ def check_port_available(port):
 
 
 def validate_probe_delay(probe, seconds, delay):
-    if not math.isfinite(delay) or not 0 <= delay <= 30 or delay >= seconds:
+    if type(delay) not in (int, float) or not 0 <= delay <= 30 or delay >= seconds:
         raise ValueError("Probe delay must be finite, from 0 to 30 seconds, and below capture duration.")
     if delay and probe is None:
         raise ValueError("A probe delay requires an explicitly selected probe.")
@@ -173,10 +196,7 @@ def capture(
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     if (dtr or rts) and allow_line_state_change is not True:
         raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
-    if not math.isfinite(seconds) or not 0 < seconds <= 120:
-        raise ValueError("Capture duration must be greater than 0 and at most 120 seconds.")
-    if baudrate <= 0 or max_bytes <= 0:
-        raise ValueError("Baud rate and byte limit must be positive.")
+    validate_capture_limits(seconds, baudrate, max_bytes)
     validate_framing(bytesize, parity, stopbits)
     marvin_tx_policy.validate_profile(probe_profile)
     schedule = None

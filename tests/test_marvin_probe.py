@@ -104,6 +104,23 @@ class ListenTests(unittest.TestCase):
             self.capture(actuators_isolated=False)
         self.factory.assert_not_called()
 
+    def test_numeric_types_and_bounds_are_rejected_before_any_io(self):
+        invalid = {
+            "baudrate": (True, False, 1.5, 115200.0, "115200", None, [], 0, -1, float("inf"), float("nan")),
+            "max_bytes": (True, False, 1.5, 3.0, "3", None, [], 0, -1, float("inf"), float("nan")),
+            "seconds": (True, False, "1", None, [], 0, -1, 121, 10**500, float("inf"), float("nan")),
+            "probe_delay": (True, False, "0", None, [], -1, 31, 10**500, float("inf"), float("nan")),
+        }
+        for field, values in invalid.items():
+            for value in values:
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    self.capture(probe=b"\r", allow_unknown_command=True, **{field: value})
+        self.udev.assert_not_called()
+        self.ownership.assert_not_called()
+        self.factory.assert_not_called()
+        self.ioctl.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_non_boolean_flags_cannot_authorize_device_access(self):
         for name in ("actuators_isolated", "allow_unknown_command", "allow_telemetry_state_change",
                      "allow_line_state_change", "dtr", "rts", "line_state_at_open"):
@@ -615,6 +632,25 @@ class ListenTests(unittest.TestCase):
 
 
 class OwnershipTests(unittest.TestCase):
+    def test_preflight_commands_keep_default_limit_and_reject_invalid_deadlines_before_run(self):
+        for check, result in (
+            (marvin_probe.check_device, subprocess.CompletedProcess([], 0, IDENTITY, "")),
+            (marvin_probe.check_port_available, subprocess.CompletedProcess([], 1, "", "")),
+        ):
+            with self.subTest(check=check.__name__), patch.object(
+                marvin_probe.subprocess, "run", return_value=result,
+            ) as run:
+                check("/dev/test")
+                self.assertEqual(run.call_args.kwargs["timeout"], 5)
+                run.reset_mock()
+                for deadline in (True, False, "1", [], 10**500, float("nan"), float("inf")):
+                    with self.subTest(deadline=deadline), self.assertRaises(ValueError):
+                        check("/dev/test", deadline=deadline)
+                with patch.object(marvin_probe.time, "monotonic", return_value=10), \
+                        self.assertRaises(TimeoutError):
+                    check("/dev/test", deadline=10)
+                run.assert_not_called()
+
     def test_existing_process_is_rejected(self):
         with patch.object(marvin_probe.subprocess, "run", return_value=
                           subprocess.CompletedProcess([], 0, "1234", "/dev/ttyACM0:")) as run:

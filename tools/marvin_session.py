@@ -93,16 +93,17 @@ def usb_path_for_tty(node_name, sys_class_tty=Path("/sys/class/tty")):
     return usb_path
 
 
-def preflight(port):
+def preflight(port, *, deadline=None):
     """Read cached host identity only; never open the serial or USB device."""
-    properties = marvin_probe.check_device(port)
+    properties = marvin_probe.check_device(port, deadline=deadline)
     node = Path(port).resolve(strict=True)
     node_stat = node.stat()
     if not stat.S_ISCHR(node_stat.st_mode):
         raise ValueError("The selected serial path is not a character device.")
     usb_path = usb_path_for_tty(node.name)
     identity = marvin_usbmon.read_identity(usb_path)
-    marvin_probe.check_port_available(port)
+    marvin_probe.check_port_available(port, deadline=deadline)
+    marvin_probe.preflight_timeout(deadline)
     return {
         "usb": identity,
         "tty": str(node),
@@ -256,15 +257,14 @@ def run_session(
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
         raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
-    if not math.isfinite(seconds) or not 0 < seconds <= 90:
+    marvin_probe.validate_capture_limits(seconds, baudrate, 65536)
+    if seconds > 90:
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
-    if baudrate <= 0:
-        raise ValueError("Baud rate must be positive.")
     marvin_probe.validate_framing(bytesize, parity, stopbits)
     marvin_tx_policy.validate_profile(probe_profile)
     if probe_profile != "modern" and probe_schedule is None:
         raise ValueError("Named coordinator probes require the modern profile.")
-    if not math.isfinite(usb_tail_seconds) or not 5 <= usb_tail_seconds <= 30:
+    if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
     if (type(usb_close_grace_seconds) not in (int, float)
             or not math.isfinite(usb_close_grace_seconds) or not 0 <= usb_close_grace_seconds <= 30):

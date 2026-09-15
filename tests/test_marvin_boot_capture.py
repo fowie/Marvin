@@ -1,11 +1,12 @@
 import copy
 import json
 from pathlib import Path
+import stat
 import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from tools import marvin_boot_capture as boot
 
@@ -293,6 +294,85 @@ class ReturnTests(unittest.TestCase):
         ):
             self.assertEqual(boot.wait_for_return("/dev/test", BASELINE), RETURNED)
 
+    def test_late_preflight_results_or_errors_cannot_override_the_timeout(self):
+        invalid = copy.deepcopy(RETURNED)
+        invalid["usb"]["physical_port"] = "wrong"
+        for result in (RETURNED, invalid, ValueError("late identity error"), FileNotFoundError()):
+            self.clock.now = 0
+
+            def preflight(port, *, deadline):
+                self.assertEqual(deadline, 1)
+                self.clock.now = deadline
+                if isinstance(result, Exception):
+                    raise result
+                return result
+
+            with self.subTest(result=result), patch.object(Path, "exists", return_value=True), \
+                    patch.object(boot.marvin_session, "preflight", side_effect=preflight), \
+                    self.assertRaisesRegex(TimeoutError, "within 1 seconds"):
+                boot.wait_for_return("/dev/test", BASELINE, timeout=1)
+        self.sleep.assert_not_called()
+
+    def run_real_preflight(self, *, udev_seconds=0.4, fuser_seconds=0.1, cache_seconds=0.1, timeout=1):
+        self.commands = []
+        node = Mock()
+        node.stat.return_value = SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=123)
+        properties = ("ID_VENDOR_ID=045e\nID_MODEL_ID=4444\n"
+                      "ID_MM_DEVICE_IGNORE=1\nID_MM_PORT_IGNORE=1\n")
+
+        def command(arguments, **options):
+            duration = udev_seconds if arguments[0] == "udevadm" else fuser_seconds
+            self.commands.append((arguments[0], options["timeout"], self.clock.now))
+            self.clock.now += min(duration, options["timeout"])
+            if duration > options["timeout"]:
+                raise subprocess.TimeoutExpired(arguments, options["timeout"])
+            return subprocess.CompletedProcess(
+                arguments, 0 if arguments[0] == "udevadm" else 1,
+                properties if arguments[0] == "udevadm" else "", "",
+            )
+
+        def identity(path):
+            self.clock.now += cache_seconds
+            return RETURNED["usb"]
+
+        with patch.object(Path, "exists", return_value=True), \
+                patch.object(Path, "resolve", return_value=node), \
+                patch.object(boot.marvin_session, "usb_path_for_tty", return_value=Path("/fake/usb")), \
+                patch.object(boot.marvin_usbmon, "read_identity", side_effect=identity), \
+                patch.object(boot.marvin_probe.subprocess, "run", side_effect=command), \
+                patch.object(boot.marvin_probe.serial, "Serial", side_effect=AssertionError("serial opened")):
+            return boot.wait_for_return("/dev/test", BASELINE, timeout=timeout)
+
+    def test_real_preflight_shares_remaining_budget_across_both_subprocesses(self):
+        returned = self.run_real_preflight()
+        self.assertEqual(returned["usb"], RETURNED["usb"])
+        self.assertEqual(self.commands, [("udevadm", 1, 0), ("fuser", 0.5, 0.5)])
+        self.assertAlmostEqual(self.clock.now, 0.6)
+        self.sleep.assert_not_called()
+
+    def test_either_preflight_command_timeout_is_terminal_at_the_return_deadline(self):
+        for options, expected_calls in (({"udev_seconds": 2}, 1), ({"fuser_seconds": 2}, 2)):
+            self.clock.now = 0
+            with self.subTest(options=options), self.assertRaises(TimeoutError) as raised:
+                self.run_real_preflight(**options)
+            self.assertIsInstance(raised.exception.__cause__, subprocess.TimeoutExpired)
+            self.assertEqual(len(self.commands), expected_calls)
+            self.assertEqual(self.clock.now, 1)
+        self.sleep.assert_not_called()
+
+    def test_expired_cached_identity_read_cannot_start_the_next_preflight_command(self):
+        with self.assertRaises(TimeoutError):
+            self.run_real_preflight(cache_seconds=1)
+        self.assertEqual(len(self.commands), 1)
+        self.sleep.assert_not_called()
+
+    def test_command_limit_before_return_deadline_remains_a_preflight_error(self):
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.run_real_preflight(udev_seconds=6, timeout=90)
+        self.assertEqual(self.commands, [("udevadm", 5, 0)])
+        self.assertEqual(self.clock.now, 5)
+        self.sleep.assert_not_called()
+
     def test_retries_only_disappearance_during_preflight(self):
         with patch.object(Path, "exists", return_value=True), patch.object(
             boot.marvin_session, "preflight", side_effect=[FileNotFoundError(), RETURNED]
@@ -351,6 +431,15 @@ class ReturnTests(unittest.TestCase):
             self.assertEqual(inspecting.call_count, 3)
             self.assertEqual(self.sleep.call_count, 3)
             self.assertEqual(self.clock.now, 0.25)
+
+    def test_identity_transition_reported_after_deadline_is_not_accepted(self):
+        def late_change(baseline):
+            self.clock.now = boot.IDENTITY_TRANSITION_SECONDS
+            return True
+
+        with patch.object(boot, "identity_changed", side_effect=late_change):
+            self.assertFalse(boot.wait_for_identity_change(BASELINE))
+        self.sleep.assert_not_called()
 
     def test_permission_failure_is_not_device_removal(self):
         with patch.object(Path, "stat", side_effect=PermissionError("denied")):

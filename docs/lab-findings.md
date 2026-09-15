@@ -641,10 +641,15 @@ usbmon setup/authentication described above:
 Wait for `READY` before the owner cycles power. The initial segment listens
 for up to 90 seconds, with USB recording through a further 30-second tail.
 If the USB device disappears, the interrupted segment is preserved, the
-observer waits at most 90 seconds for one return on the same physical port
+observer uses a 90-second deadline for one return on the same physical port
 with matching VID/PID and descriptors, then starts a new USB recorder before
 opening the returned serial port for 60 seconds. A second disconnect or an
 unrelated error stops the observation. No application bytes are sent.
+Return preflight shares the remaining deadline across its `udevadm` and `fuser`
+checks, each still capped at five seconds. Expired preflight results are rejected
+before return-identity acceptance. Process creation/cleanup, host scheduling and
+cached filesystem operations are not hard-real-time operations and may delay
+timeout reporting; a late result cannot authorize the return segment.
 The separate `--allow-line-state-change` flag acknowledges both segments'
 DTR/RTS-high requests, which can affect or reset custom firmware despite the
 absence of application writes. Isolation alone does not authorize these effects.
@@ -698,6 +703,9 @@ after open to prevent later unprivileged opens. These measures cannot exclude
 an already-open or privileged reader, and other-user owners may be invisible.
 Read chunks are transport reads, not identified protocol message boundaries.
 The default byte limit is 65536; capture also has a time limit.
+Python callers must supply positive integers for baud rate and byte limit.
+Duration and probe delay accept bounded finite integers/floats, not booleans.
+These checks precede device checks and evidence-directory creation.
 
 115200 baud, 8N1 matches the recovered legacy host; installed-firmware
 compatibility remains unverified.
