@@ -310,7 +310,8 @@ class ReturnTests(unittest.TestCase):
     def test_polling_timeouts_are_bounded_before_identity_access(self):
         with patch.object(Path, "exists", side_effect=AssertionError("unexpected exists")) as exists, \
                 patch.object(boot, "identity_changed", side_effect=AssertionError("unexpected stat")) as changed:
-            for timeout in (0, -1, True, "1", None, float("nan"), float("inf"), 91):
+            for timeout in (0, -1, True, "1", None, float("nan"), float("inf"), 91,
+                            10**500, -(10**500)):
                 with self.subTest(timeout=timeout), self.assertRaises(ValueError):
                     boot.wait_for_return("/dev/test", BASELINE, timeout=timeout)
                 with self.subTest(timeout=timeout), self.assertRaises(ValueError):

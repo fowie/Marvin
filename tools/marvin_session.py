@@ -37,7 +37,8 @@ USB_POST_CLOSE_DRAIN_SECONDS = 0.25
 def coordinated_deadlines(ready, maximum, nominal, launched):
     """Require the opt-in recorder's actual clock origin and hard limit."""
     started = ready.get("monotonic")
-    if (type(started) not in (int, float) or not math.isfinite(started)
+    if (type(started) not in (int, float)
+            or (type(started) is float and not math.isfinite(started))
             or not launched <= started <= time.monotonic()
             or ready.get("coordinator_stop") is not True
             or ready.get("coordinator_stop_file") != marvin_usbmon.COORDINATOR_STOP_FILE
@@ -61,7 +62,8 @@ def validate_coordinated_completion(usb, ready, requested_at, hard_deadline):
             or usb.get("started_monotonic") != ready["monotonic"]
             or usb.get("deadline_monotonic") != hard_deadline
             or usb.get("signal") is not None
-            or type(stopped) not in (int, float) or not math.isfinite(stopped)
+            or type(stopped) not in (int, float)
+            or (type(stopped) is float and not math.isfinite(stopped))
             or stopped > time.monotonic()):
         raise OSError("USB recorder completion lacks the coordinated-stop capability or matching hard deadline.")
     reason = usb.get("stop_reason")
@@ -274,7 +276,8 @@ def run_session(
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
     if (type(usb_close_grace_seconds) not in (int, float)
-            or not math.isfinite(usb_close_grace_seconds) or not 0 <= usb_close_grace_seconds <= 30):
+            or (type(usb_close_grace_seconds) is float and not math.isfinite(usb_close_grace_seconds))
+            or not 0 <= usb_close_grace_seconds <= 30):
         raise ValueError("USB close grace must be finite and between 0 and 30 seconds.")
     usb_nominal_seconds = seconds + usb_tail_seconds
     usb_max_seconds = usb_nominal_seconds + usb_close_grace_seconds

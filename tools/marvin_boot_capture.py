@@ -30,7 +30,8 @@ POLL_SECONDS = 0.1
 
 
 def _poll_deadline(timeout, maximum):
-    if (type(timeout) not in (int, float) or not math.isfinite(timeout)
+    if (type(timeout) not in (int, float)
+            or (type(timeout) is float and not math.isfinite(timeout))
             or not 0 < timeout <= maximum):
         raise ValueError(f"Polling timeout must be finite, positive and at most {maximum} seconds.")
     return time.monotonic() + timeout

@@ -80,6 +80,25 @@ def rejected_fixture(directory):
 
 
 class PlanValidationTests(unittest.TestCase):
+    def test_bounded_numbers_keep_finite_integer_and_float_endpoints(self):
+        for minimum, maximum in ((0, 0.1), (0.2, 3), (1, 14400)):
+            for value in (minimum, maximum, float(minimum), float(maximum)):
+                with self.subTest(minimum=minimum, maximum=maximum, value=value):
+                    campaign.bounded_number(value, minimum, maximum, "Window")
+            for value in (10**500, -(10**500), minimum - 1, maximum + 1,
+                          float("nan"), float("inf"), float("-inf"), True, False, None, "1"):
+                with self.subTest(minimum=minimum, maximum=maximum, value=value), \
+                        self.assertRaisesRegex(ValueError, "Window must be finite"):
+                    campaign.bounded_number(value, minimum, maximum, "Window")
+
+    def test_oversized_json_step_intervals_are_normal_validation_errors(self):
+        for field in ("interval_seconds", "response_seconds"):
+            for value in (10**500, -(10**500)):
+                invalid = plan()
+                invalid["segments"][0]["steps"][0][field] = value
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    campaign.validate_plan(json.loads(json.dumps(invalid)))
+
     def test_plan_compiles_deterministically_without_hardware(self):
         with patch.object(marvin_session, "preflight") as preflight:
             coverage = campaign.validate_plan(plan())
@@ -314,6 +333,33 @@ class CampaignTests(unittest.TestCase):
                    "switch_position": "RUN"}
         options.update(overrides)
         return campaign.run_campaign(plan(), self.output, **options)
+
+    def test_oversized_wall_limits_are_rejected_before_preflight(self):
+        for value in (10**500, -(10**500)):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "wall-clock limit"):
+                self.run_campaign(max_seconds=value)
+        self.preflight.assert_not_called()
+        self.session.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_cli_reports_oversized_plan_numbers_without_a_traceback(self):
+        invalid = plan()
+        invalid["segments"][0]["steps"][0]["response_seconds"] = 10**500
+        argv = ["marvin_campaign", "--run", "--output", str(self.output),
+                "--actuators-isolated", "--allow-unknown-command",
+                "--allow-telemetry-state-change", "--allow-line-state-trials",
+                "--switch-position", "RUN"]
+        stderr = io.StringIO()
+        with patch.object(campaign.sys, "argv", argv), \
+                patch.object(marvin_campaign_plan, "make_plan",
+                             return_value=json.loads(json.dumps(invalid))), \
+                redirect_stderr(stderr):
+            self.assertEqual(campaign.main(), 1)
+        self.assertIn("Campaign stopped: Response window", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        self.preflight.assert_not_called()
+        self.session.assert_not_called()
+        self.assertFalse(self.output.exists())
 
     def test_matched_empty_in_error_stops_before_the_next_segment(self):
         def record_with_error(port, output, **options):

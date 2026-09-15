@@ -738,6 +738,20 @@ class ListenTests(unittest.TestCase):
                 self.capture(**fields)
         self.factory.assert_not_called()
 
+    def test_schedule_offset_bounds_reject_large_integers_without_device_access(self):
+        data = marvin_protocol.get_config_request()
+        for offset in (10**500, -(10**500), -1, 1, float("nan"), float("inf"), False):
+            schedule = [marvin_probe.ScheduledWrite(offset, data, "config")]
+            with self.subTest(offset=offset), self.assertRaisesRegex(ValueError, "Scheduled offsets"):
+                self.capture(probe_schedule=schedule, allow_unknown_command=True)
+        for offset in (0, 0.0, 0.5):
+            schedule = [marvin_probe.ScheduledWrite(offset, data, "config")]
+            with self.subTest(offset=offset):
+                self.assertEqual(marvin_probe.validate_schedule(schedule, 1), tuple(schedule))
+        self.udev.assert_not_called()
+        self.factory.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_host_rejected_settings_are_identified_before_any_write(self):
         self.transport.open.side_effect = marvin_probe.serial.SerialException(
             "Could not configure port: (22, 'Invalid argument')"

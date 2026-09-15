@@ -1266,7 +1266,9 @@ class CaptureTests(LocalFilesTests):
 
     def test_missing_isolation_or_bad_bounds_fail_before_identity_or_open(self):
         invalid = [{"actuators_isolated": value} for value in (False, "false", 1)]
-        invalid += [{"seconds": value} for value in (0, -1, 121, float("inf"), float("nan"), True)]
+        invalid += [{"seconds": value} for value in (
+            0, -1, 121, float("inf"), float("nan"), True, 10**500, -(10**500),
+        )]
         invalid += [{key: value} for key, value in (
             ("max_bytes", 0), ("max_bytes", 64 * 1048576 + 1),
             ("max_records", 0), ("max_records", 1000001),

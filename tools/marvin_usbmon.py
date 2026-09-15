@@ -727,7 +727,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         raise UsbmonError("coordinator_stop must be a boolean.")
     if backend not in ("text", "binary"):
         raise UsbmonError("USB monitor backend must be text or binary.")
-    if not isinstance(seconds, (int, float)) or isinstance(seconds, bool) or not math.isfinite(seconds) or not 0 < seconds <= 120:
+    if (not isinstance(seconds, (int, float)) or isinstance(seconds, bool)
+            or (isinstance(seconds, float) and not math.isfinite(seconds))
+            or not 0 < seconds <= 120):
         raise UsbmonError("seconds must be finite, greater than zero and at most 120.")
     if actuators_isolated is not True:
         raise UsbmonError("Explicit --actuators-isolated confirmation is required.")

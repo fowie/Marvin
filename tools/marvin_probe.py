@@ -116,7 +116,7 @@ def validate_schedule(schedule, seconds, *, profile="modern"):
         if not isinstance(item, ScheduledWrite):
             raise ValueError("Each scheduled entry must be a ScheduledWrite.")
         if (type(item.offset_seconds) not in (int, float)
-                or not math.isfinite(item.offset_seconds)
+                or (type(item.offset_seconds) is float and not math.isfinite(item.offset_seconds))
                 or not 0 <= item.offset_seconds < seconds
                 or item.offset_seconds < previous):
             raise ValueError("Scheduled offsets must be finite, ordered, and inside the capture.")

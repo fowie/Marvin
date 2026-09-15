@@ -852,6 +852,7 @@ class SessionTests(unittest.TestCase):
             {"coordinator_stop": False}, {"coordinator_stop_file": "../stop"},
             {"seconds": 5.5}, {"deadline_monotonic": 5.5}, {"monotonic": -1},
             {"monotonic": float("nan")}, {"monotonic": 99},
+            {"monotonic": 10**500}, {"monotonic": -(10**500)},
         ):
             with self.subTest(overrides=overrides):
                 self.output = Path(self.temp.name) / f"bad-ready-{len(list(Path(self.temp.name).iterdir()))}"
@@ -860,6 +861,8 @@ class SessionTests(unittest.TestCase):
                 self.ready_overrides = overrides
                 with self.assertRaisesRegex(ValueError, "capability or hard deadline"):
                     self.run_capture(usb_tail_seconds=5, usb_close_grace_seconds=30)
+                metadata = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(metadata["status"], "failed")
         self.serial.assert_not_called()
 
     def test_final_capability_deadline_and_stop_time_must_agree(self):
@@ -868,6 +871,7 @@ class SessionTests(unittest.TestCase):
             {"stopped_monotonic": 1}, {"stop_reason": "duration"},
             {"stop_reason": "signal"}, {"signal": signal.SIGINT},
             {"stopped_monotonic": float("nan")}, {"stopped_monotonic": 999},
+            {"stopped_monotonic": 10**500}, {"stopped_monotonic": -(10**500)},
         ):
             with self.subTest(overrides=overrides):
                 self.output = Path(self.temp.name) / f"bad-final-{len(list(Path(self.temp.name).iterdir()))}"
@@ -876,9 +880,12 @@ class SessionTests(unittest.TestCase):
                 self.usb_final_overrides = overrides
                 with self.assertRaises(OSError):
                     self.run_capture(usb_tail_seconds=5, usb_close_grace_seconds=30)
+                metadata = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(metadata["status"], "failed")
 
     def test_invalid_grace_and_total_budget_fail_before_any_io(self):
-        for grace in (-1, 31, float("nan"), float("inf"), True, "30", None):
+        for grace in (-1, 31, float("nan"), float("inf"), True, "30", None,
+                      10**500, -(10**500)):
             with self.subTest(grace=grace), self.assertRaises(ValueError):
                 self.run_capture(usb_close_grace_seconds=grace)
         for options in (

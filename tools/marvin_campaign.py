@@ -34,7 +34,9 @@ USB_CLOSE_GRACE_SECONDS = 30
 
 
 def bounded_number(value, minimum, maximum, label):
-    if type(value) not in (int, float) or not math.isfinite(value) or not minimum <= value <= maximum:
+    if (type(value) not in (int, float)
+            or (type(value) is float and not math.isfinite(value))
+            or not minimum <= value <= maximum):
         raise ValueError(f"{label} must be finite and between {minimum} and {maximum}.")
 
 
