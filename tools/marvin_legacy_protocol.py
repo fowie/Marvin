@@ -1,0 +1,192 @@
+"""Offline original-Marvin S/E framing; no transport or successor semantics.
+
+Wire facts: 53 + sequence LE16 + command U8 + response U8 + length LE16,
+opaque payload, CRC16 LE (A001 reflected, init0 over header and payload), 45.
+The old PCTestApp/SerialPacket.cs describes this framing; the 2026-09-14
+GetConfig capture corroborates an empty command4 request and a status80,
+108-byte response. Protocol facts only, not copied recovered implementation.
+
+Only the source/live-supported empty GetConfig4, GetUnitInfo1B, GetPowerState0E
+and ReadRawData00 requests can be generated. Other valid command/status/size
+combinations decode without interpretation. Old00 is not successor ReadRawData3;
+command maps must not be mixed. Firmware/communication version
+words in configuration are returned data, not verified running-firmware identity.
+Caller-declared direction/evidence and even a matching reply shape authenticate
+nothing. This module never opens devices, capture files or source files.
+"""
+
+import argparse
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import struct
+import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from tools.marvin_protocol import crc16
+
+
+HEADER = b"\x53"
+FOOTER = b"\x45"
+HEADER_BYTES = 7
+FRAME_OVERHEAD = 10
+WIRE_MAX_PAYLOAD_BYTES = 65535
+GET_CONFIG = 4
+GET_UNIT_INFO = 0x1B
+GET_POWER_STATE = 0x0E
+READ_RAW_DATA = 0x00
+GET_CONFIG_PAYLOAD_BYTES = 108
+GET_CONFIG_RESPONSE_FIELD = 0x80
+DIRECTIONS = ("unknown", "received", "outgoing")
+EVIDENCE_KINDS = ("unspecified", "recorded", "synthetic")
+
+
+def _sequence(value):
+    if type(value) is not int or not 0 <= value <= 65535:
+        raise ValueError("Sequence must be an integer fitting uint16.")
+    return value
+
+
+def _empty_request(command, sequence):
+    if type(command) is not int or command not in (GET_CONFIG, GET_UNIT_INFO, GET_POWER_STATE, READ_RAW_DATA):
+        raise ValueError("Only the four source/live-supported legacy getters are allowed.")
+    body = HEADER + struct.pack("<HBBH", _sequence(sequence), command, 0, 0)
+    return body + struct.pack("<H", crc16(body)) + FOOTER
+
+
+def get_config_request(sequence=0):
+    """Generate one audited empty legacy GetConfig request, without sending it."""
+    return _empty_request(GET_CONFIG, sequence)
+
+
+def get_unit_info_request(sequence=0):
+    """PCTestApp Form1.cs607-611 and a correlated 2026-09-14 reply support empty1B."""
+    return _empty_request(GET_UNIT_INFO, sequence)
+
+
+def get_power_state_request(sequence=0):
+    """PCTestApp Form1.cs937-940 and a correlated 2026-09-14 reply support empty0E."""
+    return _empty_request(GET_POWER_STATE, sequence)
+
+
+def read_raw_data_request(sequence=0):
+    """PCTestApp Form1.cs931-934 and a correlated 2026-09-14 reply support empty00."""
+    return _empty_request(READ_RAW_DATA, sequence)
+
+
+@dataclass(frozen=True)
+class LegacyPacket:
+    sequence: int
+    command: int
+    response_field: int
+    payload: bytes
+    raw: bytes
+
+    @property
+    def declared_payload_bytes(self):
+        return int.from_bytes(self.raw[5:7], "little")
+
+    @property
+    def crc16_value(self):
+        return int.from_bytes(self.raw[-3:-1], "little")
+
+    def to_dict(self):
+        return {
+            "protocol": "marvin-legacy-se", "sequence": self.sequence,
+            "command": self.command, "response_field": self.response_field,
+            "declared_payload_bytes": self.declared_payload_bytes,
+            "payload_bytes": len(self.payload), "payload_hex": self.payload.hex(),
+            "crc16_value": self.crc16_value, "raw_hex": self.raw.hex(),
+        }
+
+
+def decode_packet(data):
+    """Validate exactly one legacy frame; preserve every command/status verbatim."""
+    if not isinstance(data, (bytes, bytearray)):
+        raise TypeError("decode_packet expects bytes or bytearray.")
+    if not FRAME_OVERHEAD <= len(data) <= WIRE_MAX_PAYLOAD_BYTES + FRAME_OVERHEAD:
+        raise ValueError("Legacy packet size is outside the 10..65545-byte wire range.")
+    if data[:1] != HEADER:
+        raise ValueError("Invalid legacy header; expected single byte 53.")
+    sequence, command, response, length = struct.unpack_from("<HBBH", data, 1)
+    if len(data) != length + FRAME_OVERHEAD:
+        raise ValueError("Actual legacy packet size does not match declared payload length.")
+    if data[-1:] != FOOTER:
+        raise ValueError("Invalid legacy footer; expected single byte 45.")
+    if crc16(data[:-3]) != struct.unpack_from("<H", data, len(data) - 3)[0]:
+        raise ValueError("Legacy packet CRC does not match.")
+    raw = bytes(data)
+    return LegacyPacket(sequence, command, response, raw[HEADER_BYTES:-3], raw)
+
+
+def validate_get_config_reply(packet, sequence=0):
+    """Return an integrity/shape-matched packet, not an authenticated hardware ACK.
+
+Requires a LegacyPacket with matching sequence, command4, response80 and exactly
+108 payload bytes. A request echo, unknown size/status or modern packet fails.
+Configuration remains opaque; no runtime identity or successor layout is inferred.
+    """
+    _sequence(sequence)
+    if not isinstance(packet, LegacyPacket):
+        raise TypeError("Expected a LegacyPacket from decode_packet.")
+    if decode_packet(packet.raw) != packet:
+        raise ValueError("Legacy packet fields do not match its raw frame.")
+    if packet.sequence != sequence:
+        raise ValueError("GetConfig reply sequence does not match the request.")
+    if packet.command != GET_CONFIG:
+        raise ValueError("Expected legacy GetConfig command4.")
+    if packet.response_field != GET_CONFIG_RESPONSE_FIELD:
+        raise ValueError("GetConfig reply requires response field80; request echoes are not replies.")
+    if len(packet.payload) != GET_CONFIG_PAYLOAD_BYTES:
+        raise ValueError("Legacy GetConfig reply requires the source/live 108-byte payload layout.")
+    return packet
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    actions = parser.add_subparsers(dest="action", required=True)
+    encoders = {
+        "get-config": get_config_request, "get-unit-info": get_unit_info_request,
+        "get-power-state": get_power_state_request, "read-raw-data": read_raw_data_request,
+    }
+    generate = actions.add_parser("generate", help="Print one audited offline getter request as hex only")
+    generate.add_argument("--command", choices=tuple(encoders), default="get-config")
+    generate.add_argument("--sequence", type=int, default=0)
+    inspect = actions.add_parser("inspect", help="Inspect one complete legacy frame")
+    inspect.add_argument("hex_packet")
+    inspect.add_argument("--direction", choices=DIRECTIONS, default="unknown")
+    inspect.add_argument("--evidence", choices=EVIDENCE_KINDS, default="unspecified")
+    inspect.add_argument("--expect-config-sequence", type=int)
+    args = parser.parse_args(argv)
+    try:
+        if args.action == "generate":
+            print(encoders[args.command](args.sequence).hex(" "))
+            return 0
+        packet = decode_packet(bytes.fromhex(args.hex_packet))
+        result = {
+            "schema_version": 1, "status": "decoded", "offline_only": True,
+            "direction": args.direction, "evidence_kind": args.evidence,
+            "provenance": "Caller-declared direction and evidence kind; not authenticated.",
+            "packet": packet.to_dict(), "application_acknowledgment": "not_established",
+            "payload_interpretation": "opaque; no successor schema or runtime identity inferred",
+        }
+        if args.expect_config_sequence is not None:
+            if args.direction != "received":
+                raise ValueError("Reply matching requires an explicit received direction declaration.")
+            validate_get_config_reply(packet, args.expect_config_sequence)
+            result["get_config_match"] = {
+                "sequence": args.expect_config_sequence,
+                "status": "integrity_and_shape_match",
+                "meaning": "Caller-expected sequence and reply shape only; not authentication.",
+            }
+    except (ValueError, TypeError) as error:
+        print(json.dumps({"status": "input_error", "offline_only": True, "error": str(error)}))
+        return 2
+    print(json.dumps(result, indent=2, allow_nan=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

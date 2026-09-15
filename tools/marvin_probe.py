@@ -1,0 +1,505 @@
+"""Bounded Marvin serial capture with an optional, explicitly authorized probe.
+
+Opening the port sets CDC line coding and control lines. Driver transients may
+still occur, and pySerial discards queued input during open. Isolate actuators
+before use. Default operation transmits no application bytes. An unknown probe
+may change firmware state or settings, even with actuators disconnected.
+"""
+
+import argparse
+from contextlib import ExitStack
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import errno
+import fcntl
+import json
+import math
+from pathlib import Path
+import re
+import subprocess
+import sys
+import termios
+import time
+
+import serial
+
+
+DEFAULT_PORT = (
+    "/dev/serial/by-id/"
+    "usb-Microsoft_Corp_2009_Microsoft_Marvin_12345678-if00"
+)
+
+
+@dataclass(frozen=True)
+class ScheduledWrite:
+    offset_seconds: float
+    data: bytes
+    label: str
+
+
+class SerialSettingsRejected(serial.SerialException):
+    """The host rejected line settings during open, before application writes."""
+
+
+def validate_framing(bytesize, parity, stopbits):
+    if type(bytesize) is not int or bytesize not in (7, 8):
+        raise ValueError("Data bits must be 7 or 8.")
+    if parity not in ("N", "E", "O"):
+        raise ValueError("Parity must be N, E, or O.")
+    if type(stopbits) is not int or stopbits not in (1, 2):
+        raise ValueError("Stop bits must be 1 or 2.")
+
+
+def validate_schedule(schedule, seconds):
+    if not isinstance(schedule, (tuple, list)) or not 1 <= len(schedule) <= 256:
+        raise ValueError("A schedule must contain 1 to 256 bounded writes.")
+    previous = -1
+    total = 0
+    for item in schedule:
+        if not isinstance(item, ScheduledWrite):
+            raise ValueError("Each scheduled entry must be a ScheduledWrite.")
+        if (type(item.offset_seconds) not in (int, float)
+                or not math.isfinite(item.offset_seconds)
+                or not 0 <= item.offset_seconds < seconds
+                or item.offset_seconds < previous):
+            raise ValueError("Scheduled offsets must be finite, ordered, and inside the capture.")
+        if not isinstance(item.data, bytes) or not 1 <= len(item.data) <= 32:
+            raise ValueError("Scheduled writes must contain 1 to 32 bytes.")
+        if not isinstance(item.label, str) or not 1 <= len(item.label) <= 160:
+            raise ValueError("Each scheduled write needs a bounded label.")
+        previous = item.offset_seconds
+        total += len(item.data)
+    if total > 4096:
+        raise ValueError("A schedule may send at most 4096 bytes.")
+    return tuple(schedule)
+
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def save_metadata(path, metadata):
+    path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+
+def check_device(port):
+    result = subprocess.run(
+        ["udevadm", "info", "--query=property", f"--name={port}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    properties = dict(
+        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+    )
+    if (properties.get("ID_VENDOR_ID"), properties.get("ID_MODEL_ID")) != (
+        "045e",
+        "4444",
+    ):
+        raise ValueError("Refusing to open a device other than Microsoft Marvin.")
+    if any(
+        properties.get(key) != "1"
+        for key in ("ID_MM_DEVICE_IGNORE", "ID_MM_PORT_IGNORE")
+    ):
+        raise ValueError(
+            "ModemManager exclusion is not active. Install the udev rule, "
+            "reload rules, and reconnect Marvin before capture."
+        )
+    return properties
+
+
+def check_port_available(port):
+    result = subprocess.run(
+        ["fuser", str(Path(port).absolute())],
+        capture_output=True, text=True, timeout=5,
+    )
+    if result.returncode == 0:
+        raise ValueError(f"Serial port already has an owner (PID(s): {result.stdout.strip()}).")
+    if result.returncode != 1 or result.stderr.strip() or result.stdout.strip():
+        raise OSError(f"Could not check serial ownership: {result.stderr.strip()}")
+
+
+def validate_probe_delay(probe, seconds, delay):
+    if not math.isfinite(delay) or not 0 <= delay <= 30 or delay >= seconds:
+        raise ValueError("Probe delay must be finite, from 0 to 30 seconds, and below capture duration.")
+    if delay and probe is None:
+        raise ValueError("A probe delay requires an explicitly selected probe.")
+
+
+def capture(
+    port,
+    output,
+    *,
+    seconds,
+    baudrate,
+    max_bytes,
+    actuators_isolated,
+    dtr=False,
+    rts=False,
+    probe=None,
+    allow_unknown_command=False,
+    line_state_at_open=False,
+    guard=None,
+    probe_delay=0,
+    probe_schedule=None,
+    bytesize=8,
+    parity="N",
+    stopbits=1,
+):
+    if not actuators_isolated:
+        raise ValueError("Physical motor/servo isolation must be acknowledged.")
+    if not math.isfinite(seconds) or not 0 < seconds <= 120:
+        raise ValueError("Capture duration must be greater than 0 and at most 120 seconds.")
+    if baudrate <= 0 or max_bytes <= 0:
+        raise ValueError("Baud rate and byte limit must be positive.")
+    validate_framing(bytesize, parity, stopbits)
+    schedule = None
+    if probe_schedule is not None:
+        if not allow_unknown_command:
+            raise ValueError("A multi-probe schedule requires explicit authorization.")
+        if probe is not None or probe_delay:
+            raise ValueError("A schedule cannot be combined with a one-shot probe or delay.")
+        schedule = validate_schedule(probe_schedule, seconds)
+    if probe is not None:
+        if not allow_unknown_command:
+            raise ValueError("An unknown application command requires explicit authorization.")
+        if not isinstance(probe, bytes) or not 1 <= len(probe) <= 16:
+            raise ValueError("A one-shot probe must contain between 1 and 16 bytes.")
+    validate_probe_delay(probe, seconds, probe_delay)
+
+    properties = check_device(port)
+    check_port_available(port)
+    output = Path(output)
+    output.mkdir(mode=0o700, parents=True, exist_ok=False)
+    metadata = {
+        "started_at": utc_now(),
+        "status": "incomplete",
+        "port": str(port),
+        "usb_identity": "045e:4444",
+        "serial_number": properties.get("ID_SERIAL_SHORT"),
+        "udev_path": properties.get("DEVPATH"),
+        "actuators_isolated_acknowledged": True,
+        "baudrate": baudrate,
+        "baudrate_is_trial_setting": True,
+        "framing": f"{bytesize}{parity}{stopbits}",
+        "dtr_initial_requested": dtr if line_state_at_open else False,
+        "dtr_requested": dtr,
+        "rts_initial_requested": rts if line_state_at_open else False,
+        "rts_requested": rts,
+        "flow_control": "none",
+        "duration_limit_seconds": seconds,
+        "byte_limit": max_bytes,
+        "requested_probe_hex": probe.hex() if probe is not None else None,
+        "probe_delay_seconds": probe_delay,
+        "suppress_probe_on_early_rx": bool(probe is not None and probe_delay),
+        "transmit_status": "not_requested",
+        "application_bytes_written": 0,
+        "bytes_received": 0,
+        "line_state_at_open": line_state_at_open,
+        "ownership_check": "fuser; best effort, other-user processes may be invisible",
+        "limitations": [
+            "Opening changes CDC line coding and control lines.",
+            "The driver may transiently assert control lines during open/close.",
+            "pySerial discards queued input during open; an early banner may be lost.",
+            "A successful capture does not clear the board's electrical faults.",
+            "Bytes written means accepted by the serial driver, not device acknowledgment.",
+            "Unknown application commands may change firmware state or settings.",
+            "No tool writes does not rule out the kernel's first-open echo race.",
+            "Kernel exclusive-open prevents later unprivileged opens, not existing readers.",
+        ],
+    }
+    if schedule is not None:
+        metadata.update({
+            "probe_schedule": [
+                {"offset_seconds": item.offset_seconds, "hex": item.data.hex(), "label": item.label}
+                for item in schedule
+            ],
+            "scheduled_writes_completed": 0,
+            "known_application_bytes_written": 0,
+            "suppress_schedule_on_any_rx": True,
+        })
+    metadata_path = output / "metadata.json"
+    save_metadata(metadata_path, metadata)
+    port_handle = None
+    with ExitStack() as files:
+        events = files.enter_context((output / "events.jsonl").open("x", encoding="utf-8"))
+
+        def event(name, **fields):
+            events.write(json.dumps({
+                "event": name, "at": utc_now(),
+                "monotonic_seconds": time.monotonic(), **fields,
+            }) + "\n")
+            events.flush()
+
+        try:
+            raw = files.enter_context((output / "received.bin").open("xb"))
+            chunks = files.enter_context((output / "chunks.jsonl").open("x", encoding="utf-8"))
+            event("session_prepared", baudrate=baudrate, framing=metadata["framing"])
+            port_handle = serial.Serial(
+                port=None,
+                baudrate=baudrate,
+                bytesize=bytesize,
+                parity=parity,
+                stopbits=stopbits,
+                timeout=0.1,
+                write_timeout=0.1,
+                xonxoff=False,
+                rtscts=False,
+                dsrdtr=False,
+                exclusive=True,
+            )
+            port_handle.dtr = metadata["dtr_initial_requested"]
+            port_handle.rts = metadata["rts_initial_requested"]
+            port_handle.port = str(port)
+            if guard is not None:
+                guard()
+            event("open_attempt", dtr=port_handle.dtr, rts=port_handle.rts)
+            try:
+                port_handle.open()
+            except OSError as error:
+                if (getattr(error, "errno", None) == errno.EINVAL
+                        or re.fullmatch(r"Could not configure port: \(22, ['\"]Invalid argument['\"]\)", str(error))):
+                    raise SerialSettingsRejected(errno.EINVAL, str(error)) from error
+                raise
+            event("open_completed")
+            fcntl.ioctl(port_handle.fileno(), termios.TIOCEXCL)
+            metadata["kernel_exclusive_open"] = True
+            event("exclusive_open_enabled")
+            start = time.monotonic()
+            deadline = start + seconds
+            if dtr and not line_state_at_open:
+                event("dtr_change_attempt", requested=True)
+                port_handle.dtr = True
+                metadata["dtr_asserted_at"] = utc_now()
+                event("dtr_change_completed", requested=True)
+            if rts and not line_state_at_open:
+                event("rts_change_attempt", requested=True)
+                port_handle.rts = True
+                metadata["rts_asserted_at"] = utc_now()
+                event("rts_change_completed", requested=True)
+            def write_probe(data=probe, schedule_index=None):
+                if guard is not None:
+                    guard()
+                if (probe_delay or schedule is not None) and time.monotonic() >= deadline:
+                    metadata["transmit_status"] = "not_sent_before_deadline"
+                    event("probe_suppressed", reason="capture_ended_before_write")
+                    return False
+                known_before = metadata["application_bytes_written"] if schedule is not None else 0
+                metadata["transmit_status"] = "attempting"
+                metadata["application_bytes_written"] = None
+                metadata["transmit_attempted_at"] = utc_now()
+                save_metadata(metadata_path, metadata)
+                details = (
+                    {"schedule_index": schedule_index, "label": schedule[schedule_index].label}
+                    if schedule_index is not None else {}
+                )
+                event("write_attempt", hex=data.hex(), size=len(data), **details)
+                written = port_handle.write(data)
+                if type(written) is not int or not 0 <= written <= len(data):
+                    raise serial.SerialTimeoutException("Invalid write result; outcome unknown, not retrying.")
+                metadata["application_bytes_written"] = known_before + written
+                if schedule is not None:
+                    metadata["known_application_bytes_written"] = known_before + written
+                event("write_returned", accepted_bytes=written, **details)
+                if written != len(data):
+                    metadata["transmit_status"] = "short_write"
+                    raise serial.SerialTimeoutException(
+                        f"Only {written} of {len(data)} probe bytes written; not retrying."
+                    )
+                metadata["transmit_status"] = "written"
+                if schedule_index is not None:
+                    metadata["scheduled_writes_completed"] = schedule_index + 1
+                    if schedule_index + 1 < len(schedule):
+                        metadata["transmit_status"] = "schedule_in_progress"
+                metadata["transmit_completed_at"] = utc_now()
+                save_metadata(metadata_path, metadata)
+                return True
+
+            schedule_index = 0
+            schedule_cancelled = False
+            schedule_last_completed = None
+            if schedule is not None:
+                metadata["transmit_status"] = "waiting_for_quiet_window"
+                event("schedule_started", writes=len(schedule), offset_origin_monotonic=start)
+                save_metadata(metadata_path, metadata)
+            probe_pending = probe is not None and probe_delay > 0
+            probe_due = time.monotonic() + probe_delay if probe_pending else None
+            if probe_pending:
+                metadata["transmit_status"] = "waiting_for_quiet_window"
+                event("probe_scheduled", delay_seconds=probe_delay, due_monotonic=probe_due)
+                save_metadata(metadata_path, metadata)
+            elif probe is not None:
+                write_probe()
+
+            def received(data):
+                nonlocal probe_pending, schedule_cancelled
+                offset = metadata["bytes_received"]
+                raw.write(data)
+                raw.flush()
+                chunks.write(json.dumps({
+                    "elapsed_seconds": time.monotonic() - start,
+                    "at": utc_now(), "offset": offset,
+                    "size": len(data), "hex": data.hex(),
+                }) + "\n")
+                chunks.flush()
+                metadata["bytes_received"] += len(data)
+                event("received", offset=offset, size=len(data))
+                if probe_pending:
+                    probe_pending = False
+                    metadata["transmit_status"] = "suppressed_pre_probe_rx"
+                    event("probe_suppressed", reason="received_data_before_write", offset=offset)
+                    save_metadata(metadata_path, metadata)
+                if schedule is not None and not schedule_cancelled and schedule_index < len(schedule):
+                    schedule_cancelled = True
+                    metadata["transmit_status"] = "suppressed_schedule_rx"
+                    event("schedule_suppressed", reason="received_data",
+                          writes_remaining=len(schedule) - schedule_index, offset=offset)
+                    save_metadata(metadata_path, metadata)
+
+            metadata["stop_reason"] = "duration_limit"
+            while metadata["bytes_received"] < max_bytes:
+                if guard is not None:
+                    guard()
+                now = time.monotonic()
+                remaining = deadline - now
+                if remaining <= 0:
+                    break
+                schedule_due = None
+                if schedule is not None and not schedule_cancelled and schedule_index < len(schedule):
+                    schedule_due = start + schedule[schedule_index].offset_seconds
+                    if schedule_last_completed is not None:
+                        spacing = (schedule[schedule_index].offset_seconds
+                                   - schedule[schedule_index - 1].offset_seconds)
+                        schedule_due = max(schedule_due, schedule_last_completed + spacing)
+                    if now >= schedule_due:
+                        port_handle.timeout = 0
+                        data = port_handle.read(min(4096, max_bytes - metadata["bytes_received"]))
+                        if data:
+                            received(data)
+                        elif write_probe(schedule[schedule_index].data, schedule_index):
+                            schedule_last_completed = time.monotonic()
+                            schedule_index += 1
+                        else:
+                            schedule_cancelled = True
+                        continue
+                if probe_pending and now >= probe_due:
+                    # Drain already queued bytes before deciding whether to write.
+                    port_handle.timeout = 0
+                    data = port_handle.read(min(4096, max_bytes - metadata["bytes_received"]))
+                    if data:
+                        received(data)
+                    else:
+                        write_probe()
+                        probe_pending = False
+                    continue
+                port_handle.timeout = min(0.1, remaining)
+                if probe_pending:
+                    port_handle.timeout = min(port_handle.timeout, probe_due - now)
+                if schedule_due is not None:
+                    port_handle.timeout = min(port_handle.timeout, schedule_due - now)
+                data = port_handle.read(
+                    min(4096, max_bytes - metadata["bytes_received"])
+                )
+                if not data:
+                    continue
+                received(data)
+            if metadata["bytes_received"] >= max_bytes:
+                metadata["stop_reason"] = "byte_limit"
+            if probe_pending:
+                metadata["transmit_status"] = "not_sent_before_deadline"
+                event("probe_suppressed", reason="capture_ended_before_write")
+            if schedule is not None and not schedule_cancelled and schedule_index < len(schedule):
+                metadata["transmit_status"] = "not_sent_before_deadline"
+                event("schedule_suppressed", reason="capture_ended_before_write",
+                      writes_remaining=len(schedule) - schedule_index)
+            metadata["status"] = "completed"
+        except (OSError, ValueError, serial.SerialException) as error:
+            metadata["status"] = "failed"
+            metadata["error"] = str(error)
+            metadata["error_errno"] = getattr(error, "errno", None)
+            metadata["settings_rejected_before_open"] = isinstance(error, SerialSettingsRejected)
+            if metadata["transmit_status"] == "attempting":
+                metadata["transmit_status"] = "unknown"
+            event("failed", error=str(error))
+            raise
+        except KeyboardInterrupt:
+            metadata["status"] = "interrupted"
+            if metadata["transmit_status"] == "attempting":
+                metadata["transmit_status"] = "unknown"
+            event("interrupted")
+            raise
+        finally:
+            try:
+                if port_handle is not None:
+                    event("close_attempt")
+                    port_handle.close()
+                    event("close_completed")
+            except (OSError, serial.SerialException) as error:
+                metadata["status"] = "failed"
+                metadata["close_error"] = str(error)
+                raise
+            finally:
+                metadata["finished_at"] = utc_now()
+                save_metadata(metadata_path, metadata)
+    return metadata
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port", default=DEFAULT_PORT)
+    parser.add_argument("--output", type=Path, required=True, help="New capture directory")
+    parser.add_argument("--seconds", type=float, default=10)
+    parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--max-bytes", type=int, default=65536)
+    parser.add_argument(
+        "--dtr",
+        action="store_true",
+        help="Assert host-ready DTR after open; may start/reset custom firmware",
+    )
+    parser.add_argument(
+        "--rts",
+        action="store_true",
+        help="Assert RTS after open; may affect custom firmware behavior",
+    )
+    parser.add_argument("--actuators-isolated", action="store_true", required=True)
+    parser.add_argument("--probe-hex", help="One explicitly authorized probe, at most 16 bytes")
+    parser.add_argument("--allow-unknown-command", action="store_true")
+    parser.add_argument("--probe-delay", type=float, default=0,
+                        help="Listen before writing; any received byte suppresses the probe. Included in --seconds.")
+    parser.add_argument(
+        "--line-state-at-open", action="store_true",
+        help="Request --dtr/--rts values before open instead of changing them afterward",
+    )
+    args = parser.parse_args()
+    try:
+        probe = bytes.fromhex(args.probe_hex) if args.probe_hex is not None else None
+        result = capture(
+            args.port,
+            args.output,
+            seconds=args.seconds,
+            baudrate=args.baudrate,
+            max_bytes=args.max_bytes,
+            actuators_isolated=args.actuators_isolated,
+            dtr=args.dtr,
+            rts=args.rts,
+            probe=probe,
+            allow_unknown_command=args.allow_unknown_command,
+            line_state_at_open=args.line_state_at_open,
+            probe_delay=args.probe_delay,
+        )
+    except (ValueError, OSError, serial.SerialException, subprocess.SubprocessError) as error:
+        print(f"Capture failed: {error}", file=sys.stderr)
+        return 1
+    print(
+        f"Received {result['bytes_received']} bytes; "
+        f"wrote {result['application_bytes_written']} application bytes. "
+        f"Stopped at {result['stop_reason']}. Files: {args.output}"
+    )
+    if result["bytes_received"] == 0:
+        print("No output observed; this does not identify or validate the protocol.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

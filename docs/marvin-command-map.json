@@ -1,0 +1,2767 @@
+{
+  "schema_version": 1,
+  "status": "source_map_with_separate_live_evidence",
+  "archive": "private-archive:MarvinFirmwareAndSample.zip",
+  "citation_note": "Source paths are private-archive-relative citations; local-evidence IDs identify unpublished captures/analyses, not repository paths. See docs/provenance.md.",
+  "archive_sha256": "c9977a4091c6186caef552143f5ef672f54a4e3c9b7c67c699dea9dc26ee0118",
+  "old_sample_unique_commands": 23,
+  "old_sample_send_sites": 30,
+  "legacy_sample_commands": [
+    {
+      "command": 0,
+      "command_hex": "00",
+      "sample_name": "ReadRawData",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "reviewed_read_candidate",
+      "sample_calls": [
+        {
+          "method": "getRawData_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:934"
+        }
+      ],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:marvin-legacy-raw-data-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-raw-data-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 144,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            134
+          ]
+        },
+        {
+          "evidence": "local-evidence:marvin-legacy-raw-repeat-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-raw-repeat-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 144,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            134
+          ]
+        }
+      ],
+      "newer_drive_meaning": {
+        "command": 0,
+        "command_hex": "00",
+        "name": "ReSync",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:108",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 0,
+        "command_hex": "00",
+        "name": "ReSync",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:178",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 4,
+      "command_hex": "04",
+      "sample_name": "GetConfig",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "live_confirmed",
+      "sample_calls": [
+        {
+          "method": "getConfig_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:862"
+        }
+      ],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:marvin-legacy-getconfig-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-getconfig-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 118,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            108
+          ]
+        }
+      ],
+      "newer_drive_meaning": {
+        "command": 4,
+        "command_hex": "04",
+        "name": "GetConfig",
+        "handler": "HostCommandGetConfig",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(confparams)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:112",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 4,
+        "command_hex": "04",
+        "name": "GetConfig",
+        "handler": "HostCommandGetConfig",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(confparams)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:182",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 5,
+      "command_hex": "05",
+      "sample_name": "SetConfig",
+      "request_layout": "27 words / 108 bytes; sample fills arbitrary byte ramp",
+      "sample_effect": "configuration_write",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setConfig_btn_Click",
+          "request_bytes": 108,
+          "source": "PCTestApp/Form1.cs:973"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 5,
+        "command_hex": "05",
+        "name": "HostHeartbeatIgnore",
+        "handler": "HostCommandHostHeartbeatIgnore",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:113",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 5,
+        "command_hex": "05",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:183",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 10,
+      "command_hex": "0a",
+      "sample_name": "GetRawMotorPWM",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "excluded_collision_with_fan_setter",
+      "sample_calls": [
+        {
+          "method": "getRawMotorPWM_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:646"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 10,
+        "command_hex": "0a",
+        "name": "SetFanRpm",
+        "handler": "HostCommandFanRpm",
+        "request_count_expression": "1",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:118",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 10,
+        "command_hex": "0a",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:188",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 11,
+      "command_hex": "0b",
+      "sample_name": "SetRawMotorPWM",
+      "request_layout": "four LE uint16 values / 8 bytes",
+      "sample_effect": "actuation",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setRawMotorPWM_btn_Click",
+          "request_bytes": 8,
+          "source": "PCTestApp/Form1.cs:674"
+        },
+        {
+          "method": "setPWMTimer_Tick",
+          "request_bytes": 8,
+          "source": "PCTestApp/Form1.cs:1057"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 11,
+        "command_hex": "0b",
+        "name": "MotorParameter",
+        "handler": "HostCommandMotorParameter",
+        "request_count_expression": "3",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:119",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 11,
+        "command_hex": "0b",
+        "name": "MotorParameter",
+        "handler": "HostCommandMotorParameter",
+        "request_count_expression": "3",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:189",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 12,
+      "command_hex": "0c",
+      "sample_name": "GetLog",
+      "request_layout": "none",
+      "sample_effect": "diagnostic_read_may_consume_log",
+      "live_probe_policy": "reviewed_read_candidate",
+      "sample_calls": [
+        {
+          "method": "getLog_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:961"
+        }
+      ],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:marvin-legacy-log-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-log-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 42,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            32
+          ]
+        },
+        {
+          "evidence": "local-evidence:marvin-legacy-log-page-2-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-log-page-2-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 42,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            32
+          ]
+        }
+      ],
+      "newer_drive_meaning": {
+        "command": 12,
+        "command_hex": "0c",
+        "name": "ErrorReport",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "1",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:120",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 12,
+        "command_hex": "0c",
+        "name": "ErrorReport",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:190",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 14,
+      "command_hex": "0e",
+      "sample_name": "GetPowerState",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "reviewed_read_candidate",
+      "sample_calls": [
+        {
+          "method": "getPowerState_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:940"
+        }
+      ],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:marvin-legacy-power-state-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-power-state-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 12,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            2
+          ]
+        }
+      ],
+      "newer_drive_meaning": {
+        "command": 14,
+        "command_hex": "0e",
+        "name": "GetPowerState",
+        "handler": "HostCommandGetPowerState",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "1",
+        "return_element_type": "UInt16Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:122",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 14,
+        "command_hex": "0e",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:192",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 15,
+      "command_hex": "0f",
+      "sample_name": "SetPowerState",
+      "request_layout": "LE uint16 / 2 bytes; sample writes zero",
+      "sample_effect": "power_switching",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setPowerState_btn_Click",
+          "request_bytes": 2,
+          "source": "PCTestApp/Form1.cs:949"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 15,
+        "command_hex": "0f",
+        "name": "SetPowerState",
+        "handler": "HostCommandSetPowerState",
+        "request_count_expression": "1",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:123",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 15,
+        "command_hex": "0f",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:193",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 16,
+      "command_hex": "10",
+      "sample_name": "GetMotorVelocity",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "excluded_collision_with_safety_latch_reset",
+      "sample_calls": [
+        {
+          "method": "getMotorVelocity_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:868"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 16,
+        "command_hex": "10",
+        "name": "ResetCliffStop",
+        "handler": "HostCommandResetCliffStop",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:124",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 16,
+        "command_hex": "10",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:194",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 17,
+      "command_hex": "11",
+      "sample_name": "SetMotorVelocity",
+      "request_layout": "left/right LE int16 / 4 bytes; units not live calibrated",
+      "sample_effect": "actuation",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setMotorVelocity_btn_Click",
+          "request_bytes": 4,
+          "source": "PCTestApp/Form1.cs:897"
+        },
+        {
+          "method": "timer2_Tick",
+          "request_bytes": 4,
+          "source": "PCTestApp/Form1.cs:992"
+        },
+        {
+          "method": "setVelocityTimer_Tick",
+          "request_bytes": 4,
+          "source": "PCTestApp/Form1.cs:1019"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 17,
+        "command_hex": "11",
+        "name": "GPioPinSet",
+        "handler": "HostCommandGPIOPinSet",
+        "request_count_expression": "3",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:125",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 17,
+        "command_hex": "11",
+        "name": "MicrophoneGain",
+        "handler": "HostCommandMicrophoneGain",
+        "request_count_expression": "1",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:195",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 21,
+      "command_hex": "15",
+      "sample_name": "ResetPC",
+      "request_layout": "none",
+      "sample_effect": "reset",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "resetPC_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:955"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 21,
+        "command_hex": "15",
+        "name": "ResetPC",
+        "handler": "HostCommandResetPC",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:129",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 21,
+        "command_hex": "15",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:199",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 23,
+      "command_hex": "17",
+      "sample_name": "GetLedState",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "excluded_collision_with_drive_setter",
+      "sample_calls": [
+        {
+          "method": "getLedState_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:680"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 23,
+        "command_hex": "17",
+        "name": "SetDriveVelocities",
+        "handler": "HostCommandSetDriveVelocities",
+        "request_count_expression": "2",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:131",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 23,
+        "command_hex": "17",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:201",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 24,
+      "command_hex": "18",
+      "sample_name": "SetLedState",
+      "request_layout": "18 uint8 brightness values; single-LED button zeros other entries",
+      "sample_effect": "output_setting",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setLedState_btn_Click",
+          "request_bytes": 18,
+          "source": "PCTestApp/Form1.cs:714"
+        },
+        {
+          "method": "setLedStateAll_btn_Click",
+          "request_bytes": 18,
+          "source": "PCTestApp/Form1.cs:738"
+        },
+        {
+          "method": "setRandLedStateAll_btn_Click",
+          "request_bytes": 18,
+          "source": "PCTestApp/Form1.cs:746"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 24,
+        "command_hex": "18",
+        "name": "SetTimedDriveVelocities",
+        "handler": "HostCommandSetTimedDriveVelocities",
+        "request_count_expression": "3",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:132",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 24,
+        "command_hex": "18",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:202",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 25,
+      "command_hex": "19",
+      "sample_name": "GetLedBlink",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "excluded_collision_with_servo_setter",
+      "sample_calls": [
+        {
+          "method": "getLedBlink_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:850"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 25,
+        "command_hex": "19",
+        "name": "SetServoRadians",
+        "handler": "HostCommandSetServoRadians",
+        "request_count_expression": "2",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:133",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 25,
+        "command_hex": "19",
+        "name": "SetServoRadians",
+        "handler": "HostCommandSetServoRadians",
+        "request_count_expression": "2",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:203",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 26,
+      "command_hex": "1a",
+      "sample_name": "SetLedBlink",
+      "request_layout": "18 uint8 blink values; timing semantics unconfirmed",
+      "sample_effect": "output_setting",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setLedBlink_btn_Click",
+          "request_bytes": 18,
+          "source": "PCTestApp/Form1.cs:812"
+        },
+        {
+          "method": "setLedBlinkAll_btn_Click",
+          "request_bytes": 18,
+          "source": "PCTestApp/Form1.cs:836"
+        },
+        {
+          "method": "setRandLedBlinkAll_btn_Click",
+          "request_bytes": 18,
+          "source": "PCTestApp/Form1.cs:844"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 26,
+        "command_hex": "1a",
+        "name": "SetServoHoldingCurrent",
+        "handler": "HostCommandSetServoHoldingCurrent",
+        "request_count_expression": "2",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:134",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 26,
+        "command_hex": "1a",
+        "name": "SetServoHoldingCurrent",
+        "handler": "HostCommandSetServoHoldingCurrent",
+        "request_count_expression": "2",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:204",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 27,
+      "command_hex": "1b",
+      "sample_name": "GetUnitInfo",
+      "request_layout": "none",
+      "sample_effect": "getter_with_possible_telemetry_handshake",
+      "live_probe_policy": "live_confirmed",
+      "sample_calls": [
+        {
+          "method": "GetUnitInfo_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:610"
+        }
+      ],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:marvin-legacy-unit-info-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-unit-info-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 22,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            12
+          ]
+        }
+      ],
+      "newer_drive_meaning": {
+        "command": 27,
+        "command_hex": "1b",
+        "name": "GetUnitInfo",
+        "handler": "HostCommandGetUnitInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(UnitInfo)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:135",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 27,
+        "command_hex": "1b",
+        "name": "GetUnitInfo",
+        "handler": "HostCommandGetUnitInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(UnitInfo)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:205",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 28,
+      "command_hex": "1c",
+      "sample_name": "SetUnitInfo",
+      "request_layout": "12 bytes; sample uses alternating AA/55",
+      "sample_effect": "identity_write",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "SetUnitInfo_btn_Click",
+          "request_bytes": 12,
+          "source": "PCTestApp/Form1.cs:628"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 28,
+        "command_hex": "1c",
+        "name": "ResetMotorPosition",
+        "handler": "HostCommandResetMotorPositions",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:136",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 28,
+        "command_hex": "1c",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:206",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 29,
+      "command_hex": "1d",
+      "sample_name": "GetServoPosition",
+      "request_layout": "none",
+      "sample_effect": "getter_or_telemetry_handshake_under_newer_map",
+      "live_probe_policy": "reviewed_read_candidate",
+      "sample_calls": [
+        {
+          "method": "getServoPosition_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:778"
+        }
+      ],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:marvin-legacy-servo-position-20260914-01",
+          "analysis": "local-evidence:marvin-legacy-servo-position-analysis-20260914.json",
+          "request_bytes": 10,
+          "reply_bytes": 14,
+          "matched_response_fields": [
+            128
+          ],
+          "matched_payload_sizes": [
+            4
+          ]
+        }
+      ],
+      "newer_drive_meaning": {
+        "command": 29,
+        "command_hex": "1d",
+        "name": "GetSensorInfo",
+        "handler": "HostCommandGetSensorInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "128",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:137",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 29,
+        "command_hex": "1d",
+        "name": "GetSensorInfo",
+        "handler": "HostCommandGetSensorInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "128",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:207",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 30,
+      "command_hex": "1e",
+      "sample_name": "SetServoPosition",
+      "request_layout": "two LE uint16 / 4 bytes; UI suggests 0..3000 but only uint16 parsing is enforced",
+      "sample_effect": "actuation",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "setServoPosition_btn_Click",
+          "request_bytes": 4,
+          "source": "PCTestApp/Form1.cs:772"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 30,
+        "command_hex": "1e",
+        "name": "SonarMode",
+        "handler": "HostCommandSonarMode",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:138",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 30,
+        "command_hex": "1e",
+        "name": "ResetCom",
+        "handler": "HostCommandResetCom",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:208",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 31,
+      "command_hex": "1f",
+      "sample_name": "GetSensorInfo",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "excluded_collision_with_USB_reset_or_depth_camera_power",
+      "sample_calls": [
+        {
+          "method": "GetSensorInfo_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:634"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 31,
+        "command_hex": "1f",
+        "name": "ResetCom",
+        "handler": "HostCommandResetCom",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:139",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 31,
+        "command_hex": "1f",
+        "name": "DepthCamPower",
+        "handler": "HostCommandDepthCamPower",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:209",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 38,
+      "command_hex": "26",
+      "sample_name": "DisableHeartbeat",
+      "request_layout": "none",
+      "sample_effect": "telemetry_control",
+      "live_probe_policy": "source_only_not_needed_for_mapping",
+      "sample_calls": [
+        {
+          "method": "DisableHeartbeat_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:640"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 38,
+        "command_hex": "26",
+        "name": "GetProjectorVersion",
+        "handler": "HostCommandGetProjectorVersion",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "1",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:146",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 38,
+        "command_hex": "26",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:216",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 39,
+      "command_hex": "27",
+      "sample_name": "ResetMotorPositions",
+      "request_layout": "none",
+      "sample_effect": "odometry_reset",
+      "live_probe_policy": "excluded",
+      "sample_calls": [
+        {
+          "method": "resetMotorPositions_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:856"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 39,
+        "command_hex": "27",
+        "name": "SetProjectorPower",
+        "handler": "HostCommandProjectorPower",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:147",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 39,
+        "command_hex": "27",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:217",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    },
+    {
+      "command": 40,
+      "command_hex": "28",
+      "sample_name": "GetBatteryInfo",
+      "request_layout": "none",
+      "sample_effect": "getter",
+      "live_probe_policy": "excluded_collision_with_projector_control",
+      "sample_calls": [
+        {
+          "method": "getBatteryInfo_btn_Click",
+          "request_bytes": 0,
+          "source": "PCTestApp/Form1.cs:928"
+        }
+      ],
+      "live_observations": [],
+      "newer_drive_meaning": {
+        "command": 40,
+        "command_hex": "28",
+        "name": "MoveProjectorVerticalImage",
+        "handler": "HostCommandMoveProjectorImageVertical",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:148",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      "newer_head_meaning": {
+        "command": 40,
+        "command_hex": "28",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:218",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    }
+  ],
+  "newer_C_build_tables": {
+    "drive": [
+      {
+        "command": 0,
+        "command_hex": "00",
+        "name": "ReSync",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:108",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 1,
+        "command_hex": "01",
+        "name": "Heartbeat",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:109",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 2,
+        "command_hex": "02",
+        "name": "HostHeartbeat",
+        "handler": "HostCommandHostHeartbeat",
+        "request_count_expression": "sizeof(HeartbeatDataHostToDriveController)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:110",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 3,
+        "command_hex": "03",
+        "name": "ReadRawData",
+        "handler": "HostCommandReadRawData",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(HeartbeatData)",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:111",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 4,
+        "command_hex": "04",
+        "name": "GetConfig",
+        "handler": "HostCommandGetConfig",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(confparams)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:112",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 5,
+        "command_hex": "05",
+        "name": "HostHeartbeatIgnore",
+        "handler": "HostCommandHostHeartbeatIgnore",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:113",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 6,
+        "command_hex": "06",
+        "name": "CliffDetectionEnable",
+        "handler": "HostCommandCliffDetectionEnable",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:114",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 7,
+        "command_hex": "07",
+        "name": "SetProjectorIdleMode",
+        "handler": "HostSetProjectorIdleMode",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:115",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 8,
+        "command_hex": "08",
+        "name": "InitReflash",
+        "handler": "HostCommandReflashInit",
+        "request_count_expression": "1",
+        "request_element_type": "UInt32Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:116",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 9,
+        "command_hex": "09",
+        "name": "AddReflashBlock",
+        "handler": "HostCommandReflashAddBlock",
+        "request_count_expression": "BytesInReflashBlock",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:117",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 10,
+        "command_hex": "0a",
+        "name": "SetFanRpm",
+        "handler": "HostCommandFanRpm",
+        "request_count_expression": "1",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:118",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 11,
+        "command_hex": "0b",
+        "name": "MotorParameter",
+        "handler": "HostCommandMotorParameter",
+        "request_count_expression": "3",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:119",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 12,
+        "command_hex": "0c",
+        "name": "ErrorReport",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "1",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:120",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 13,
+        "command_hex": "0d",
+        "name": "RecalibrateServo",
+        "handler": "HostCommandRecalibrateServo",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:121",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 14,
+        "command_hex": "0e",
+        "name": "GetPowerState",
+        "handler": "HostCommandGetPowerState",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "1",
+        "return_element_type": "UInt16Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:122",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 15,
+        "command_hex": "0f",
+        "name": "SetPowerState",
+        "handler": "HostCommandSetPowerState",
+        "request_count_expression": "1",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:123",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 16,
+        "command_hex": "10",
+        "name": "ResetCliffStop",
+        "handler": "HostCommandResetCliffStop",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:124",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 17,
+        "command_hex": "11",
+        "name": "GPioPinSet",
+        "handler": "HostCommandGPIOPinSet",
+        "request_count_expression": "3",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:125",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 18,
+        "command_hex": "12",
+        "name": "SetBumpSensing",
+        "handler": "HostCommandSetBumpSensing",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:126",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 19,
+        "command_hex": "13",
+        "name": "ResetBumpDetected",
+        "handler": "HostCommandResetBumpDetected",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:127",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 20,
+        "command_hex": "14",
+        "name": "ResetController",
+        "handler": "HostCommandResetController",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:128",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 21,
+        "command_hex": "15",
+        "name": "ResetPC",
+        "handler": "HostCommandResetPC",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:129",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 22,
+        "command_hex": "16",
+        "name": "ToggleHeartbeat",
+        "handler": "HostCommandToggleHeartbeat",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:130",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 23,
+        "command_hex": "17",
+        "name": "SetDriveVelocities",
+        "handler": "HostCommandSetDriveVelocities",
+        "request_count_expression": "2",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:131",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 24,
+        "command_hex": "18",
+        "name": "SetTimedDriveVelocities",
+        "handler": "HostCommandSetTimedDriveVelocities",
+        "request_count_expression": "3",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:132",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 25,
+        "command_hex": "19",
+        "name": "SetServoRadians",
+        "handler": "HostCommandSetServoRadians",
+        "request_count_expression": "2",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:133",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 26,
+        "command_hex": "1a",
+        "name": "SetServoHoldingCurrent",
+        "handler": "HostCommandSetServoHoldingCurrent",
+        "request_count_expression": "2",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:134",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 27,
+        "command_hex": "1b",
+        "name": "GetUnitInfo",
+        "handler": "HostCommandGetUnitInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(UnitInfo)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:135",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 28,
+        "command_hex": "1c",
+        "name": "ResetMotorPosition",
+        "handler": "HostCommandResetMotorPositions",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:136",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 29,
+        "command_hex": "1d",
+        "name": "GetSensorInfo",
+        "handler": "HostCommandGetSensorInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "128",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:137",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 30,
+        "command_hex": "1e",
+        "name": "SonarMode",
+        "handler": "HostCommandSonarMode",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:138",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 31,
+        "command_hex": "1f",
+        "name": "ResetCom",
+        "handler": "HostCommandResetCom",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:139",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 32,
+        "command_hex": "20",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:140",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 33,
+        "command_hex": "21",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:141",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 34,
+        "command_hex": "22",
+        "name": "ChangeProjectorFocus",
+        "handler": "HostCommandChangeProjectorFocus",
+        "request_count_expression": "1",
+        "request_element_type": "Int16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:142",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 35,
+        "command_hex": "23",
+        "name": "SetProjectorBrightness",
+        "handler": "HostCommandSetProjectorBrightness",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:143",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 36,
+        "command_hex": "24",
+        "name": "SyncProjectorSignal",
+        "handler": "HostCommandSyncToPcVideoSignal",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:144",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 37,
+        "command_hex": "25",
+        "name": "SetProjectorInversion",
+        "handler": "HostCommandSetProjectorInversion",
+        "request_count_expression": "2",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:145",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 38,
+        "command_hex": "26",
+        "name": "GetProjectorVersion",
+        "handler": "HostCommandGetProjectorVersion",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "1",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:146",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 39,
+        "command_hex": "27",
+        "name": "SetProjectorPower",
+        "handler": "HostCommandProjectorPower",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:147",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 40,
+        "command_hex": "28",
+        "name": "MoveProjectorVerticalImage",
+        "handler": "HostCommandMoveProjectorImageVertical",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:148",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 41,
+        "command_hex": "29",
+        "name": "ClearProjectorEEPRom",
+        "handler": "HostCommandResetEEprom",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:149",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 42,
+        "command_hex": "2a",
+        "name": "GoToProjectorHomePosition",
+        "handler": "HostCommandGoToProjectorHome",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:150",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 43,
+        "command_hex": "2b",
+        "name": "OpenShutter",
+        "handler": "HostCommandOpenShutter",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:151",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 44,
+        "command_hex": "2c",
+        "name": "CloseShutter",
+        "handler": "HostCommandCloseShutter",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:152",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 45,
+        "command_hex": "2d",
+        "name": "SetCalibrationParams",
+        "handler": "HostCommandSetCalibrationParams",
+        "request_count_expression": "sizeof(CalibrationParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:154",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 46,
+        "command_hex": "2e",
+        "name": "GetCalibrationParams",
+        "handler": "HostCommandGetCalibrationParams",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "sizeof(CalibrationParams)",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:155",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 47,
+        "command_hex": "2f",
+        "name": "CommitCalibrationParams",
+        "handler": "HostCommandCommitCalibrationParams",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:156",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 48,
+        "command_hex": "30",
+        "name": "ZeroAllCalibrationParams",
+        "handler": "HostCommandZeroAllCalibrationParams",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:157",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 49,
+        "command_hex": "31",
+        "name": "SetProximityCalibrationOffsets",
+        "handler": "HostCommandSetProximityCalibrationOffsets",
+        "request_count_expression": "2",
+        "request_element_type": "Int16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:158",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 50,
+        "command_hex": "32",
+        "name": "SetCliffCalibrationOffsets",
+        "handler": "HostCommandSetCliffCalibrationOffsets",
+        "request_count_expression": "2",
+        "request_element_type": "Int16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:159",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 51,
+        "command_hex": "33",
+        "name": "SetAccelerometerCalibrationOffsets",
+        "handler": "HostCommandSetAccelerometerCalibrationOffsets",
+        "request_count_expression": "2",
+        "request_element_type": "Int16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:160",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 52,
+        "command_hex": "34",
+        "name": "SetGyroscopeCalibrationOffsets",
+        "handler": "HostCommandSetGyroscopeCalibrationOffsets",
+        "request_count_expression": "2",
+        "request_element_type": "Int16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:161",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 53,
+        "command_hex": "35",
+        "name": "SetServoCalibrationOffset",
+        "handler": "HostCommandSetServoCalibrationOffset",
+        "request_count_expression": "1",
+        "request_element_type": "Int32Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:162",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 54,
+        "command_hex": "36",
+        "name": "SetProjectorHomePositionOffset",
+        "handler": "HostCommandSetProjectorHomeOffset",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:163",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 55,
+        "command_hex": "37",
+        "name": "PrintCalibrationParams",
+        "handler": "HostCommandPrintCalibrationParams",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:164",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 56,
+        "command_hex": "38",
+        "name": "SetBumpSensingThreshold",
+        "handler": "HostCommandSetBumpSensingThreshold",
+        "request_count_expression": "1",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:165",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 57,
+        "command_hex": "39",
+        "name": "GpioExpSetLine",
+        "handler": "HostCommandGpioExpSetLine",
+        "request_count_expression": "3",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:166",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 58,
+        "command_hex": "3a",
+        "name": "DriveWithCharger",
+        "handler": "HostCommandDriveWithCharger",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:167",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 59,
+        "command_hex": "3b",
+        "name": "SetServoSequence",
+        "handler": "HostCommandSetServoSequence",
+        "request_count_expression": "sizeof(MotionSequenceParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:168",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 60,
+        "command_hex": "3c",
+        "name": "ConfigPid",
+        "handler": "HostCommandConfigServoPid",
+        "request_count_expression": "4",
+        "request_element_type": "Int32Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:169",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 61,
+        "command_hex": "3d",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:170",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 62,
+        "command_hex": "3e",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:171",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    ],
+    "head": [
+      {
+        "command": 0,
+        "command_hex": "00",
+        "name": "ReSync",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:178",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 1,
+        "command_hex": "01",
+        "name": "Heartbeat",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:179",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 2,
+        "command_hex": "02",
+        "name": "HostHeartbeat",
+        "handler": "HostCommandHostHeartbeat",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:180",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 3,
+        "command_hex": "03",
+        "name": "ReadRawData",
+        "handler": "HostCommandReadRawData",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(HeartbeatData)",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:181",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 4,
+        "command_hex": "04",
+        "name": "GetConfig",
+        "handler": "HostCommandGetConfig",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(confparams)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:182",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 5,
+        "command_hex": "05",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:183",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 6,
+        "command_hex": "06",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:184",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 7,
+        "command_hex": "07",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:185",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 8,
+        "command_hex": "08",
+        "name": "InitReflash",
+        "handler": "HostCommandReflashInit",
+        "request_count_expression": "1",
+        "request_element_type": "UInt32Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:186",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 9,
+        "command_hex": "09",
+        "name": "AddReflashBlock",
+        "handler": "HostCommandReflashAddBlock",
+        "request_count_expression": "BytesInReflashBlock",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:187",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 10,
+        "command_hex": "0a",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:188",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 11,
+        "command_hex": "0b",
+        "name": "MotorParameter",
+        "handler": "HostCommandMotorParameter",
+        "request_count_expression": "3",
+        "request_element_type": "UInt16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:189",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 12,
+        "command_hex": "0c",
+        "name": "ErrorReport",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:190",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 13,
+        "command_hex": "0d",
+        "name": "RecalibrateServo",
+        "handler": "HostCommandRecalibrateServo",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:191",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 14,
+        "command_hex": "0e",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:192",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 15,
+        "command_hex": "0f",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:193",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 16,
+        "command_hex": "10",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:194",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 17,
+        "command_hex": "11",
+        "name": "MicrophoneGain",
+        "handler": "HostCommandMicrophoneGain",
+        "request_count_expression": "1",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:195",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 18,
+        "command_hex": "12",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:196",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 19,
+        "command_hex": "13",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:197",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 20,
+        "command_hex": "14",
+        "name": "ResetController",
+        "handler": "HostCommandResetController",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:198",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 21,
+        "command_hex": "15",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:199",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 22,
+        "command_hex": "16",
+        "name": "ToggleHeartbeat",
+        "handler": "HostCommandToggleHeartbeat",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:200",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 23,
+        "command_hex": "17",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:201",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 24,
+        "command_hex": "18",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:202",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 25,
+        "command_hex": "19",
+        "name": "SetServoRadians",
+        "handler": "HostCommandSetServoRadians",
+        "request_count_expression": "2",
+        "request_element_type": "FloatArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:203",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 26,
+        "command_hex": "1a",
+        "name": "SetServoHoldingCurrent",
+        "handler": "HostCommandSetServoHoldingCurrent",
+        "request_count_expression": "2",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:204",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 27,
+        "command_hex": "1b",
+        "name": "GetUnitInfo",
+        "handler": "HostCommandGetUnitInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "sizeof(UnitInfo)/sizeof(uint32)",
+        "return_element_type": "UInt32Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:205",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 28,
+        "command_hex": "1c",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:206",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 29,
+        "command_hex": "1d",
+        "name": "GetSensorInfo",
+        "handler": "HostCommandGetSensorInfo",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "128",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:207",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 30,
+        "command_hex": "1e",
+        "name": "ResetCom",
+        "handler": "HostCommandResetCom",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:208",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 31,
+        "command_hex": "1f",
+        "name": "DepthCamPower",
+        "handler": "HostCommandDepthCamPower",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:209",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 32,
+        "command_hex": "20",
+        "name": "SetFaceRingLeds",
+        "handler": "HostCommandSetFaceRingLeds",
+        "request_count_expression": "sizeof(FaceRingLedsParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:210",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 33,
+        "command_hex": "21",
+        "name": "SetSensoryLeds",
+        "handler": "HostCommandSetSensoryLeds",
+        "request_count_expression": "sizeof(SensoryLedsParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:211",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 34,
+        "command_hex": "22",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:212",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 35,
+        "command_hex": "23",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:213",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 36,
+        "command_hex": "24",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:214",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 37,
+        "command_hex": "25",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:215",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 38,
+        "command_hex": "26",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:216",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 39,
+        "command_hex": "27",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:217",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 40,
+        "command_hex": "28",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:218",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 41,
+        "command_hex": "29",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:219",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 42,
+        "command_hex": "2a",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:220",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 43,
+        "command_hex": "2b",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:221",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 44,
+        "command_hex": "2c",
+        "name": "GPioPinSet",
+        "handler": "HostCommandGPIOPinSet",
+        "request_count_expression": "3",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:222",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 45,
+        "command_hex": "2d",
+        "name": "SetCalibrationParams",
+        "handler": "HostCommandSetCalibrationParams",
+        "request_count_expression": "sizeof(CalibrationParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:224",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 46,
+        "command_hex": "2e",
+        "name": "GetCalibrationParams",
+        "handler": "HostCommandGetCalibrationParams",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "sizeof(CalibrationParams)",
+        "return_element_type": "UInt8Arg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:225",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 47,
+        "command_hex": "2f",
+        "name": "CommitCalibrationParams",
+        "handler": "HostCommandCommitCalibrationParams",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:226",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 48,
+        "command_hex": "30",
+        "name": "ZeroAllCalibrationParams",
+        "handler": "HostCommandZeroAllCalibrationParams",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:227",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 49,
+        "command_hex": "31",
+        "name": "SetCompassCalibrationOffsets",
+        "handler": "HostCommandSetCompassCalibrationOffsets",
+        "request_count_expression": "2",
+        "request_element_type": "Int16Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:228",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 50,
+        "command_hex": "32",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:229",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 51,
+        "command_hex": "33",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:230",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 52,
+        "command_hex": "34",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:231",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 53,
+        "command_hex": "35",
+        "name": "SetServoCalibrationOffset",
+        "handler": "HostCommandSetServoCalibrationOffset",
+        "request_count_expression": "1",
+        "request_element_type": "Int32Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:232",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 54,
+        "command_hex": "36",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:233",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 55,
+        "command_hex": "37",
+        "name": "PrintCalibrationParams",
+        "handler": "HostCommandPrintCalibrationParams",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:234",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 56,
+        "command_hex": "38",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:235",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 57,
+        "command_hex": "39",
+        "name": "BlowerEnable",
+        "handler": "HostCommandBlowerEnable",
+        "request_count_expression": "1",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:236",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 58,
+        "command_hex": "3a",
+        "name": "",
+        "handler": "HostCommandCommandNYI",
+        "request_count_expression": "0",
+        "request_element_type": "NoArg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": false,
+        "source": "m_src/m_protocol.c:237",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 59,
+        "command_hex": "3b",
+        "name": "SetServoSequence",
+        "handler": "HostCommandSetServoSequence",
+        "request_count_expression": "sizeof(MotionSequenceParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:238",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 60,
+        "command_hex": "3c",
+        "name": "ConfigPid",
+        "handler": "HostCommandConfigServoPid",
+        "request_count_expression": "4",
+        "request_element_type": "Int32Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:239",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 61,
+        "command_hex": "3d",
+        "name": "SetTimedFaceRingLeds",
+        "handler": "HostCommandSetTimedFaceRingLeds",
+        "request_count_expression": "sizeof(TimedFaceRingLedsParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:240",
+        "installed_support": "not_established_by_this_source_table"
+      },
+      {
+        "command": 62,
+        "command_hex": "3e",
+        "name": "SetTimedSensoryLeds",
+        "handler": "HostCommandSetTimedSensoryLeds",
+        "request_count_expression": "sizeof(TimedSensoryLedsParams)",
+        "request_element_type": "UInt8Arg",
+        "return_count_expression": "0",
+        "return_element_type": "NoArg",
+        "implemented_in_table": true,
+        "source": "m_src/m_protocol.c:241",
+        "installed_support": "not_established_by_this_source_table"
+      }
+    ]
+  },
+  "limitations": [
+    "Names/types/opcodes and source locations are protocol facts; no recovered program executed.",
+    "All23 old sample IDs and all63 slots in each newer C build are covered.",
+    "Current C tables describe4445/444a vendor-bulk builds, not automatically connected4444 firmware.",
+    "Common GetConfig/UnitInfo successes do not establish either entire opcode map.",
+    "Source getter labels can collide with motion/power/reset operations in another generation.",
+    "No actuator/power/persistent/firmware operation is authorized by this catalogue.",
+    "A successful getter does not prove its paired setter, physical units or actuator safety."
+  ]
+}

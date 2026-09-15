@@ -1,0 +1,920 @@
+{
+  "classification": "generated",
+  "source_id": "mars-contracts",
+  "warning": "Successor protocol reference only; no live compatibility or safe-command guarantee",
+  "byte_order": "little-endian",
+  "packing": 1,
+  "frame": {
+    "header_hex": "efbe",
+    "footer_hex": "adde",
+    "overhead_bytes": 12,
+    "crc": {
+      "reflected_polynomial_hex": "a001",
+      "initial": 0,
+      "xorout": 0,
+      "coverage": "8-byte header and payload",
+      "stored_byte_order": "little-endian"
+    }
+  },
+  "structs": {
+    "CmdHeader": {
+      "size": 8,
+      "fields": [
+        {
+          "name": "header",
+          "type": "ushort",
+          "offset": 0,
+          "size": 2
+        },
+        {
+          "name": "seq",
+          "type": "ushort",
+          "offset": 2,
+          "size": 2
+        },
+        {
+          "name": "cmdId",
+          "type": "byte",
+          "offset": 4,
+          "size": 1
+        },
+        {
+          "name": "cmdResponse",
+          "type": "byte",
+          "offset": 5,
+          "size": 1
+        },
+        {
+          "name": "paramBlockLen",
+          "type": "ushort",
+          "offset": 6,
+          "size": 2
+        }
+      ],
+      "python_struct_format": "<HHBBH",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/CmdHeader.cs",
+      "source_sha256": "2d92a5d0eede23df18ff4db6c2fe54c88612f6a2404733d97d2efc7d062624b5",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "CmdFooter": {
+      "size": 4,
+      "fields": [
+        {
+          "name": "crc",
+          "type": "ushort",
+          "offset": 0,
+          "size": 2
+        },
+        {
+          "name": "footer",
+          "type": "ushort",
+          "offset": 2,
+          "size": 2
+        }
+      ],
+      "python_struct_format": "<HH",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/CmdFooter.cs",
+      "source_sha256": "0abfea0d391887bc14857b089e7be1d7bc7a0392b74c71f5fb5d743dc802692c",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "UnitInfo": {
+      "size": 12,
+      "fields": [
+        {
+          "name": "fwVersion",
+          "type": "uint",
+          "offset": 0,
+          "size": 4
+        },
+        {
+          "name": "commVersion",
+          "type": "uint",
+          "offset": 4,
+          "size": 4
+        },
+        {
+          "name": "serialNumber",
+          "type": "uint",
+          "offset": 8,
+          "size": 4
+        }
+      ],
+      "python_struct_format": "<III",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/UnitInfo.cs",
+      "source_sha256": "d02366430787cfc020da8203e5bcd2e0a84aac6a598609ac727c33aa8511b82f",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "HeartbeatDataDrive": {
+      "size": 157,
+      "fields": [
+        {
+          "name": "timeStamp",
+          "type": "ulong",
+          "offset": 0,
+          "size": 8
+        },
+        {
+          "name": "prox1InMm",
+          "type": "ushort",
+          "offset": 8,
+          "size": 2
+        },
+        {
+          "name": "prox2InMm",
+          "type": "ushort",
+          "offset": 10,
+          "size": 2
+        },
+        {
+          "name": "prox3InMm",
+          "type": "ushort",
+          "offset": 12,
+          "size": 2
+        },
+        {
+          "name": "prox4InMm",
+          "type": "ushort",
+          "offset": 14,
+          "size": 2
+        },
+        {
+          "name": "prox5InMm",
+          "type": "ushort",
+          "offset": 16,
+          "size": 2
+        },
+        {
+          "name": "prox6InMm",
+          "type": "ushort",
+          "offset": 18,
+          "size": 2
+        },
+        {
+          "name": "prox7InMm",
+          "type": "ushort",
+          "offset": 20,
+          "size": 2
+        },
+        {
+          "name": "prox8InMm",
+          "type": "ushort",
+          "offset": 22,
+          "size": 2
+        },
+        {
+          "name": "cliff1InMm",
+          "type": "ushort",
+          "offset": 24,
+          "size": 2
+        },
+        {
+          "name": "cliff2InMm",
+          "type": "ushort",
+          "offset": 26,
+          "size": 2
+        },
+        {
+          "name": "cliff3InMm",
+          "type": "ushort",
+          "offset": 28,
+          "size": 2
+        },
+        {
+          "name": "cliff4InMm",
+          "type": "ushort",
+          "offset": 30,
+          "size": 2
+        },
+        {
+          "name": "cliff5InMm",
+          "type": "ushort",
+          "offset": 32,
+          "size": 2
+        },
+        {
+          "name": "carryDetected",
+          "type": "byte",
+          "offset": 34,
+          "size": 1
+        },
+        {
+          "name": "temperatureInternalIn10thsCelsius",
+          "type": "short",
+          "offset": 35,
+          "size": 2
+        },
+        {
+          "name": "temperatureProjectorRedInCelsius",
+          "type": "short",
+          "offset": 37,
+          "size": 2
+        },
+        {
+          "name": "temperatureProjectorGreenInCelsius",
+          "type": "short",
+          "offset": 39,
+          "size": 2
+        },
+        {
+          "name": "temperatureProjectorBlueInCelsius",
+          "type": "short",
+          "offset": 41,
+          "size": 2
+        },
+        {
+          "name": "temperatureExternalIn10thsCelsius",
+          "type": "short",
+          "offset": 43,
+          "size": 2
+        },
+        {
+          "name": "relativeHumidityInPercent",
+          "type": "ushort",
+          "offset": 45,
+          "size": 2
+        },
+        {
+          "name": "batteryVoltageInmV",
+          "type": "ushort",
+          "offset": 47,
+          "size": 2
+        },
+        {
+          "name": "batteryCurrentInmA",
+          "type": "short",
+          "offset": 49,
+          "size": 2
+        },
+        {
+          "name": "batteryTemperatureIn10thsCelcius",
+          "type": "short",
+          "offset": 51,
+          "size": 2
+        },
+        {
+          "name": "batteryChargeInPercent",
+          "type": "short",
+          "offset": 53,
+          "size": 2
+        },
+        {
+          "name": "batteryAvgTimeToEmptyInMinutes",
+          "type": "short",
+          "offset": 55,
+          "size": 2
+        },
+        {
+          "name": "batteryStatus",
+          "type": "ushort",
+          "offset": 57,
+          "size": 2
+        },
+        {
+          "name": "power5VInmV",
+          "type": "ushort",
+          "offset": 59,
+          "size": 2
+        },
+        {
+          "name": "power12VInmV",
+          "type": "ushort",
+          "offset": 61,
+          "size": 2
+        },
+        {
+          "name": "accelForwardInG",
+          "type": "float",
+          "offset": 63,
+          "size": 4
+        },
+        {
+          "name": "accelRightInG",
+          "type": "float",
+          "offset": 67,
+          "size": 4
+        },
+        {
+          "name": "accelUpInG",
+          "type": "float",
+          "offset": 71,
+          "size": 4
+        },
+        {
+          "name": "gyroForwardInRadiansPerSecond",
+          "type": "float",
+          "offset": 75,
+          "size": 4
+        },
+        {
+          "name": "gyroRightInRadiansPerSecond",
+          "type": "float",
+          "offset": 79,
+          "size": 4
+        },
+        {
+          "name": "gyroUpInRadiansPerSecond",
+          "type": "float",
+          "offset": 83,
+          "size": 4
+        },
+        {
+          "name": "motorLeftPositionInMm",
+          "type": "int",
+          "offset": 87,
+          "size": 4
+        },
+        {
+          "name": "motorRightPositionInMm",
+          "type": "int",
+          "offset": 91,
+          "size": 4
+        },
+        {
+          "name": "motorLeftVelocityInMperSec",
+          "type": "float",
+          "offset": 95,
+          "size": 4
+        },
+        {
+          "name": "motorRightVelocityInMperSec",
+          "type": "float",
+          "offset": 99,
+          "size": 4
+        },
+        {
+          "name": "motorLeftAccelerationInMperSec2",
+          "type": "float",
+          "offset": 103,
+          "size": 4
+        },
+        {
+          "name": "motorRightAccelerationInMperSec2",
+          "type": "float",
+          "offset": 107,
+          "size": 4
+        },
+        {
+          "name": "powerStates",
+          "type": "ushort",
+          "offset": 111,
+          "size": 2
+        },
+        {
+          "name": "sensorStates",
+          "type": "uint",
+          "offset": 113,
+          "size": 4
+        },
+        {
+          "name": "projectorHeadingInRadians",
+          "type": "float",
+          "offset": 117,
+          "size": 4
+        },
+        {
+          "name": "projectorInversion",
+          "type": "byte",
+          "offset": 121,
+          "size": 1
+        },
+        {
+          "name": "projectorBrightness",
+          "type": "ushort",
+          "offset": 122,
+          "size": 2
+        },
+        {
+          "name": "projectorFocusPositionInSteps",
+          "type": "short",
+          "offset": 124,
+          "size": 2
+        },
+        {
+          "name": "projectorIdle",
+          "type": "byte",
+          "offset": 126,
+          "size": 1
+        },
+        {
+          "name": "cameraHeadingInRadians",
+          "type": "float",
+          "offset": 127,
+          "size": 4
+        },
+        {
+          "name": "turretHeadingInRadians",
+          "type": "float",
+          "offset": 131,
+          "size": 4
+        },
+        {
+          "name": "turretVelocityInMiliRadsPerSec",
+          "type": "float",
+          "offset": 135,
+          "size": 4
+        },
+        {
+          "name": "sonarDistanceLeftInMillimeters",
+          "type": "ushort",
+          "offset": 139,
+          "size": 2
+        },
+        {
+          "name": "sonarDistanceRightInMillimeters",
+          "type": "ushort",
+          "offset": 141,
+          "size": 2
+        },
+        {
+          "name": "fanPower0to1",
+          "type": "float",
+          "offset": 143,
+          "size": 4
+        },
+        {
+          "name": "leftFanRpm",
+          "type": "ushort",
+          "offset": 147,
+          "size": 2
+        },
+        {
+          "name": "rightFanRpm",
+          "type": "ushort",
+          "offset": 149,
+          "size": 2
+        },
+        {
+          "name": "cliffState",
+          "type": "byte",
+          "offset": 151,
+          "size": 1
+        },
+        {
+          "name": "servoStates",
+          "type": "ushort",
+          "offset": 152,
+          "size": 2
+        },
+        {
+          "name": "leftWheelReadyForNextSequence",
+          "type": "byte",
+          "offset": 154,
+          "size": 1
+        },
+        {
+          "name": "rightWheelReadyForNextSequence",
+          "type": "byte",
+          "offset": 155,
+          "size": 1
+        },
+        {
+          "name": "turretReadyForNextSequence",
+          "type": "byte",
+          "offset": 156,
+          "size": 1
+        }
+      ],
+      "python_struct_format": "<QHHHHHHHHHHHHHBhhhhhHHhhhhHHHffffffiiffffHIfBHhBfffHHfHHBHBBB",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/HeartbeatDataDrive.cs",
+      "source_sha256": "62263022fce05b90a26eaf704a6efda3ddba3009d6b94c99e2983ade902f4650",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "HeartbeatDataHead": {
+      "size": 36,
+      "fields": [
+        {
+          "name": "timeStamp",
+          "type": "ulong",
+          "offset": 0,
+          "size": 8
+        },
+        {
+          "name": "headTiltAngleInRadians",
+          "type": "float",
+          "offset": 8,
+          "size": 4
+        },
+        {
+          "name": "headTiltVelocityInMiliRadsPerSec",
+          "type": "float",
+          "offset": 12,
+          "size": 4
+        },
+        {
+          "name": "internalTemperatureIn10thsCelsius",
+          "type": "ushort",
+          "offset": 16,
+          "size": 2
+        },
+        {
+          "name": "compassForwardInGauss",
+          "type": "float",
+          "offset": 18,
+          "size": 4
+        },
+        {
+          "name": "compassUpInGauss",
+          "type": "float",
+          "offset": 22,
+          "size": 4
+        },
+        {
+          "name": "compassRightInGauss",
+          "type": "float",
+          "offset": 26,
+          "size": 4
+        },
+        {
+          "name": "powerStates",
+          "type": "ushort",
+          "offset": 30,
+          "size": 2
+        },
+        {
+          "name": "sensorStates",
+          "type": "ushort",
+          "offset": 32,
+          "size": 2
+        },
+        {
+          "name": "servoStates",
+          "type": "byte",
+          "offset": 34,
+          "size": 1
+        },
+        {
+          "name": "cameraReadyForNextSequence",
+          "type": "byte",
+          "offset": 35,
+          "size": 1
+        }
+      ],
+      "python_struct_format": "<QffHfffHHBB",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/HeartbeatDataHead.cs",
+      "source_sha256": "5c5d9be8f4b7fc1374873a3f84c0285b2508a5c5fcb2d7e862d0f56919de80ab",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "HeartbeatDataHostToDriveController": {
+      "size": 4,
+      "fields": [
+        {
+          "name": "headControllerTemperatureIn10thsCelsius",
+          "type": "ushort",
+          "offset": 0,
+          "size": 2
+        },
+        {
+          "name": "motherboardTemperatureIn10thsCelsius",
+          "type": "ushort",
+          "offset": 2,
+          "size": 2
+        }
+      ],
+      "python_struct_format": "<HH",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/HeartbeatDataHostToDriveController.cs",
+      "source_sha256": "538bf4f6041749d1b9518820fb070aa9173feb94c88faf474597ac0c85206b2c",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "SetDriveVelocitiesParams": {
+      "size": 8,
+      "fields": [
+        {
+          "name": "leftVelocityInMetersPerSecond",
+          "type": "float",
+          "offset": 0,
+          "size": 4
+        },
+        {
+          "name": "rightVelocityInMetersPerSecond",
+          "type": "float",
+          "offset": 4,
+          "size": 4
+        }
+      ],
+      "python_struct_format": "<ff",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/SetDriveVelocitiesParams.cs",
+      "source_sha256": "dc803e013305e39ff89fb6b44203a5972ab2fa7effa5746cf7e7c5f75c306f6b",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    },
+    "SetTimedDriveVelocitiesParams": {
+      "size": 12,
+      "fields": [
+        {
+          "name": "leftVelocityInMetersPerSecond",
+          "type": "float",
+          "offset": 0,
+          "size": 4
+        },
+        {
+          "name": "rightVelocityInMetersPerSecond",
+          "type": "float",
+          "offset": 4,
+          "size": 4
+        },
+        {
+          "name": "timeInMiliseconds",
+          "type": "float",
+          "offset": 8,
+          "size": 4
+        }
+      ],
+      "python_struct_format": "<fff",
+      "source_path": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/SetTimedDriveVelocitiesParams.cs",
+      "source_sha256": "b966afefeb7355287c30e5d1948d74becbdaa133435e8f08076fda73e96e8908",
+      "note": "Field spelling and documented units preserved; no live sensor values"
+    }
+  },
+  "command_enum": [
+    {
+      "name": "Unused0",
+      "value": 0,
+      "sentinel": true
+    },
+    {
+      "name": "DeviceHeartbeat",
+      "value": 1,
+      "sentinel": false
+    },
+    {
+      "name": "HostHeartbeat",
+      "value": 2,
+      "sentinel": false
+    },
+    {
+      "name": "ReadRawData",
+      "value": 3,
+      "sentinel": false
+    },
+    {
+      "name": "GetConfig",
+      "value": 4,
+      "sentinel": false
+    },
+    {
+      "name": "SetProjectorIdleMode",
+      "value": 7,
+      "sentinel": false
+    },
+    {
+      "name": "InitReflash",
+      "value": 8,
+      "sentinel": false
+    },
+    {
+      "name": "ReflashBlock",
+      "value": 9,
+      "sentinel": false
+    },
+    {
+      "name": "FanPower",
+      "value": 10,
+      "sentinel": false
+    },
+    {
+      "name": "MotorParameter",
+      "value": 11,
+      "sentinel": false
+    },
+    {
+      "name": "ErrorReport",
+      "value": 12,
+      "sentinel": false
+    },
+    {
+      "name": "RecalibrateServo",
+      "value": 13,
+      "sentinel": false
+    },
+    {
+      "name": "SetPowerState",
+      "value": 15,
+      "sentinel": false
+    },
+    {
+      "name": "ResetCliffStoppage",
+      "value": 16,
+      "sentinel": false
+    },
+    {
+      "name": "MicrophoneGain",
+      "value": 17,
+      "sentinel": false
+    },
+    {
+      "name": "SetBumpSensing",
+      "value": 18,
+      "sentinel": false
+    },
+    {
+      "name": "ResetBumpDetected",
+      "value": 19,
+      "sentinel": false
+    },
+    {
+      "name": "ResetIoBoard",
+      "value": 20,
+      "sentinel": false
+    },
+    {
+      "name": "ResetPC",
+      "value": 21,
+      "sentinel": false
+    },
+    {
+      "name": "ToggleHeartbeat",
+      "value": 22,
+      "sentinel": false
+    },
+    {
+      "name": "SetDriveVelocities",
+      "value": 23,
+      "sentinel": false
+    },
+    {
+      "name": "SetTimedDriveVelocities",
+      "value": 24,
+      "sentinel": false
+    },
+    {
+      "name": "SetServoRadians",
+      "value": 25,
+      "sentinel": false
+    },
+    {
+      "name": "SetServoHoldingCurrent",
+      "value": 26,
+      "sentinel": false
+    },
+    {
+      "name": "GetUnitInfo",
+      "value": 27,
+      "sentinel": false
+    },
+    {
+      "name": "ResetMotorPos",
+      "value": 28,
+      "sentinel": false
+    },
+    {
+      "name": "GetSensorInfo",
+      "value": 29,
+      "sentinel": false
+    },
+    {
+      "name": "SonarMode",
+      "value": 30,
+      "sentinel": false
+    },
+    {
+      "name": "DepthCamPower",
+      "value": 31,
+      "sentinel": false
+    },
+    {
+      "name": "SetFaceRingLeds",
+      "value": 32,
+      "sentinel": false
+    },
+    {
+      "name": "SetSensoryLeds",
+      "value": 33,
+      "sentinel": false
+    },
+    {
+      "name": "SetProjectorFocus",
+      "value": 34,
+      "sentinel": false
+    },
+    {
+      "name": "SetProjectorBrightness",
+      "value": 35,
+      "sentinel": false
+    },
+    {
+      "name": "SyncProjectorSignal",
+      "value": 36,
+      "sentinel": false
+    },
+    {
+      "name": "SetProjectorInversion",
+      "value": 37,
+      "sentinel": false
+    },
+    {
+      "name": "GetProjectorVersion",
+      "value": 38,
+      "sentinel": false
+    },
+    {
+      "name": "SetProjectorPower",
+      "value": 39,
+      "sentinel": false
+    },
+    {
+      "name": "MoveProjectorVerticalImage",
+      "value": 40,
+      "sentinel": false
+    },
+    {
+      "name": "GoToProjectorHomePosition",
+      "value": 42,
+      "sentinel": false
+    },
+    {
+      "name": "OpenProjectorShutter",
+      "value": 43,
+      "sentinel": false
+    },
+    {
+      "name": "CloseProjectorShutter",
+      "value": 44,
+      "sentinel": false
+    },
+    {
+      "name": "SetCalibrationParams",
+      "value": 45,
+      "sentinel": false
+    },
+    {
+      "name": "GetCalibrationParams",
+      "value": 46,
+      "sentinel": false
+    },
+    {
+      "name": "CommitCalibrationParams",
+      "value": 47,
+      "sentinel": false
+    },
+    {
+      "name": "ZeroAllCalibrationParams",
+      "value": 48,
+      "sentinel": false
+    },
+    {
+      "name": "SetProximityCalibrationOffsets",
+      "value": 49,
+      "sentinel": false
+    },
+    {
+      "name": "SetCliffSensorCalibrationOffsets",
+      "value": 50,
+      "sentinel": false
+    },
+    {
+      "name": "SetAccelerometerCalibrationOffsets",
+      "value": 51,
+      "sentinel": false
+    },
+    {
+      "name": "SetGyroscopeCalibrationOffsets",
+      "value": 52,
+      "sentinel": false
+    },
+    {
+      "name": "SetServoCalibrationOffset",
+      "value": 53,
+      "sentinel": false
+    },
+    {
+      "name": "SetProjectorHomeCalibrationPosition",
+      "value": 54,
+      "sentinel": false
+    },
+    {
+      "name": "SetCompassCalibrationOffsets",
+      "value": 55,
+      "sentinel": false
+    },
+    {
+      "name": "SetBumpSensingThreshold",
+      "value": 56,
+      "sentinel": false
+    },
+    {
+      "name": "SetServoSequence",
+      "value": 59,
+      "sentinel": false
+    },
+    {
+      "name": "ConfigPid",
+      "value": 60,
+      "sentinel": false
+    },
+    {
+      "name": "SetTimedFaceRingLeds",
+      "value": 61,
+      "sentinel": false
+    },
+    {
+      "name": "SetTimedSensoryLeds",
+      "value": 62,
+      "sentinel": false
+    },
+    {
+      "name": "CommandCount",
+      "value": 63,
+      "sentinel": true
+    }
+  ],
+  "command_enum_source": "decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/CommandID.cs"
+}
