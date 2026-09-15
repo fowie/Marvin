@@ -62,6 +62,7 @@ def assess_case(output, result):
     usb = result["usb"]
     if result["status"] != "completed" or serial["status"] != "completed" or usb["status"] != "completed":
         raise ValueError("Case did not complete cleanly; no subsequent trial is permitted.")
+    marvin_usbmon.validate_capture_completeness(usb)
     if usb["monitor_final_stats"] != {"queued": 0, "dropped": 0}:
         raise ValueError("USB monitor loss or queued tail prevents continuation.")
     trace = output / "usb" / "usbmon.txt"

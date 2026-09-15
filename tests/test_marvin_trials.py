@@ -47,6 +47,19 @@ class AssessmentTests(unittest.TestCase):
         self.assertEqual(assessment["outcome"], "silent_out_confirmed")
         self.assertEqual(assessment["usb_out_bytes"], 12)
 
+    def test_completed_metadata_with_evidence_gaps_never_advances_even_on_rx(self):
+        for field in ("unretained_partial_line_bytes", "unprocessed_records",
+                      "unprocessed_record_bytes", "unaccounted_retained_bytes"):
+            for receive in (b"", b"reply"):
+                with self.subTest(field=field, receive=receive):
+                    self.output = Path(self.temp.name) / f"{field}-{len(receive)}"
+                    result = case_fixture(self.output, receive=receive)
+                    result["usb"][field] = 1
+                    with patch.object(marvin_trials.marvin_usbmon, "analyze_file") as analyze:
+                        with self.assertRaisesRegex(ValueError, "Incomplete USB capture"):
+                            marvin_trials.assess_case(self.output, result)
+                    analyze.assert_not_called()
+
     def test_any_rx_stops_even_if_serial_suppressed_the_write(self):
         result = case_fixture(self.output, receive=b"banner")
         result["serial"]["transmit_status"] = "suppressed_pre_probe_rx"

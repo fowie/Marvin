@@ -434,6 +434,7 @@ def run_session(
             usb_metadata = json.loads((usb_output / "metadata.json").read_text(encoding="utf-8"))
             if usb_metadata.get("status") != "completed":
                 raise OSError("USB recorder did not report a completed capture.")
+            marvin_usbmon.validate_capture_completeness(usb_metadata)
             if usb_close_grace_seconds:
                 validate_coordinated_completion(usb_metadata, ready, stop_requested_at, hard_deadline)
             check_identity(port, baseline)

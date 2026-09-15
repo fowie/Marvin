@@ -175,6 +175,31 @@ class PlanValidationTests(unittest.TestCase):
 
 
 class AssessmentTests(unittest.TestCase):
+    def test_completed_metadata_with_evidence_gaps_never_advances_even_on_rx(self):
+        schedule, _ = campaign.compile_segment(plan()["segments"][0])
+        for field in ("unretained_partial_line_bytes", "unprocessed_records",
+                      "unprocessed_record_bytes", "unaccounted_retained_bytes"):
+            for rx in (False, True):
+                with self.subTest(field=field, rx=rx), tempfile.TemporaryDirectory() as directory:
+                    result = fixture(directory, schedule, rx=rx)
+                    result["usb"][field] = 1
+                    with patch.object(campaign.marvin_usbmon, "analyze_file") as analyze:
+                        with self.assertRaisesRegex(ValueError, "Incomplete USB capture"):
+                            campaign.assess_segment(directory, result, schedule)
+                    analyze.assert_not_called()
+
+    def test_rejected_settings_with_incomplete_interrupted_usb_are_not_skipped(self):
+        for field in ("unretained_partial_line_bytes", "unprocessed_records",
+                      "unprocessed_record_bytes", "unaccounted_retained_bytes"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                rejected_fixture(directory)
+                path = Path(directory) / "usb/metadata.json"
+                metadata = json.loads(path.read_text())
+                metadata[field] = 1
+                path.write_text(json.dumps(metadata))
+                with self.assertRaisesRegex(ValueError, "Incomplete USB capture"):
+                    campaign.rejected_settings_evidence(directory, BASELINE)
+
     def test_rejected_settings_require_zero_io_and_intact_capture(self):
         with tempfile.TemporaryDirectory() as temp:
             rejected_fixture(temp)

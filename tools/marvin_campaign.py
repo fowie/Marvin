@@ -114,6 +114,7 @@ def assess_segment(directory, result, schedule):
     usb = result["usb"]
     if any(item["status"] != "completed" for item in (result, serial, usb)):
         raise ValueError("The segment did not complete cleanly.")
+    marvin_usbmon.validate_capture_completeness(usb)
     if usb["monitor_final_stats"] != {"queued": 0, "dropped": 0}:
         raise ValueError("USB recorder loss or queued tail prevents further probing.")
     trace = directory / "usb/usbmon.txt"
@@ -196,6 +197,7 @@ def rejected_settings_evidence(directory, baseline):
     if any(event["event"] in ("open_completed", "write_attempt") for event in events):
         raise ValueError("The failed setting already opened or attempted a write; stopping.")
     usb = json.loads((directory / "usb/metadata.json").read_text(encoding="utf-8"))
+    marvin_usbmon.validate_capture_completeness(usb)
     if (usb["status"] not in ("completed", "interrupted")
             or usb["identity"] != baseline["usb"]
             or usb["monitor_final_stats"] != {"queued": 0, "dropped": 0}):

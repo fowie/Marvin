@@ -297,6 +297,33 @@ For offline USB evidence interpretation (does not access hardware):
 .venv/bin/python tools/marvin_usbmon.py --analyze /path/to/usb/usbmon.txt
 ```
 
+Offline analysis uses the shared bounded regular-file reader: device/kernel
+paths, file symlinks, special files, oversized files, and inputs changing during
+the read are rejected. `--max-bytes` and `--max-records` also apply to `--analyze`
+(Python API: `analyze_file(..., max_bytes=..., max_records=...)`). Defaults are
+1 MiB and 10,000 records; explicit maxima are 64 MiB and 1,000,000 records.
+Existing per-line and pending-pair bounds still apply. Analysis of a retained
+file alone cannot establish that its original capture was complete.
+
+For text capture, a partial target or unclassified line at a stop boundary is
+counted as `unretained_partial_line_bytes`; raw partial data is not published
+because it may contain unrelated bus traffic. A positively identified
+unrelated tail is counted separately as `ignored_partial_line_bytes`. On a stop
+within an already-read batch, the recorder finishes only bounded in-memory
+framing/filtering, never another monitor read or an over-budget evidence write.
+Complete potentially-target records not retained are counted as
+`unprocessed_records` and `unprocessed_record_bytes`; unrelated records are
+counted but their payloads are discarded.
+
+A duration/coordinator stop with either target gap becomes a failed capture,
+not successful empty or truncated evidence. Signal/limit stops retain their
+non-success statuses. Session, campaign, and trial assessment also reject
+nonzero or malformed gap counters (and `unaccounted_retained_bytes`), even
+when older metadata says `completed`; rejected-setting continuation uses the
+same check. Absent counters remain accepted for historical metadata
+compatibility, not as proof of losslessness. Retained byte/record counts and
+raw evidence still describe only what was actually saved.
+
 ## Settled queries and bounded line-state trials
 
 Historical successor-framing experiments below predate the legacy success.

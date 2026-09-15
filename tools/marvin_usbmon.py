@@ -19,6 +19,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 import math
 import os
@@ -32,9 +33,12 @@ import sys
 import time
 
 if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import marvin_usbmon_binary as binary
 else:
     from . import marvin_usbmon_binary as binary
+
+from tools.marvin_stream import read_regular_file
 
 DEFAULT_MAX_BYTES = 1024 * 1024
 DEFAULT_MAX_RECORDS = 10000
@@ -256,6 +260,14 @@ def _address(raw):
 def _other_device(raw, target):
     _, bus, device, _ = _address(raw)
     return (bus, device) != target
+
+
+def _known_other_device(raw, target):
+    try:
+        return _other_device(raw, target)
+    except ParseError:
+        # Incomplete/unclassified headers cannot exclude target evidence loss.
+        return False
 
 
 @dataclass(frozen=True)
@@ -484,26 +496,36 @@ class Analyzer:
         }
 
 
-def analyze_file(path, *, max_line_bytes=DEFAULT_MAX_LINE_BYTES, max_pending=DEFAULT_MAX_PENDING):
+def analyze_file(path, *, max_bytes=DEFAULT_MAX_BYTES, max_records=DEFAULT_MAX_RECORDS,
+                 max_line_bytes=DEFAULT_MAX_LINE_BYTES, max_pending=DEFAULT_MAX_PENDING):
     """Read ONLY a regular evidence file, return JSON-serializable analysis.
 
     Parse/IO failures raise AnalysisError with a failed, partial .summary.
     No sysfs, privilege checks, signals, or usbmon opens occur in this API.
+    Defaults bound the complete file to 1 MiB and analysis to 10,000 records;
+    explicit limits can reach 64 MiB and 1,000,000 records, as in capture.
     """
+    _integer_limit(max_bytes, "max_bytes", 1, 64 * DEFAULT_MAX_BYTES)
+    _integer_limit(max_records, "max_records", 1, 1000000)
     _integer_limit(max_line_bytes, "max_line_bytes", 64, 16384)
     analyzer = Analyzer(max_pending=max_pending)
     line_number = 0
     try:
-        if not stat.S_ISREG(Path(path).stat().st_mode):
-            raise UsbmonError("Offline evidence must be a regular file.")
-        with open(path, "rb") as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                raise UsbmonError("Offline evidence changed to a non-regular file.")
+        try:
+            data = read_regular_file(path, max_bytes=max_bytes)
+        except ValueError as exc:
+            raise UsbmonError(
+                f"Offline evidence must be a stable local regular file within the {max_bytes}-byte limit, "
+                "without symlinks or device/kernel paths."
+            ) from exc
+        with io.BytesIO(data) as stream:
             while True:
                 raw = stream.readline(max_line_bytes + 1)
                 if not raw:
                     break
                 line_number += 1
+                if line_number > max_records:
+                    raise UsbmonError("Offline evidence exceeds the record limit.")
                 if not raw.endswith(b"\n"):
                     raise ParseError("Overlong or incomplete final usbmon record.")
                 analyzer.add(parse_record(raw, max_line_bytes=max_line_bytes))
@@ -512,6 +534,19 @@ def analyze_file(path, *, max_line_bytes=DEFAULT_MAX_LINE_BYTES, max_pending=DEF
                        error_line=line_number)
         raise AnalysisError(summary) from exc
     return dict(analyzer.summary(), status="completed", error=None)
+
+
+def validate_capture_completeness(metadata):
+    """Reject known evidence gaps, including older success-shaped metadata.
+
+    Status and USB pairing/loss checks remain the caller's responsibility.
+    Missing counters are accepted for historical recorder compatibility.
+    """
+    for field in ("unretained_partial_line_bytes", "unprocessed_records",
+                  "unprocessed_record_bytes", "unaccounted_retained_bytes"):
+        count = metadata.get(field, 0)
+        if type(count) is not int or count != 0:
+            raise UsbmonError(f"Incomplete USB capture: {field} is not zero.")
 
 
 class _Framer:
@@ -690,6 +725,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 "seconds": seconds, "max_bytes": max_bytes, "max_records": max_records,
                 "max_line_bytes": max_line_bytes, "retained_bytes": 0,
                 "retained_records": 0, "ignored_records": 0,
+                "unprocessed_records": 0, "unprocessed_record_bytes": 0,
                 "descriptors": {"file": "descriptors.bin", "bytes": len(descriptors),
                                 "sha256": hashlib.sha256(descriptors).hexdigest(),
                                 "source": "cached sysfs descriptors"},
@@ -698,6 +734,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             framer = _Framer(max_line_bytes, (identity["busnum"], identity["devnum"]))
             failure = None
             started = None
+            records = iter(())
+            pending_raw = None
             try:
                 _write_json(output / "metadata.json", metadata)
                 with _private_file(output / "descriptors.bin") as stream:
@@ -770,7 +808,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                                 if binary.address(header) != framer.target:
                                     metadata["ignored_records"] += 1
                                     continue
-                                records = (binary.to_text(header, payload),)
+                                records = iter((binary.to_text(header, payload),))
                                 source_frame = binary.evidence_frame(header, payload)
                             else:
                                 try:
@@ -781,9 +819,11 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                                     raise UsbmonError("Unexpected EOF from usbmon; trace ended before its bound.")
                                 records = framer.feed(chunk)
                             for raw in records:
+                                pending_raw = raw
                                 boundary()
                                 if _other_device(raw, framer.target):
                                     metadata["ignored_records"] += 1
+                                    pending_raw = None
                                     continue
                                 record = parse_record(raw, max_line_bytes=max_line_bytes)
                                 _check_identity(usb_path, identity)
@@ -799,6 +839,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                                 analyzer.add(record)
                                 metadata["retained_bytes"] += len(raw)
                                 metadata["retained_records"] += 1
+                                pending_raw = None
                                 _check_identity(usb_path, identity)
                                 last_check = time.monotonic()
                                 if metadata["retained_records"] >= max_records:
@@ -819,6 +860,33 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 metadata["stopped_monotonic"] = stopped.monotonic
             except (OSError, UsbmonError, binary.BinaryError, RuntimeError) as exc:
                 failure = exc
+            # Finish framing only the already-read bounded batch, without more
+            # monitor reads, evidence writes, or retaining unrelated payloads.
+            try:
+                def account_unprocessed(raw):
+                    if _known_other_device(raw, framer.target):
+                        metadata["ignored_records"] += 1
+                    else:
+                        metadata["unprocessed_records"] += 1
+                        metadata["unprocessed_record_bytes"] += len(raw)
+
+                if pending_raw is not None:
+                    account_unprocessed(pending_raw)
+                for raw in records:
+                    account_unprocessed(raw)
+            except (UsbmonError, RuntimeError) as exc:
+                if failure is None:
+                    failure = exc
+            unrelated_partial = bool(framer.partial and _known_other_device(framer.partial, framer.target))
+            metadata.update(
+                unretained_partial_line_bytes=0 if unrelated_partial else len(framer.partial),
+                ignored_partial_line_bytes=len(framer.partial) if unrelated_partial else 0,
+            )
+            if failure is None and metadata["status"] == "completed":
+                try:
+                    validate_capture_completeness(metadata)
+                except UsbmonError as exc:
+                    failure = exc
             if backend == "binary":
                 try:
                     stats = binary.read_stats(fd)
@@ -840,7 +908,6 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 finished_at=_utc(), signal=interrupt["signal"],
                 elapsed_seconds=None if started is None else time.monotonic() - started,
                 ignored_overlong_records=framer.ignored_overlong,
-                unretained_partial_line_bytes=len(framer.partial),
                 discarding_unrelated_overlong_line=framer.discarding,
             )
             try:
@@ -867,8 +934,10 @@ def main(argv=None):
     parser.add_argument("--seconds", type=float, default=90)
     parser.add_argument("--actuators-isolated", action="store_true")
     parser.add_argument("--drop-to-invoking-user", action="store_true")
-    parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
-    parser.add_argument("--max-records", type=int, default=DEFAULT_MAX_RECORDS)
+    parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
+                        help="Capture evidence or offline input byte limit (default: 1048576; maximum: 67108864)")
+    parser.add_argument("--max-records", type=int, default=DEFAULT_MAX_RECORDS,
+                        help="Capture or offline analysis record limit (default: 10000; maximum: 1000000)")
     parser.add_argument("--max-line-bytes", type=int, default=DEFAULT_MAX_LINE_BYTES)
     parser.add_argument("--max-pending", type=int, default=DEFAULT_MAX_PENDING)
     parser.add_argument("--backend", choices=("text", "binary"), default="text")
@@ -879,7 +948,10 @@ def main(argv=None):
         if args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated or args.coordinator_stop:
             parser.error("--analyze cannot be combined with capture paths or privilege/isolation flags.")
         try:
-            result = analyze_file(args.analyze, max_line_bytes=args.max_line_bytes, max_pending=args.max_pending)
+            result = analyze_file(
+                args.analyze, max_bytes=args.max_bytes, max_records=args.max_records,
+                max_line_bytes=args.max_line_bytes, max_pending=args.max_pending,
+            )
         except AnalysisError as exc:
             result = exc.summary
         except (OSError, UsbmonError, RuntimeError) as exc:

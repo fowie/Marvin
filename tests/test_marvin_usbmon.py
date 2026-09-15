@@ -31,6 +31,16 @@ PENDING_IN = b"ffff0003 123459 S Bi:1:008:2 -115 64 <\n"
 
 
 class ParserTests(unittest.TestCase):
+    def test_capture_completeness_rejects_nonzero_or_malformed_gap_counters(self):
+        fields = ("unretained_partial_line_bytes", "unprocessed_records",
+                  "unprocessed_record_bytes", "unaccounted_retained_bytes")
+        usbmon.validate_capture_completeness({})
+        usbmon.validate_capture_completeness(dict.fromkeys(fields, 0))
+        for field in fields:
+            for value in (1, -1, True, False, "0", None, 0.0):
+                with self.subTest(field=field, value=value), self.assertRaisesRegex(usbmon.UsbmonError, field):
+                    usbmon.validate_capture_completeness({field: value})
+
     def test_bulk_submission_completion(self):
         submitted = usbmon.parse_record(OUT)
         completed = usbmon.parse_record(DONE)
@@ -192,6 +202,120 @@ class LocalFilesTests(unittest.TestCase):
 
 
 class OfflineTests(LocalFilesTests):
+    def test_complete_file_byte_and_record_limits_are_enforced_by_api_and_cli(self):
+        path = self.root / "evidence.txt"
+        data = OUT + DONE
+        path.write_bytes(data)
+        with patch.object(usbmon, "read_regular_file", wraps=usbmon.read_regular_file) as reader:
+            result = usbmon.analyze_file(path, max_bytes=len(data), max_records=2)
+        reader.assert_called_once_with(path, max_bytes=len(data))
+        self.assertEqual(result["records"], 2)
+        with patch.object(usbmon.os, "open", side_effect=AssertionError("oversized input opened")):
+            with self.assertRaises(usbmon.AnalysisError) as raised:
+                usbmon.analyze_file(path, max_bytes=len(data) - 1)
+        self.assertEqual(raised.exception.summary["records"], 0)
+        with self.assertRaises(usbmon.AnalysisError) as raised:
+            usbmon.analyze_file(path, max_records=1)
+        self.assertEqual(raised.exception.summary["records"], 1)
+        self.assertEqual(raised.exception.summary["error_line"], 2)
+        for limits, code, records in (
+            (["--max-bytes", str(len(data)), "--max-records", "2"], 0, 2),
+            (["--max-bytes", str(len(data) - 1)], 1, 0),
+            (["--max-records", "1"], 1, 1),
+        ):
+            with self.subTest(limits=limits), \
+                    patch.object(usbmon.sys, "stdout", new_callable=io.StringIO) as stdout:
+                self.assertEqual(usbmon.main(["--analyze", str(path), *limits]), code)
+                self.assertEqual(json.loads(stdout.getvalue())["records"], records)
+
+    def test_default_total_byte_and_record_limits_are_not_unbounded(self):
+        path = self.root / "evidence.txt"
+        path.write_bytes(b"x" * (usbmon.DEFAULT_MAX_BYTES + 1))
+        with patch.object(usbmon.os, "open", side_effect=AssertionError("oversized input opened")):
+            with self.assertRaises(usbmon.AnalysisError):
+                usbmon.analyze_file(path)
+        path.write_bytes(DONE * (usbmon.DEFAULT_MAX_RECORDS + 1))
+        with self.assertRaises(usbmon.AnalysisError) as raised:
+            usbmon.analyze_file(path)
+        self.assertEqual(raised.exception.summary["records"], usbmon.DEFAULT_MAX_RECORDS)
+
+    def test_invalid_analysis_limits_fail_before_reading(self):
+        for option, values in (
+            ("max_bytes", (0, -1, 64 * usbmon.DEFAULT_MAX_BYTES + 1, True, 1.0, None)),
+            ("max_records", (0, -1, 1000001, True, 1.0, None)),
+        ):
+            for value in values:
+                with self.subTest(option=option, value=value), \
+                        patch.object(usbmon, "read_regular_file") as reader:
+                    with self.assertRaises(usbmon.UsbmonError):
+                        usbmon.analyze_file(self.root / "absent", **{option: value})
+                    reader.assert_not_called()
+
+    def test_kernel_and_device_paths_are_rejected_without_stat_or_open(self):
+        for path in ("/proc/self/mem", "/sys/fake-usb/descriptors", "/dev/fake-usb",
+                     "/proc/self/../self/status"):
+            with self.subTest(path=path), \
+                    patch.object(Path, "lstat", side_effect=AssertionError("forbidden stat")), \
+                    patch.object(usbmon.os, "open", side_effect=AssertionError("forbidden open")):
+                with self.assertRaises(usbmon.AnalysisError):
+                    usbmon.analyze_file(path)
+                with patch.object(usbmon.sys, "stdout", new_callable=io.StringIO) as stdout:
+                    self.assertEqual(usbmon.main(["--analyze", path]), 1)
+                self.assertEqual(json.loads(stdout.getvalue())["status"], "failed")
+
+    def test_symlinks_and_special_files_are_rejected_without_opening(self):
+        regular = self.root / "regular"
+        regular.write_bytes(OUT)
+        link = self.root / "link"
+        link.symlink_to(regular)
+        broken = self.root / "broken"
+        broken.symlink_to(self.root / "absent")
+        fifo = self.root / "fifo"
+        os.mkfifo(fifo)
+        for path in (link, broken, fifo, self.root):
+            with self.subTest(path=path), \
+                    patch.object(usbmon.os, "open", side_effect=AssertionError("input opened")):
+                with self.assertRaises(usbmon.AnalysisError):
+                    usbmon.analyze_file(path)
+                with patch.object(usbmon.sys, "stdout", new_callable=io.StringIO):
+                    self.assertEqual(usbmon.main(["--analyze", str(path)]), 1)
+
+    def test_resolved_kernel_paths_are_rejected_without_opening(self):
+        path = self.root / "evidence.txt"
+        path.write_bytes(OUT)
+        for resolved in ("/proc/self/status", "/sys/fake/attribute", "/dev/fake-device"):
+            with self.subTest(resolved=resolved), \
+                    patch.object(Path, "resolve", return_value=Path(resolved)), \
+                    patch.object(usbmon.os, "open", side_effect=AssertionError("resolved input opened")):
+                with self.assertRaises(usbmon.AnalysisError):
+                    usbmon.analyze_file(path)
+
+    def test_changed_input_is_rejected_by_shared_snapshot_reader(self):
+        path = self.root / "evidence.txt"
+        path.write_bytes(OUT)
+        opened = path.stat()
+        changed = SimpleNamespace(
+            st_size=opened.st_size + 1, st_mtime_ns=opened.st_mtime_ns,
+            st_ctime_ns=opened.st_ctime_ns,
+        )
+        with patch.object(usbmon.os, "fstat", side_effect=[opened, changed]):
+            with self.assertRaises(usbmon.AnalysisError) as raised:
+                usbmon.analyze_file(path)
+        self.assertEqual(raised.exception.summary["records"], 0)
+        self.assertEqual(raised.exception.summary["error_line"], 0)
+
+    def test_replaced_input_is_rejected_by_shared_snapshot_reader(self):
+        path = self.root / "evidence.txt"
+        path.write_bytes(OUT)
+        before = path.stat()
+        replacement = SimpleNamespace(
+            st_mode=before.st_mode, st_dev=before.st_dev, st_ino=before.st_ino + 1,
+        )
+        with patch.object(usbmon.os, "fstat", return_value=replacement):
+            with self.assertRaises(usbmon.AnalysisError) as raised:
+                usbmon.analyze_file(path)
+        self.assertEqual(raised.exception.summary["records"], 0)
+
     def test_offline_api_and_cli_do_not_check_usb_or_privileges(self):
         path = self.root / "evidence.txt"
         path.write_bytes(OUT + DONE + PENDING_IN)
@@ -560,6 +684,176 @@ class CaptureTests(LocalFilesTests):
         self.assertGreaterEqual(self.identity.call_count, 6)
         self.assertEqual(self.handlers[signal.SIGINT], signal.SIG_DFL)
         self.assertEqual(self.handlers[signal.SIGTERM], signal.SIG_DFL)
+
+    def request_stop(self, reason):
+        if reason == "duration":
+            self.now = 0.5
+        else:
+            (self.output / usbmon.COORDINATOR_STOP_FILE).write_bytes(b"")
+
+    def test_partial_target_or_unclassified_line_cannot_complete_at_either_stop(self):
+        for reason in ("duration", "coordinator_stop"):
+            for partial in (PENDING_IN.rstrip(b"\n"), b"unknown-private-prefix"):
+                with self.subTest(reason=reason, partial=partial):
+                    self.output = self.root / f"partial-{len(list(self.root.iterdir()))}"
+                    self.now = 0
+                    self.chunks = [OUT + DONE, partial]
+                    self.after_read = lambda: self.request_stop(reason) if not self.chunks else None
+                    with self.assertRaisesRegex(usbmon.CaptureError, "Incomplete USB capture") as raised:
+                        self.capture(coordinator_stop=True)
+                    result = raised.exception.metadata
+                    self.assertEqual(result["status"], "failed")
+                    self.assertEqual(result["unretained_partial_line_bytes"], len(partial))
+                    self.assertEqual(result["unprocessed_records"], 0)
+                    self.assertEqual(result["retained_records"], 2)
+                    self.assertEqual(result["retained_bytes"], len(OUT + DONE))
+                    self.assertEqual((self.output / "usbmon.txt").read_bytes(), OUT + DONE)
+                    summary = json.loads((self.output / "summary.json").read_text())
+                    self.assertEqual(summary["status"], "failed")
+                    self.assertEqual(summary["records"], 2)
+                    for path in self.output.iterdir():
+                        self.assertNotIn(partial, path.read_bytes())
+                    self.assertEqual(self.closed[-1], self.trace_fd)
+
+    def test_unrelated_partial_line_is_counted_but_not_saved_or_treated_as_target_loss(self):
+        self.chunks = [OUT + DONE + KEYBOARD.rstrip(b"\n")]
+        result = self.capture()
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["unretained_partial_line_bytes"], 0)
+        self.assertEqual(result["ignored_partial_line_bytes"], len(KEYBOARD) - 1)
+        usbmon.validate_capture_completeness(result)
+        for path in self.output.iterdir():
+            self.assertNotIn(b"00000400", path.read_bytes())
+
+    def test_already_read_target_records_cannot_disappear_at_stop_boundaries(self):
+        incoming = b"ffff0003 123460 C Bi:1:008:2 0 1 = 41\n"
+        target_records = (OUT, DONE, PENDING_IN, incoming)
+        original_add = usbmon.Analyzer.add
+        for reason in ("duration", "coordinator_stop"):
+            for retained in (0, 1, 2):
+                with self.subTest(reason=reason, retained=retained):
+                    self.output = self.root / f"batch-{reason}-{retained}"
+                    self.now = 0
+                    self.chunks = [KEYBOARD + b"".join(target_records)]
+                    self.after_read = (lambda: self.request_stop(reason)) if retained == 0 else None
+
+                    def add_then_stop(analyzer, record):
+                        original_add(analyzer, record)
+                        if analyzer.records == retained:
+                            self.request_stop(reason)
+
+                    with patch.object(usbmon.Analyzer, "add", new=add_then_stop), \
+                            self.assertRaisesRegex(usbmon.CaptureError, "Incomplete USB capture") as raised:
+                        self.capture(coordinator_stop=True)
+                    result = raised.exception.metadata
+                    self.assertEqual(result["status"], "failed")
+                    self.assertEqual(result["retained_records"], retained)
+                    self.assertEqual(result["retained_bytes"], len(b"".join(target_records[:retained])))
+                    self.assertEqual(result["unprocessed_records"], len(target_records) - retained)
+                    self.assertEqual(result["unprocessed_record_bytes"], len(b"".join(target_records[retained:])))
+                    self.assertEqual(result["unretained_partial_line_bytes"], 0)
+                    self.assertEqual(result["ignored_records"], 1)
+                    self.assertEqual(result["unaccounted_retained_bytes"], 0)
+                    self.assertEqual((self.output / "usbmon.txt").read_bytes(), b"".join(target_records[:retained]))
+                    summary = json.loads((self.output / "summary.json").read_text())
+                    self.assertEqual(summary["status"], "failed")
+                    self.assertEqual(summary["records"], retained)
+                    self.assertEqual(self.chunks, [])
+                    for path in self.output.iterdir():
+                        self.assertNotIn(b"00000400", path.read_bytes())
+
+    def test_stop_during_prewrite_identity_check_accounts_for_current_record_and_tail(self):
+        for reason in ("duration", "coordinator_stop"):
+            self.output = self.root / f"prewrite-{reason}"
+            self.now = 0
+            partial = b"ff 123 C Bi:1:008:2"
+            self.chunks = [OUT + DONE + partial]
+            with patch.object(usbmon, "parse_record", wraps=usbmon.parse_record) as parse:
+                self.identity.side_effect = lambda path: (
+                    self.request_stop(reason) if parse.call_count else None
+                ) or IDENTITY
+                with self.assertRaises(usbmon.CaptureError) as raised:
+                    self.capture(coordinator_stop=True)
+            self.identity.side_effect = None
+            result = raised.exception.metadata
+            self.assertEqual(result["retained_bytes"], 0)
+            self.assertEqual(result["retained_records"], 0)
+            self.assertEqual(result["unprocessed_records"], 2)
+            self.assertEqual(result["unprocessed_record_bytes"], len(OUT + DONE))
+            self.assertEqual(result["unretained_partial_line_bytes"], len(partial))
+
+    def test_only_unrelated_records_remaining_after_boundary_do_not_make_a_target_gap(self):
+        self.chunks = [OUT + DONE + KEYBOARD]
+        original_add = usbmon.Analyzer.add
+
+        def stop_after_pair(analyzer, record):
+            original_add(analyzer, record)
+            if analyzer.records == 2:
+                self.now = 0.5
+
+        with patch.object(usbmon.Analyzer, "add", new=stop_after_pair):
+            result = self.capture()
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["retained_records"], 2)
+        self.assertEqual(result["ignored_records"], 1)
+        self.assertEqual(result["unprocessed_records"], 0)
+        self.assertEqual(result["unprocessed_record_bytes"], 0)
+
+    def test_already_dequeued_binary_target_event_is_not_silently_lost_at_boundary(self):
+        for reason in ("duration", "coordinator_stop"):
+            with self.subTest(reason=reason):
+                self.output = self.root / f"binary-{reason}"
+                self.now = 0
+                self.chunks = [b"ready"]
+
+                def read_event(fd):
+                    self.assertEqual(fd, self.trace_fd)
+                    self.chunks.pop()
+                    self.request_stop(reason)
+                    return b"mock-header", b"\r"
+
+                with patch.object(usbmon.binary, "open_monitor", return_value=self.trace_fd), \
+                        patch.object(usbmon.binary, "read_stats", return_value={"queued": 0, "dropped": 0}), \
+                        patch.object(usbmon.binary, "read_event", side_effect=read_event), \
+                        patch.object(usbmon.binary, "address", return_value=(1, 8)), \
+                        patch.object(usbmon.binary, "to_text", return_value=OUT), \
+                        patch.object(usbmon.binary, "evidence_frame", return_value=b"mock-frame"):
+                    with self.assertRaises(usbmon.CaptureError) as raised:
+                        self.capture(backend="binary", coordinator_stop=True)
+                result = raised.exception.metadata
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(result["retained_records"], 0)
+                self.assertEqual(result["retained_bytes"], 0)
+                self.assertEqual(result["unprocessed_records"], 1)
+                self.assertEqual(result["unprocessed_record_bytes"], len(OUT))
+                self.assertEqual(result["retained_binary_bytes"], len(usbmon.binary.FILE_MAGIC))
+                self.assertEqual((self.output / "binary-events.bin").read_bytes(), usbmon.binary.FILE_MAGIC)
+
+    def test_partial_and_unprocessed_evidence_keep_signal_and_limit_non_success_status(self):
+        partial = PENDING_IN.rstrip(b"\n")
+        for stop in ("signal", "limit"):
+            self.output = self.root / stop
+            self.now = 0
+            self.chunks = [OUT + DONE + partial]
+            self.after_read = (
+                lambda: self.handlers[signal.SIGINT](signal.SIGINT, None)
+            ) if stop == "signal" else None
+            result = self.capture(max_records=1)
+            self.assertEqual(result["status"], "interrupted" if stop == "signal" else "limit_reached")
+            self.assertEqual(result["unretained_partial_line_bytes"], len(partial))
+            self.assertEqual(result["unprocessed_records"], 2 if stop == "signal" else 1)
+            with self.assertRaises(usbmon.UsbmonError):
+                usbmon.validate_capture_completeness(result)
+
+    def test_cli_partial_capture_is_failure_not_a_successful_empty_trace(self):
+        self.chunks = [PENDING_IN.rstrip(b"\n")]
+        with patch.object(usbmon.sys, "stderr", new_callable=io.StringIO) as stderr:
+            code = usbmon.main([
+                "--usb-path", USB_PATH, "--output", str(self.output),
+                "--seconds", "0.5", "--actuators-isolated",
+            ])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(stderr.getvalue())["status"], "failed")
 
     def test_coordinator_stop_is_explicit_and_advertised_without_extending_duration(self):
         self.after_select = lambda: (self.output / usbmon.COORDINATOR_STOP_FILE).write_bytes(b"")

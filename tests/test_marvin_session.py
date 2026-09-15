@@ -704,6 +704,22 @@ class SessionTests(unittest.TestCase):
             self.run_capture()
         self.assertEqual(json.loads((self.output / "metadata.json").read_text())["status"], "failed")
 
+    def test_completed_recorder_metadata_with_evidence_gaps_cannot_complete_session(self):
+        for field in ("unretained_partial_line_bytes", "unprocessed_records",
+                      "unprocessed_record_bytes", "unaccounted_retained_bytes"):
+            with self.subTest(field=field):
+                self.output = Path(self.temp.name) / field
+                self.clock.now = 0
+                self.finished = False
+                self.ready["monotonic"] = 0
+                self.usb_final_overrides = {field: 1}
+                with self.assertRaisesRegex(ValueError, "Incomplete USB capture"):
+                    self.run_capture(usb_tail_seconds=5, usb_close_grace_seconds=30)
+                result = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(result["status"], "failed")
+                self.assertIn(field, result["error"])
+                self.assertTrue((self.output / "SHA256SUMS").exists())
+
     def test_identity_loss_aborts_before_open_and_stops_recorder(self):
         self.identity.side_effect = OSError("device removed")
         with self.assertRaisesRegex(OSError, "device removed"):
