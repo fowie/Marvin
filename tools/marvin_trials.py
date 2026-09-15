@@ -109,7 +109,12 @@ def run_trials(
     plan = make_plan(case_names)
     if os.geteuid() == 0:
         raise ValueError("Run the trial coordinator as the ordinary user.")
-    if not actuators_isolated or not allow_unknown_command or not allow_line_state_trials:
+    marvin_probe.validate_boolean_flags(
+        actuators_isolated=actuators_isolated, allow_unknown_command=allow_unknown_command,
+        allow_line_state_trials=allow_line_state_trials, sudo_usbmon=sudo_usbmon,
+    )
+    if (actuators_isolated is not True or allow_unknown_command is not True
+            or allow_line_state_trials is not True):
         raise ValueError("Trials require actuator isolation, command authorization, and line-state authorization.")
     if power_state not in POWER_STATES:
         raise ValueError("Power state must be explicit and supported.")

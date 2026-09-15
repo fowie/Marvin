@@ -146,6 +146,25 @@ class TrialTests(unittest.TestCase):
                 self.run_trials(**options)
         self.preflight.assert_not_called()
 
+    def test_authorizations_require_exact_true_before_preflight_or_output(self):
+        for flag in ("actuators_isolated", "allow_unknown_command", "allow_line_state_trials"):
+            for value in ("false", "true", 1, 2, [True], {"yes": True}, object(), None, 0, ""):
+                with self.subTest(flag=flag, value=value), self.assertRaisesRegex(ValueError, flag):
+                    self.run_trials(**{flag: value})
+        self.preflight.assert_not_called()
+        self.identity.assert_not_called()
+        self.run_session.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_sudo_selector_requires_boolean_before_preflight_or_output(self):
+        for value in ("false", "true", 1, 0, [True], object(), None):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "sudo_usbmon"):
+                self.run_trials(sudo_usbmon=value)
+        self.preflight.assert_not_called()
+        self.identity.assert_not_called()
+        self.run_session.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_default_cli_is_offline_and_selection_cannot_duplicate(self):
         with patch("sys.argv", ["marvin_trials"]), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(marvin_trials.main(), 0)

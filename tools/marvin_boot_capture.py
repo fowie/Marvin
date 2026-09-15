@@ -3,10 +3,13 @@
 Uses separate target-scoped USB/serial segments, not an uninterrupted bus trace.
 Enumeration and the gap before the second recorder is ready are not captured.
 No application bytes, reset requests, or power-control operations are sent.
+After a ready segment fails, allow at most two seconds of read-only polling
+for its USB directory to disappear or change before treating the failure as final.
 """
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -16,7 +19,18 @@ import time
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import marvin_probe, marvin_session
+from tools import marvin_probe, marvin_session, marvin_usbmon
+
+
+IDENTITY_TRANSITION_SECONDS = 2
+POLL_SECONDS = 0.1
+
+
+def _poll_deadline(timeout, maximum):
+    if (type(timeout) not in (int, float) or not math.isfinite(timeout)
+            or not 0 < timeout <= maximum):
+        raise ValueError(f"Polling timeout must be finite, positive and at most {maximum} seconds.")
+    return time.monotonic() + timeout
 
 
 def identity_changed(baseline):
@@ -32,6 +46,18 @@ def identity_changed(baseline):
     )
 
 
+def wait_for_identity_change(baseline, timeout=IDENTITY_TRANSITION_SECONDS):
+    """Allow cached attributes to disappear before the USB directory is removed."""
+    deadline = _poll_deadline(timeout, IDENTITY_TRANSITION_SECONDS)
+    while time.monotonic() < deadline:
+        if identity_changed(baseline):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(POLL_SECONDS, remaining))
+    return False
+
+
 def validate_return(baseline, returned):
     for key in ("usb_path", "physical_port", "busnum", "idVendor", "idProduct",
                 "descriptors_sha256", "descriptors_bytes"):
@@ -42,25 +68,30 @@ def validate_return(baseline, returned):
 
 
 def wait_for_return(port, baseline, timeout=90):
-    deadline = time.monotonic() + timeout
+    deadline = _poll_deadline(timeout, 90)
     while time.monotonic() < deadline:
         if Path(port).exists():
             try:
                 returned = marvin_session.preflight(port)
-            except FileNotFoundError:
-                # The tty or its USB parent disappeared during enumeration.
-                time.sleep(0.1)
-                continue
-            validate_return(baseline, returned)
-            return returned
-        time.sleep(0.1)
-    raise TimeoutError("Marvin did not return within 90 seconds; no further attempts.")
+            except (FileNotFoundError, marvin_usbmon.IdentityError):
+                # Cached attributes/descriptors can be incomplete during enumeration.
+                pass
+            else:
+                validate_return(baseline, returned)
+                return returned
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(POLL_SECONDS, remaining))
+    raise TimeoutError(f"Marvin did not return within {timeout} seconds; no further attempts.")
 
 
 def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=False):
     if os.geteuid() == 0:
         raise ValueError("Run the boot observer as the ordinary user, not under sudo.")
-    if not actuators_isolated:
+    marvin_probe.validate_boolean_flags(
+        actuators_isolated=actuators_isolated, sudo_usbmon=sudo_usbmon,
+    )
+    if actuators_isolated is not True:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     baseline = marvin_session.preflight(port)
     output = Path(output).resolve()
@@ -117,7 +148,7 @@ def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=Fals
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             if not (output / "before-cycle-ready.json").is_file():
                 raise
-            if not identity_changed(baseline):
+            if not wait_for_identity_change(baseline):
                 raise
             # Preserve the interrupted segment's error; do not relabel it successful.
             metadata["initial_segment_error"] = str(error)
