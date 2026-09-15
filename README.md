@@ -72,6 +72,7 @@ owner's approval.** Publication acceptance is tracked in
 ## Documentation
 
 - [Capability map and bring-up plan](docs/marvin-bringup-plan.md)
+- [Persistent legacy getter client and offline API example](docs/legacy-client.md)
 - [Full historical/modern command catalogue](docs/marvin-command-map.json)
 - [Configuration export: 108 bytes, 27 words](docs/marvin-configuration.json)
 - [Raw telemetry snapshot: 134 bytes, 82 fields](docs/marvin-telemetry-snapshot.json)

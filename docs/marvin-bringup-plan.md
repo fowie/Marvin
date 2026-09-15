@@ -210,13 +210,17 @@ firmware and must not be launched against this robot.
 
 ### 1. Establish a reliable read-only session
 
-Build a single-owner, persistent legacy request/reply client on the proved
-codec. Correlate command and sequence, distinguish unsolicited telemetry,
-enforce deadlines and bounds, and stop on unexpected/error replies or identity
-changes. Never retry a setter after an uncertain write. Reserve a separate
-explicit authorization path for future actuator commands.
+The offline foundation is implemented by the
+[persistent legacy getter client](legacy-client.md): single-owner lifecycle,
+command/sequence/status/shape correlation, labeled unsolicited/error evidence,
+deadlines, bounded retention, and invalidation on identity or uncertain-write
+failures. Unexpected/error replies cannot satisfy requests. It has no live
+adapter, reconnect/retry path or setter API; this does not establish physical
+acceptance. Reserve a separately reviewed, explicitly authorized path for any
+future live integration or actuator commands.
 
-Start with low-rate raw-data polling, not a guessed heartbeat-enabling command.
+The downstream polling/recording work (#8) should start with low-rate raw-data
+polling, not a guessed heartbeat-enabling command.
 Measure tick progression and changing values, collect repeatable baselines,
 and expose raw data plus source-confidence labels in a dashboard. Record
 driver control-line transitions. Do not reopen the port for each eventual

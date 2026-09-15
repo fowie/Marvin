@@ -175,6 +175,24 @@ class LegacyProtocolTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             protocol.validate_get_config_reply(modern.decode_packet(modern.get_config_request()))
 
+    def test_general_getter_validator_exact_shapes_and_strict_field_types(self):
+        for query, spec in protocol.GETTERS.items():
+            valid = protocol.decode_packet(frame(bytes(spec.payload_bytes), command=spec.command, sequence=1))
+            self.assertIs(protocol.validate_getter_reply(valid, query, 1), valid)
+            for bad in (
+                replace(valid, sequence=True), replace(valid, command=float(spec.command)),
+                replace(valid, response_field=128.0), replace(valid, raw=bytearray(valid.raw)),
+                replace(valid, payload=bytearray(valid.payload)), replace(valid, raw=spec.encode(1)),
+                protocol.decode_packet(spec.encode(1)),
+                *(protocol.decode_packet(frame(bytes(size), command=spec.command, sequence=1))
+                  for size in (spec.payload_bytes - 1, spec.payload_bytes + 1)),
+            ):
+                with self.subTest(query=query), self.assertRaises(ValueError):
+                    protocol.validate_getter_reply(bad, query, 1)
+        for query in ("get-log", "get-sensor-info", "reset", 4, True, None):
+            with self.assertRaises(ValueError):
+                protocol.validate_getter_reply(valid, query, 1)
+
     def test_cli_generate_inspect_declarations_and_errors(self):
         output = io.StringIO()
         with redirect_stdout(output):

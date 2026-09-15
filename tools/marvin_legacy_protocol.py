@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 import struct
 import sys
+from types import MappingProxyType
+from typing import Callable
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -38,7 +40,8 @@ GET_UNIT_INFO = 0x1B
 GET_POWER_STATE = 0x0E
 READ_RAW_DATA = 0x00
 GET_CONFIG_PAYLOAD_BYTES = 108
-GET_CONFIG_RESPONSE_FIELD = 0x80
+GETTER_RESPONSE_FIELD = 0x80
+GET_CONFIG_RESPONSE_FIELD = GETTER_RESPONSE_FIELD
 DIRECTIONS = ("unknown", "received", "outgoing")
 EVIDENCE_KINDS = ("unspecified", "recorded", "synthetic")
 
@@ -74,6 +77,22 @@ def get_power_state_request(sequence=0):
 def read_raw_data_request(sequence=0):
     """PCTestApp Form1.cs931-934 and a correlated 2026-09-14 reply support empty00."""
     return _empty_request(READ_RAW_DATA, sequence)
+
+
+@dataclass(frozen=True)
+class GetterSpec:
+    command: int
+    payload_bytes: int
+    encode: Callable[[int], bytes]
+
+
+# Reviewed reply shapes; these facts do not broaden the one-shot live policy.
+GETTERS = MappingProxyType({
+    "get-config": GetterSpec(GET_CONFIG, GET_CONFIG_PAYLOAD_BYTES, get_config_request),
+    "get-unit-info": GetterSpec(GET_UNIT_INFO, 12, get_unit_info_request),
+    "get-power-state": GetterSpec(GET_POWER_STATE, 2, get_power_state_request),
+    "read-raw-data": GetterSpec(READ_RAW_DATA, 134, read_raw_data_request),
+})
 
 
 @dataclass(frozen=True)
@@ -121,27 +140,33 @@ def decode_packet(data):
     return LegacyPacket(sequence, command, response, raw[HEADER_BYTES:-3], raw)
 
 
-def validate_get_config_reply(packet, sequence=0):
-    """Return an integrity/shape-matched packet, not an authenticated hardware ACK.
-
-Requires a LegacyPacket with matching sequence, command4, response80 and exactly
-108 payload bytes. A request echo, unknown size/status or modern packet fails.
-Configuration remains opaque; no runtime identity or successor layout is inferred.
-    """
+def validate_getter_reply(packet, query, sequence=0):
+    """Validate a reviewed getter's raw consistency, correlation and exact shape."""
+    if not isinstance(query, str) or query not in GETTERS:
+        raise ValueError("Select one of the four reviewed legacy getter names.")
+    spec = GETTERS[query]
     _sequence(sequence)
     if not isinstance(packet, LegacyPacket):
         raise TypeError("Expected a LegacyPacket from decode_packet.")
+    if (type(packet.raw) is not bytes or type(packet.payload) is not bytes
+            or any(type(value) is not int for value in (packet.sequence, packet.command, packet.response_field))):
+        raise ValueError("Legacy packet requires immutable bytes and integer wire fields.")
     if decode_packet(packet.raw) != packet:
         raise ValueError("Legacy packet fields do not match its raw frame.")
     if packet.sequence != sequence:
-        raise ValueError("GetConfig reply sequence does not match the request.")
-    if packet.command != GET_CONFIG:
-        raise ValueError("Expected legacy GetConfig command4.")
-    if packet.response_field != GET_CONFIG_RESPONSE_FIELD:
-        raise ValueError("GetConfig reply requires response field80; request echoes are not replies.")
-    if len(packet.payload) != GET_CONFIG_PAYLOAD_BYTES:
-        raise ValueError("Legacy GetConfig reply requires the source/live 108-byte payload layout.")
+        raise ValueError(f"{query} reply sequence does not match the request.")
+    if packet.command != spec.command:
+        raise ValueError(f"Expected legacy {query} command{spec.command}.")
+    if packet.response_field != GETTER_RESPONSE_FIELD:
+        raise ValueError(f"{query} reply requires response field80; request echoes are not replies.")
+    if len(packet.payload) != spec.payload_bytes:
+        raise ValueError(f"Legacy {query} reply requires the reviewed {spec.payload_bytes}-byte payload layout.")
     return packet
+
+
+def validate_get_config_reply(packet, sequence=0):
+    """Match command4/status80/108 bytes, not authentication or a hardware ACK."""
+    return validate_getter_reply(packet, "get-config", sequence)
 
 
 def main(argv=None):
