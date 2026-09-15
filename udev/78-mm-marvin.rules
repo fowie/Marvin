@@ -1,0 +1,7 @@
+# Prevent modem discovery from sending probe commands to the robot controller.
+ACTION!="add|change|move|bind", GOTO="marvin_no_modem_end"
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="045e", ATTR{idProduct}=="4444", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="045e", ATTRS{idProduct}=="4444", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"
+
+LABEL="marvin_no_modem_end"

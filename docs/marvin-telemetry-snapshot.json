@@ -1,0 +1,832 @@
+{
+  "schema_version": 1,
+  "protocol": "marvin-legacy-se",
+  "offline_only": true,
+  "status": "decoded",
+  "direction": "received",
+  "evidence_kind": "recorded",
+  "provenance": "Caller-declared direction/evidence; no authenticated origin or automatic sequence correlation.",
+  "packet": {
+    "protocol": "marvin-legacy-se",
+    "sequence": 14,
+    "command": 0,
+    "response_field": 128,
+    "declared_payload_bytes": 134,
+    "payload_bytes": 134,
+    "payload_hex": "3d0108003702a3004b02ff03b501b301390185014803320347024a003f01b50000000000b50100006103350343031102d401f3ff3300e5ffbe01e1010a02f2050000000000000000000000000000000000000000fe1daa0ac4090000000000000000000000000000000000000000000000ff00000000000000000000000000000000002a0000",
+    "crc16_value": 61767,
+    "raw_hex": "530e00008086003d0108003702a3004b02ff03b501b301390185014803320347024a003f01b50000000000b50100006103350343031102d401f3ff3300e5ffbe01e1010a02f2050000000000000000000000000000000000000000fe1daa0ac4090000000000000000000000000000000000000000000000ff00000000000000000000000000000000002a000047f145"
+  },
+  "application_acknowledgment": "not_established",
+  "limitations": [
+    "Source-derived labels and exact profile length do not establish calibration, health or physical units.",
+    "Unsigned and signed word values are alternative bit interpretations, not a choice of physical signedness.",
+    "Reported firmware/communication words are not verified runtime identity; serial01020304 may be a default.",
+    "Power-state bits have no assigned hardware labels; current C/successor maps are not reused.",
+    "No config108, successor157/36, unknown command, echo or non80 response interpretation is attempted."
+  ],
+  "source": {
+    "archive": "private-archive:MarvinFirmwareAndSample.zip",
+    "citation_note": "The path is a private archive citation; original hash verification requires the private archive. See docs/provenance.md.",
+    "path": "MarvinFirmwareAndSample/v1/Firmware/PCTestApp/Form1.cs",
+    "sha256": "567edeece799528b0b04304e89c1375ba434fe3b76e031731b0ab3a20f692f61",
+    "citation": "UpdateDeviceData458-552; parseShort388-391; parseInt393-396. Source guard>=133 is insufficient for index133.",
+    "profile_evidence": "Source field layout plus a correlated134-byte ReadRawData00 reply on2026-09-14; no runtime image identity inferred."
+  },
+  "reason": "exact_legacy_profile_match",
+  "profile": "pctestapp-raw-data-134",
+  "fields": {
+    "tick": {
+      "offset": 0,
+      "size": 4,
+      "bits": 32,
+      "raw_hex": "3d010800",
+      "hex": "0x0008013d",
+      "unsigned": 524605,
+      "signed": 524605,
+      "source_label": "timestamp_textBox"
+    },
+    "proximity1": {
+      "offset": 4,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "3702",
+      "hex": "0x0237",
+      "unsigned": 567,
+      "signed": 567,
+      "source_label": "prox1_progressBar"
+    },
+    "proximity2": {
+      "offset": 6,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "a300",
+      "hex": "0x00a3",
+      "unsigned": 163,
+      "signed": 163,
+      "source_label": "prox2_progressBar"
+    },
+    "proximity3": {
+      "offset": 8,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "4b02",
+      "hex": "0x024b",
+      "unsigned": 587,
+      "signed": 587,
+      "source_label": "prox3_progressBar"
+    },
+    "proximity4": {
+      "offset": 10,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "ff03",
+      "hex": "0x03ff",
+      "unsigned": 1023,
+      "signed": 1023,
+      "source_label": "prox4_progressBar"
+    },
+    "proximity5": {
+      "offset": 12,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "b501",
+      "hex": "0x01b5",
+      "unsigned": 437,
+      "signed": 437,
+      "source_label": "prox5_progressBar"
+    },
+    "proximity6": {
+      "offset": 14,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "b301",
+      "hex": "0x01b3",
+      "unsigned": 435,
+      "signed": 435,
+      "source_label": "prox6_progressBar"
+    },
+    "proximity7": {
+      "offset": 16,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "3901",
+      "hex": "0x0139",
+      "unsigned": 313,
+      "signed": 313,
+      "source_label": "prox7_progressBar"
+    },
+    "proximity8": {
+      "offset": 18,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "8501",
+      "hex": "0x0185",
+      "unsigned": 389,
+      "signed": 389,
+      "source_label": "prox8_progressBar"
+    },
+    "cliff1": {
+      "offset": 20,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "4803",
+      "hex": "0x0348",
+      "unsigned": 840,
+      "signed": 840,
+      "source_label": "cliff1_progressBar"
+    },
+    "cliff2": {
+      "offset": 22,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "3203",
+      "hex": "0x0332",
+      "unsigned": 818,
+      "signed": 818,
+      "source_label": "cliff2_progressBar"
+    },
+    "cliff3": {
+      "offset": 24,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "4702",
+      "hex": "0x0247",
+      "unsigned": 583,
+      "signed": 583,
+      "source_label": "cliff3_progressBar"
+    },
+    "cliff4": {
+      "offset": 26,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "4a00",
+      "hex": "0x004a",
+      "unsigned": 74,
+      "signed": 74,
+      "source_label": "cliff4_progressBar"
+    },
+    "cliff5": {
+      "offset": 28,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "3f01",
+      "hex": "0x013f",
+      "unsigned": 319,
+      "signed": 319,
+      "source_label": "cliff5_progressBar"
+    },
+    "internalTemp": {
+      "offset": 30,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "b500",
+      "hex": "0x00b5",
+      "unsigned": 181,
+      "signed": 181,
+      "source_label": "internalTemp_textBox"
+    },
+    "externalTemp": {
+      "offset": 32,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "externalTemp_textBox"
+    },
+    "externalHumidity": {
+      "offset": 34,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "externalHumidity_textBox"
+    },
+    "batteryVoltage": {
+      "offset": 36,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "b501",
+      "hex": "0x01b5",
+      "unsigned": 437,
+      "signed": 437,
+      "source_label": "batteryVoltage_textBox"
+    },
+    "batteryCurrent": {
+      "offset": 38,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "batteryCurrent_textBox"
+    },
+    "power5V": {
+      "offset": 40,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "6103",
+      "hex": "0x0361",
+      "unsigned": 865,
+      "signed": 865,
+      "source_label": "power5V_textBox"
+    },
+    "power12V": {
+      "offset": 42,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "3503",
+      "hex": "0x0335",
+      "unsigned": 821,
+      "signed": 821,
+      "source_label": "power12V_textBox"
+    },
+    "power9V": {
+      "offset": 44,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "4303",
+      "hex": "0x0343",
+      "unsigned": 835,
+      "signed": 835,
+      "source_label": "power9V_textBox"
+    },
+    "power19V": {
+      "offset": 46,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "1102",
+      "hex": "0x0211",
+      "unsigned": 529,
+      "signed": 529,
+      "source_label": "power19V_textBox"
+    },
+    "gyroReference": {
+      "offset": 48,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "d401",
+      "hex": "0x01d4",
+      "unsigned": 468,
+      "signed": 468,
+      "source_label": "gyroReference_textBox"
+    },
+    "accelX": {
+      "offset": 50,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "f3ff",
+      "hex": "0xfff3",
+      "unsigned": 65523,
+      "signed": -13,
+      "source_label": "accelX_textBox"
+    },
+    "accelY": {
+      "offset": 52,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "3300",
+      "hex": "0x0033",
+      "unsigned": 51,
+      "signed": 51,
+      "source_label": "accelY_textBox"
+    },
+    "accelZ": {
+      "offset": 54,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "e5ff",
+      "hex": "0xffe5",
+      "unsigned": 65509,
+      "signed": -27,
+      "source_label": "accelZ_textBox"
+    },
+    "gyroX": {
+      "offset": 56,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "be01",
+      "hex": "0x01be",
+      "unsigned": 446,
+      "signed": 446,
+      "source_label": "gyroX_textBox"
+    },
+    "gyroY": {
+      "offset": 58,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "e101",
+      "hex": "0x01e1",
+      "unsigned": 481,
+      "signed": 481,
+      "source_label": "gyroY_textBox"
+    },
+    "gyroZ": {
+      "offset": 60,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0a02",
+      "hex": "0x020a",
+      "unsigned": 522,
+      "signed": 522,
+      "source_label": "gyroZ_textBox"
+    },
+    "compass": {
+      "offset": 62,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "f205",
+      "hex": "0x05f2",
+      "unsigned": 1522,
+      "signed": 1522,
+      "source_label": "compass_textBox"
+    },
+    "motorPositionL": {
+      "offset": 64,
+      "size": 4,
+      "bits": 32,
+      "raw_hex": "00000000",
+      "hex": "0x00000000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorPositionL_textBox"
+    },
+    "motorPositionR": {
+      "offset": 68,
+      "size": 4,
+      "bits": 32,
+      "raw_hex": "00000000",
+      "hex": "0x00000000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorPositionR_textBox"
+    },
+    "motorVelocityL": {
+      "offset": 72,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorVelocityL_textBox"
+    },
+    "motorVelocityR": {
+      "offset": 74,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorVelocityR_textBox"
+    },
+    "motorAccelerationL": {
+      "offset": 76,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorAccelerationL_textBox"
+    },
+    "motorAccelerationR": {
+      "offset": 78,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorAccelerationR_textBox"
+    },
+    "motorCurrentL": {
+      "offset": 80,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorCurrentL_textBox"
+    },
+    "motorCurrentR": {
+      "offset": 82,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorCurrentR_textBox"
+    },
+    "flags": {
+      "offset": 84,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "fe1d",
+      "hex": "0x1dfe",
+      "unsigned": 7678,
+      "signed": 7678,
+      "source_label": "flags_textBox"
+    },
+    "projectorPosition": {
+      "offset": 86,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "aa0a",
+      "hex": "0x0aaa",
+      "unsigned": 2730,
+      "signed": 2730,
+      "source_label": "projectorPosition_textBox"
+    },
+    "depthCam": {
+      "offset": 88,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "c409",
+      "hex": "0x09c4",
+      "unsigned": 2500,
+      "signed": 2500,
+      "source_label": "depthCam_textBox"
+    },
+    "motorPwmLeftForward": {
+      "offset": 90,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorPwmLeftForward_textBox"
+    },
+    "motorPwmLeftReverse": {
+      "offset": 92,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorPwmLeftReverse_textBox"
+    },
+    "motorPwmRightForward": {
+      "offset": 94,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorPwmRightForward_textBox"
+    },
+    "motorPwmRightReverse": {
+      "offset": 96,
+      "size": 2,
+      "bits": 16,
+      "raw_hex": "0000",
+      "hex": "0x0000",
+      "unsigned": 0,
+      "signed": 0,
+      "source_label": "motorPwmRightReverse_textBox"
+    },
+    "led0Brightness": {
+      "offset": 98,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led0Brightness_progressBar"
+    },
+    "led1Brightness": {
+      "offset": 99,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led1Brightness_progressBar"
+    },
+    "led2Brightness": {
+      "offset": 100,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led2Brightness_progressBar"
+    },
+    "led3Brightness": {
+      "offset": 101,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led3Brightness_progressBar"
+    },
+    "led4Brightness": {
+      "offset": 102,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led4Brightness_progressBar"
+    },
+    "led5Brightness": {
+      "offset": 103,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led5Brightness_progressBar"
+    },
+    "led6Brightness": {
+      "offset": 104,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led6Brightness_progressBar"
+    },
+    "led7Brightness": {
+      "offset": 105,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led7Brightness_progressBar"
+    },
+    "led8Brightness": {
+      "offset": 106,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led8Brightness_progressBar"
+    },
+    "led9Brightness": {
+      "offset": 107,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led9Brightness_progressBar"
+    },
+    "led10Brightness": {
+      "offset": 108,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led10Brightness_progressBar"
+    },
+    "led11Brightness": {
+      "offset": 109,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led11Brightness_progressBar"
+    },
+    "led12Brightness": {
+      "offset": 110,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led12Brightness_progressBar"
+    },
+    "led13Brightness": {
+      "offset": 111,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led13Brightness_progressBar"
+    },
+    "led14Brightness": {
+      "offset": 112,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led14Brightness_progressBar"
+    },
+    "led15Brightness": {
+      "offset": 113,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "ff",
+      "hex": "0xff",
+      "unsigned": 255,
+      "source_label": "led15Brightness_progressBar"
+    },
+    "led16Brightness": {
+      "offset": 114,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led16Brightness_progressBar"
+    },
+    "led17Brightness": {
+      "offset": 115,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led17Brightness_progressBar"
+    },
+    "led0Blink": {
+      "offset": 116,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led0Blink_progressBar"
+    },
+    "led1Blink": {
+      "offset": 117,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led1Blink_progressBar"
+    },
+    "led2Blink": {
+      "offset": 118,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led2Blink_progressBar"
+    },
+    "led3Blink": {
+      "offset": 119,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led3Blink_progressBar"
+    },
+    "led4Blink": {
+      "offset": 120,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led4Blink_progressBar"
+    },
+    "led5Blink": {
+      "offset": 121,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led5Blink_progressBar"
+    },
+    "led6Blink": {
+      "offset": 122,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led6Blink_progressBar"
+    },
+    "led7Blink": {
+      "offset": 123,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led7Blink_progressBar"
+    },
+    "led8Blink": {
+      "offset": 124,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led8Blink_progressBar"
+    },
+    "led9Blink": {
+      "offset": 125,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led9Blink_progressBar"
+    },
+    "led10Blink": {
+      "offset": 126,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led10Blink_progressBar"
+    },
+    "led11Blink": {
+      "offset": 127,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led11Blink_progressBar"
+    },
+    "led12Blink": {
+      "offset": 128,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led12Blink_progressBar"
+    },
+    "led13Blink": {
+      "offset": 129,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led13Blink_progressBar"
+    },
+    "led14Blink": {
+      "offset": 130,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led14Blink_progressBar"
+    },
+    "led15Blink": {
+      "offset": 131,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "2a",
+      "hex": "0x2a",
+      "unsigned": 42,
+      "source_label": "led15Blink_progressBar"
+    },
+    "led16Blink": {
+      "offset": 132,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led16Blink_progressBar"
+    },
+    "led17Blink": {
+      "offset": 133,
+      "size": 1,
+      "bits": 8,
+      "raw_hex": "00",
+      "hex": "0x00",
+      "unsigned": 0,
+      "source_label": "led17Blink_progressBar"
+    }
+  },
+  "capture": {
+    "citation_note": "local-evidence IDs identify unpublished private artifacts, not repository paths.",
+    "directory": "local-evidence:marvin-legacy-raw-repeat-20260914-01",
+    "first_usb_in_at": "2026-09-15T01:58:09.459844+00:00",
+    "serial_sha256": "8686cfc7ee9f0a0dbe696731c4de2086e65154e2b38638f16a25bfe2ed718e21",
+    "parent_evidence_review": "local-evidence:marvin-legacy-raw-repeat-analysis-20260914.json",
+    "refresh": "Finished recorded snapshot, not live polling."
+  }
+}
