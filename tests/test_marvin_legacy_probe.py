@@ -104,6 +104,7 @@ assert not {'tools.marvin_probe','tools.marvin_session','tools.marvin_usbmon','t
                 ["reset"], ["27"], ["read-raw-data", "--baudrate", "9600"],
                 ["read-raw-data", "--payload", "00"], ["read-raw-data", "--port", "/dev/fake"],
                 ["read-raw-data", "--seconds", "1"], ["read-raw-data", "--dtr"],
+                ["read-raw-data", "--sudo-usbmon", "--unprivileged-usbmon"],
             ):
                 result = subprocess.run([sys.executable, "-B", "-m", "tools.marvin_legacy_probe", *options],
                                         capture_output=True, text=True)
@@ -203,6 +204,32 @@ class LegacyProbeRunTests(unittest.TestCase):
         self.serial_open.assert_not_called()
         self.process.assert_not_called()
 
+    def test_unprivileged_recording_keeps_evidence_guards_and_never_escalates_on_failure(self):
+        result = self.run_probe(sudo_usbmon=False, unprivileged_usbmon=True)
+        options = self.session.run_session.call_args.kwargs
+        self.assertIs(options["sudo_usbmon"], False)
+        self.assertEqual(options["usbmon_backend"], "binary")
+        self.assertEqual(options["expected_usb_identity"], self.baseline["usb"])
+        self.assertEqual(options["probe_schedule"][0].data, frame(sequence=6, command=0, status=0))
+        self.assertEqual(len(options["probe_schedule"]), 1)
+        self.assertEqual(len(self.session.check_identity.call_args_list), 3)
+        self.assertEqual(result["status"], "capture_completed")
+        self.assertEqual(result["usbmon_privilege_mode"], "ordinary_user")
+        self.assertIs(result["privileged_recorder_only"], False)
+        self.assert_manifest()
+
+        self.output = self.root / "permission-failure"
+        self.session.run_session.reset_mock()
+        self.session.run_session.side_effect = PermissionError("USB recorder permission denied")
+        with self.assertRaisesRegex(PermissionError, "permission denied"):
+            self.run_probe(sudo_usbmon=False, unprivileged_usbmon=True)
+        self.session.run_session.assert_called_once()
+        self.assertIs(self.session.run_session.call_args.kwargs["sudo_usbmon"], False)
+        self.assertEqual(json.loads((self.output / "metadata.json").read_text())["status"], "failed")
+        self.assert_manifest()
+        self.serial_open.assert_not_called()
+        self.process.assert_not_called()
+
     def test_unit_info_needs_separate_exact_acknowledgment_before_runtime_import(self):
         for value in (False, "false", "true", 1, 0, None, [True]):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, "telemetry.state.change"):
@@ -224,14 +251,19 @@ class LegacyProbeRunTests(unittest.TestCase):
         with patch.object(legacy, "run_probe", return_value={"status": "fixture"}) as run, \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(legacy.main([
-                "get-unit-info", "--run", "--allow-telemetry-state-change",
+                "get-unit-info", "--run", "--allow-telemetry-state-change", "--unprivileged-usbmon",
             ]), 0)
             self.assertTrue(run.call_args.kwargs["allow_telemetry_state_change"])
+            self.assertIs(run.call_args.kwargs["unprivileged_usbmon"], True)
+            self.assertIs(run.call_args.kwargs["sudo_usbmon"], False)
 
     def test_all_run_flags_root_and_sequence_rejected_before_runtime_import(self):
         for options in (
             {"actuators_isolated": False}, {"actuators_isolated": 1},
             {"sudo_usbmon": False}, {"sudo_usbmon": 1},
+            {"unprivileged_usbmon": True},
+            *({"sudo_usbmon": False, "unprivileged_usbmon": value}
+              for value in (None, 0, 1, "true", [True])),
             {"expected_physical_port": None}, {"expected_physical_port": ""},
             {"expected_physical_port": "../1-1.1"}, {"expected_physical_port": "1-0"},
             {"expected_physical_port": "1-1\n"}, {"sequence": True}, {"sequence": 65536},

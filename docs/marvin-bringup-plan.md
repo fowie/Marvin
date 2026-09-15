@@ -190,6 +190,16 @@ sudo -v
 ```
 
 The output parent must already exist and the new leaf directory must not.
+If the ordinary user already has read permission on the target bus's
+`/dev/usbmonN` node, omit `sudo -v` and replace `--sudo-usbmon` with
+`--unprivileged-usbmon`. Exactly one recorder mode must be selected for a live
+run. Both modes require the same USB recording, identity checks and evidence
+validation; permission failure never triggers automatic escalation or a
+serial-only fallback. USB monitor permission covers every device on that bus,
+not just Marvin; do not grant all-bus `/dev/usbmon0` access. Reconfirm the USB bus
+after reconnect/reboot, and have the operator load the `usbmon` module if its
+nodes are absent. The probe does not load modules or change permissions.
+
 Run the coordinator as the ordinary user, not under sudo. It checks the known
 USB fingerprint and physical port, pins the device instance, records both
 directions, and permits one 10-byte write only. Without `--run`, it does not
