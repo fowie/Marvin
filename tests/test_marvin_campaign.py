@@ -183,7 +183,7 @@ class AssessmentTests(unittest.TestCase):
                 with self.subTest(field=field, rx=rx), tempfile.TemporaryDirectory() as directory:
                     result = fixture(directory, schedule, rx=rx)
                     result["usb"][field] = 1
-                    with patch.object(campaign.marvin_usbmon, "analyze_file") as analyze:
+                    with patch.object(campaign.marvin_usbmon, "read_analyzed_records") as analyze:
                         with self.assertRaisesRegex(ValueError, "Incomplete USB capture"):
                             campaign.assess_segment(directory, result, schedule)
                     analyze.assert_not_called()

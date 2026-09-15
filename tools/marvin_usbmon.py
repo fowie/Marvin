@@ -505,10 +505,28 @@ def analyze_file(path, *, max_bytes=DEFAULT_MAX_BYTES, max_records=DEFAULT_MAX_R
     Defaults bound the complete file to 1 MiB and analysis to 10,000 records;
     explicit limits can reach 64 MiB and 1,000,000 records, as in capture.
     """
+    return _analyze_file(
+        path, max_bytes=max_bytes, max_records=max_records,
+        max_line_bytes=max_line_bytes, max_pending=max_pending,
+    )[1]
+
+
+def read_analyzed_records(path):
+    """Return parsed records and analysis from one bounded regular-file snapshot.
+
+    Uses analyze_file's default byte, record, line and pending-pair limits.
+    """
+    return _analyze_file(path, retain_records=True)
+
+
+def _analyze_file(path, *, max_bytes=DEFAULT_MAX_BYTES, max_records=DEFAULT_MAX_RECORDS,
+                  max_line_bytes=DEFAULT_MAX_LINE_BYTES, max_pending=DEFAULT_MAX_PENDING,
+                  retain_records=False):
     _integer_limit(max_bytes, "max_bytes", 1, 64 * DEFAULT_MAX_BYTES)
     _integer_limit(max_records, "max_records", 1, 1000000)
     _integer_limit(max_line_bytes, "max_line_bytes", 64, 16384)
     analyzer = Analyzer(max_pending=max_pending)
+    records = []
     line_number = 0
     try:
         try:
@@ -528,12 +546,15 @@ def analyze_file(path, *, max_bytes=DEFAULT_MAX_BYTES, max_records=DEFAULT_MAX_R
                     raise UsbmonError("Offline evidence exceeds the record limit.")
                 if not raw.endswith(b"\n"):
                     raise ParseError("Overlong or incomplete final usbmon record.")
-                analyzer.add(parse_record(raw, max_line_bytes=max_line_bytes))
+                record = parse_record(raw, max_line_bytes=max_line_bytes)
+                analyzer.add(record)
+                if retain_records:
+                    records.append(record)
     except (OSError, UsbmonError, RuntimeError) as exc:
         summary = dict(analyzer.summary(), status="failed", error=_safe_error(exc),
                        error_line=line_number)
         raise AnalysisError(summary) from exc
-    return dict(analyzer.summary(), status="completed", error=None)
+    return records, dict(analyzer.summary(), status="completed", error=None)
 
 
 def validate_capture_completeness(metadata):

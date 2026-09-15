@@ -55,7 +55,7 @@ class AssessmentTests(unittest.TestCase):
                     self.output = Path(self.temp.name) / f"{field}-{len(receive)}"
                     result = case_fixture(self.output, receive=receive)
                     result["usb"][field] = 1
-                    with patch.object(marvin_trials.marvin_usbmon, "analyze_file") as analyze:
+                    with patch.object(marvin_trials.marvin_usbmon, "read_analyzed_records") as analyze:
                         with self.assertRaisesRegex(ValueError, "Incomplete USB capture"):
                             marvin_trials.assess_case(self.output, result)
                     analyze.assert_not_called()

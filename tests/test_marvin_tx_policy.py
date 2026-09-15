@@ -74,6 +74,12 @@ class TransmitPolicyTests(unittest.TestCase):
                     modern.get_config_request() + b"help\r", b"\x80"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 policy.validate_transmit_stream(bad, profile="experimental-successor")
+
+    def test_named_text_is_experimental_only_not_a_default_modern_permission(self):
+        self.assertFalse(policy.validate_transmit_stream(b"help\r", profile="experimental-successor"))
+        for profile in ("modern", "legacy"):
+            with self.subTest(profile=profile), self.assertRaises(ValueError):
+                policy.validate_transmit_stream(b"help\r", profile=profile)
         with self.assertRaises(ValueError):
             policy.validate_transmit_stream(b"help\r")
 

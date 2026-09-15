@@ -117,13 +117,10 @@ def assess_segment(directory, result, schedule):
     marvin_usbmon.validate_capture_completeness(usb)
     marvin_usbmon.validate_monitor_final_stats(usb)
     trace = directory / "usb/usbmon.txt"
-    if trace.stat().st_size > 2 * marvin_usbmon.DEFAULT_MAX_BYTES:
-        raise ValueError("Segment trace exceeds the analysis bound.")
-    records = [marvin_usbmon.parse_record(line) for line in trace.read_bytes().splitlines() if line.strip()]
+    records, summary = marvin_usbmon.read_analyzed_records(trace)
     identity = result["baseline"]["usb"]
     if any((r.busnum, r.devnum) != (identity["busnum"], identity["devnum"]) for r in records):
         raise ValueError("USB trace identity differs from the pinned device.")
-    summary = marvin_usbmon.analyze_file(trace)
     if any(summary["pairing"][key] for key in (
         "unmatched_completions", "unmatched_submission_errors", "pending_submissions_retained",
         "endpoint_mismatches", "duplicate_submission_ids", "evicted_pending_submissions",
@@ -202,14 +199,13 @@ def rejected_settings_evidence(directory, baseline):
             or usb["identity"] != baseline["usb"]):
         raise ValueError("Incomplete USB evidence for a rejected setting.")
     trace = directory / "usb/usbmon.txt"
-    summary = marvin_usbmon.analyze_file(trace)
+    records, summary = marvin_usbmon.read_analyzed_records(trace)
     if any(summary["pairing"][key] for key in (
         "pending_submissions_retained", "unmatched_completions", "unmatched_submission_errors",
         "endpoint_mismatches", "duplicate_submission_ids", "evicted_pending_submissions",
         "completion_exceeds_requested",
     )):
         raise ValueError("Rejected setting has incomplete USB pairing; stopping.")
-    records = [marvin_usbmon.parse_record(line) for line in trace.read_bytes().splitlines() if line.strip()]
     if any((r.busnum, r.devnum) != (baseline["usb"]["busnum"], baseline["usb"]["devnum"]) for r in records):
         raise ValueError("A rejected setting's trace contains a different device.")
     if any(r.transfer == "Bo" or (r.event == "C" and r.transfer in ("Bi", "Ii") and r.length) for r in records):

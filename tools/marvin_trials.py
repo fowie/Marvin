@@ -65,13 +65,10 @@ def assess_case(output, result):
     marvin_usbmon.validate_capture_completeness(usb)
     marvin_usbmon.validate_monitor_final_stats(usb)
     trace = output / "usb" / "usbmon.txt"
-    if trace.stat().st_size > 2 * marvin_usbmon.DEFAULT_MAX_BYTES:
-        raise ValueError("Case trace exceeds the bounded analysis size.")
-    records = [marvin_usbmon.parse_record(line) for line in trace.read_bytes().splitlines() if line.strip()]
+    records, summary = marvin_usbmon.read_analyzed_records(trace)
     identity = result["baseline"]["usb"]
     if any((r.busnum, r.devnum) != (identity["busnum"], identity["devnum"]) for r in records):
         raise ValueError("Case trace contains a different USB identity.")
-    summary = marvin_usbmon.analyze_file(trace)
     if any(summary["pairing"][key] for key in (
         "unmatched_completions", "unmatched_submission_errors", "pending_submissions_retained",
         "endpoint_mismatches", "duplicate_submission_ids", "evicted_pending_submissions",

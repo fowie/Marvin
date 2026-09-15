@@ -616,6 +616,11 @@ opening (including components that `..` would otherwise normalize away).
 Regular-file, byte-bound, inode and in-read change guards remain in force.
 These path checks are pre-open snapshots, not an atomic lock on parent-directory
 identity against concurrent replacement.
+Campaign, trial and rejected-setting trace assessments derive both their parsed
+records and pairing summaries from the same bounded snapshot, without a second
+path read. They preserve the analyzer's effective 1 MiB and 10,000-record defaults;
+the former 2 MiB preliminary size check did not override that stricter analyzer
+limit. Line and pending-pair limits also remain in force.
 Nonfinite telemetry floats keep their original bits and use JSON-safe labels.
 The published generated fact catalogue is a read-only input. The private
 source-reference collection is neither distributed nor required to run public
