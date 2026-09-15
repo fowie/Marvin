@@ -298,8 +298,8 @@ For offline USB evidence interpretation (does not access hardware):
 ```
 
 Offline analysis uses the shared bounded regular-file reader: device/kernel
-paths, file symlinks, special files, oversized files, and inputs changing during
-the read are rejected. `--max-bytes` and `--max-records` also apply to `--analyze`
+paths, symlinks in any input path component, special files, oversized files, and
+inputs changing during the read are rejected. `--max-bytes` and `--max-records` also apply to `--analyze`
 (Python API: `analyze_file(..., max_bytes=..., max_records=...)`). Defaults are
 1 MiB and 10,000 records; explicit maxima are 64 MiB and 1,000,000 records.
 Existing per-line and pending-pair bounds still apply. Analysis of a retained
@@ -548,7 +548,7 @@ executables:
 
 - `tools.marvin_stream.StreamDecoder`: incremental framing with absolute byte
   offsets and explicit frame/noise/error/partial spans. It handles split and
-  coalesced packets without treating embedded delimiters as boundaries.
+  coalesced valid packets without treating their embedded delimiters as boundaries.
 - `tools.marvin_telemetry.TelemetryDecoder`: interprets exact successor
   UnitInfo, 157-byte drive heartbeat, and 36-byte head heartbeat layouts from
   the curated catalogue. GetConfig retains its extra 96 metadata bytes.
@@ -574,12 +574,36 @@ The stream decoder defaults to a 4096-byte payload bound (configurable through
 declared frame length; a damaged length can postpone later frames until EOF.
 At EOF it can recover a later CRC-valid candidate with an explicit
 `ambiguous_eof_resync` diagnostic, since that candidate might instead be part
-of a truncated payload. `--retain-incomplete` disables that recovery.
-Skipped spans retain their raw bytes and offsets.
+of a truncated payload. `--retain-incomplete` disables only that incomplete-EOF
+recovery, not the separate complete-invalid-candidate policy.
+
+Modern complete candidates with invalid CRC/footer and out-of-bound lengths
+are rejected **one byte at a time**. This preserves recovery of real following
+frames after length damage, but can also select a valid frame nested in a
+rejected outer payload. In contrast, the legacy decoder retains a complete
+invalid candidate as one span and never searches inside it. Neither decoder
+searches inside an incomplete in-bound candidate while feeding, and valid outer
+frames retain nested frames as payload.
+
+Modern `invalid_frame.raw` covers the one rejected header byte, not the entire
+candidate; its bounded preview is diagnostic only. Successive raw spans still
+partition every input byte. After a rejected candidate or ambiguous EOF
+recovery, events carry sticky `follows_corruption: true`; later validated frame
+boundaries remain **resynchronization hypotheses**, including frames that really
+followed damaged length fields. This flag does not itself prove physical
+corruption. Replay exposes it, retains the same decoded bytes/layout fields,
+and adds a boundary warning to any telemetry interpretation. CRC validity alone
+does not distinguish nested payload from a genuine next-frame boundary.
 
 Replay defaults to 16 MiB raw input, 64 MiB chunk metadata, and 100000 chunks
 and events. Limit violations or inconsistent chunk metadata produce an
 explicit input error, not a truncated success. Empty receive files are valid.
+The shared reader used for modern/legacy replay, firmware snapshots, catalogues
+and usbmon analysis rejects links in every supplied path component before
+opening (including components that `..` would otherwise normalize away).
+Regular-file, byte-bound, inode and in-read change guards remain in force.
+These path checks are pre-open snapshots, not an atomic lock on parent-directory
+identity against concurrent replacement.
 Nonfinite telemetry floats keep their original bits and use JSON-safe labels.
 The published generated fact catalogue is a read-only input. The private
 source-reference collection is neither distributed nor required to run public

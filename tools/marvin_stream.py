@@ -5,13 +5,20 @@ The retained buffer is at most max_payload_bytes + 12 unless explicitly enlarged
 Input chunks need not align with packets. Unknown commands and payload sizes
 within the configured bound remain valid frames.
 
-No speculative mid-payload resynchronization occurs while feeding: an embedded
-valid frame can itself be payload. A damaged but in-bound length can therefore
-hold later bytes until the declared size arrives or finish() is called. At EOF,
+While an in-bound candidate is incomplete, feeding never searches its payload
+for another frame: an embedded valid frame can itself be payload. A damaged
+length can therefore hold later bytes until the declared size arrives or EOF.
+For a complete CRC-valid candidate, embedded frames likewise remain payload. At EOF,
 recover_at_eof=True selects a later complete CRC-valid frame if possible, reporting
 the abandoned prefix as ambiguous partial evidence. Set it false to retain the
 entire incomplete candidate instead. Out-of-bound lengths and complete invalid
-frames are rejected one byte at a time, with explicit diagnostics.
+frames are rejected one byte at a time, preserving modern length-damage recovery.
+This can recover a nested payload frame from a rejected outer candidate; it is
+not legacy's whole-invalid-candidate/no-nested-recovery policy.
+
+follows_corruption is sticky after a rejected candidate or ambiguous EOF recovery.
+Later CRC-valid frames retain that boundary warning: integrity alone does not
+distinguish a nested payload from a real next frame or prove physical corruption.
 
 Event spans partition all input bytes after finish(); raw bytes are never silently
 discarded. This module does not determine direction, provenance or acknowledgment.
@@ -32,16 +39,24 @@ FRAME_OVERHEAD = 12
 
 
 def read_regular_file(path, *, max_bytes):
-    """Read a bounded local regular file only; reject symlinks and special files.
+    """Read a bounded local regular file; reject all link components and special files.
 
 The caller-selected limit is enforced before and during the read. No device,
 pipe, URL, stdin, or capture-directory write path is supported.
     """
     if type(max_bytes) is not int or max_bytes < 0:
         raise ValueError("max_bytes must be a nonnegative integer.")
-    path = Path(os.path.abspath(path))
-    if len(path.parts) > 1 and path.parts[1] in {"dev", "proc", "sys"}:
+    supplied = Path(path)
+    absolute = supplied if supplied.is_absolute() else Path.cwd() / supplied
+    path = Path(os.path.abspath(absolute))
+    if any(len(candidate.parts) > 1 and candidate.parts[1] in {"dev", "proc", "sys"}
+           for candidate in (absolute, path)):
         raise ValueError(f"Device and kernel-interface paths are not offline capture inputs: {path}")
+    # Walk the supplied spelling before normalizing away ".."; lstat of the
+    # leaf alone would follow parent links, including links into kernel paths.
+    for component in (*reversed(absolute.parents), absolute):
+        if stat.S_ISLNK(component.lstat().st_mode):
+            raise ValueError(f"Input must be a regular file with no symlink path components: {component}")
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode):
         raise ValueError(f"Input must be a regular file, not a symlink or device: {path}")
@@ -78,6 +93,7 @@ class StreamEvent:
     declared_payload_bytes: int | None = None
     needed_bytes: int | None = None
     candidate_preview_hex: str | None = None
+    follows_corruption: bool = False
 
     @property
     def end_offset(self):
@@ -88,6 +104,7 @@ class StreamEvent:
             "kind": self.kind, "code": self.code, "message": self.message,
             "offset": self.offset, "end_offset": self.end_offset,
             "raw_bytes": len(self.raw), "raw_hex": self.raw.hex(),
+            "follows_corruption": self.follows_corruption,
         }
         for key in ("declared_payload_bytes", "needed_bytes", "candidate_preview_hex"):
             value = getattr(self, key)
@@ -121,6 +138,7 @@ class StreamDecoder:
         self._offset = start_offset
         self._buffer = bytearray()
         self._finished = False
+        self._corruption_seen = False
 
     @property
     def offset(self):
@@ -132,7 +150,10 @@ class StreamDecoder:
         return len(self._buffer)
 
     def _take(self, length, kind, code, message, **details):
-        event = StreamEvent(kind, self._offset, bytes(self._buffer[:length]), code, message, **details)
+        event = StreamEvent(
+            kind, self._offset, bytes(self._buffer[:length]), code, message,
+            follows_corruption=self._corruption_seen, **details,
+        )
         del self._buffer[:length]
         self._offset += length
         return event
@@ -181,6 +202,7 @@ class StreamDecoder:
                     "rejecting this candidate, not proving its length is impossible on the wire.",
                     declared_payload_bytes=length, candidate_preview_hex=bytes(self._buffer[:8]).hex(),
                 ))
+                self._corruption_seen = True
                 continue
             frame_bytes = length + FRAME_OVERHEAD
             if len(self._buffer) < frame_bytes:
@@ -194,6 +216,7 @@ class StreamDecoder:
                         "It could be embedded in the truncated payload; boundary is not certain.",
                         declared_payload_bytes=length, needed_bytes=frame_bytes - len(self._buffer),
                     ))
+                    self._corruption_seen = True
                     continue
                 events.append(self._take(
                     len(self._buffer), "partial", "incomplete_frame",
@@ -206,13 +229,18 @@ class StreamDecoder:
                 packet = protocol.decode_packet(candidate)
             except ValueError as error:
                 events.append(self._take(
-                    1, "error", "invalid_frame", str(error),
+                    1, "error", "invalid_frame",
+                    f"{error} Rejecting one header byte to permit length-damage recovery; "
+                    "later headers may instead lie inside this rejected candidate's payload.",
                     declared_payload_bytes=length, candidate_preview_hex=candidate[:64].hex(),
                 ))
+                self._corruption_seen = True
                 continue
             events.append(self._take(
                 frame_bytes, "frame", "validated_frame",
-                "Header, declared length, footer and CRC match; direction and origin are not established.",
+                "Header, declared length, footer and CRC match; direction and origin are not established."
+                + (" After a rejected candidate or EOF recovery, this boundary remains a "
+                   "resynchronization hypothesis." if self._corruption_seen else ""),
                 packet=packet, declared_payload_bytes=length,
             ))
         return events

@@ -151,6 +151,11 @@ timing. Replay raw received.bin without --chunks to examine such evidence.
             result = event.to_dict()
             if event.packet is not None and interpreter is not None:
                 result["interpretation"] = interpreter.interpret_packet(event.packet, direction=direction)
+                if event.follows_corruption:
+                    result["interpretation"]["warnings"].append(
+                        "Frame boundary follows a rejected candidate or ambiguous EOF recovery; "
+                        "it is a resynchronization hypothesis, possibly a nested payload frame."
+                    )
             if chunks:
                 first = bisect_right(starts, event.offset) - 1
                 last = bisect_right(starts, event.end_offset - 1) - 1
@@ -193,6 +198,8 @@ timing. Replay raw received.bin without --chunks to examine such evidence.
             "No USB OUT completion, USB IN transfer, or matched-request application acknowledgment is inferred.",
             "No physical reply or installed-controller compatibility is established by a successor layout match.",
             "Damaged in-bound lengths wait for their declared end or EOF; EOF suffix recovery has an explicit ambiguous boundary.",
+            "Complete invalid modern candidates resynchronize bytewise, unlike legacy whole-candidate rejection; recovered frames may be nested payload.",
+            "follows_corruption remains true after candidate rejection or ambiguous EOF recovery; CRC validity does not authenticate a recovered boundary.",
             "All skipped bytes have absolute spans and raw hex; the source path/hash identifies the complete byte snapshot read without modifying it.",
             "The files must be finished captures; separate-file read timing is not a transactional snapshot.",
         ],

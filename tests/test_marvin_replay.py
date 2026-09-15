@@ -109,6 +109,79 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(validated["interpretation"]["response_code"], 127)
         self.assertNotIn("telemetry", validated["interpretation"])
 
+    def test_nested_recovery_keeps_decoded_bytes_but_publishes_boundary_warnings(self):
+        clean = frame(bytes(12), command=27)
+        nested = frame(bytes(108))
+        damaged = bytearray(frame(b"prefix" + nested + b"suffix", command=250))
+        damaged[-4] ^= 1
+        following = frame(b"following", command=251)
+        data = clean + bytes(damaged) + following
+        self.write_capture(data, chunks_for([data[:30], data[30:80], data[80:]]))
+        for telemetry in (False, True):
+            with self.subTest(telemetry=telemetry):
+                result = replay.replay_capture(
+                    self.raw_path, chunks_path=self.chunk_path, telemetry=telemetry,
+                    recover_at_eof=False, evidence="synthetic",
+                )
+                self.assertEqual(result["status"], "decoded_with_diagnostics")
+                frames = [event for event in result["events"] if event["kind"] == "frame"]
+                self.assertEqual([bytes.fromhex(event["raw_hex"]) for event in frames],
+                                 [clean, nested, following])
+                self.assertEqual([event["follows_corruption"] for event in frames], [False, True, True])
+                self.assertEqual(bytes.fromhex("".join(event["raw_hex"] for event in result["events"])), data)
+                self.assertEqual(result["application_acknowledgment"], "not_established")
+                if telemetry:
+                    self.assertEqual(frames[1]["interpretation"]["telemetry"]["layout"], "UnitInfo")
+                    self.assertEqual(frames[1]["packet"]["payload_hex"], bytes(108).hex())
+                    for event in frames[1:]:
+                        self.assertTrue(any("resynchronization hypothesis" in warning
+                                            for warning in event["interpretation"]["warnings"]))
+                else:
+                    self.assertTrue(all("interpretation" not in event for event in frames))
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(replay.main([
+                str(self.raw_path), "--no-telemetry", "--retain-incomplete",
+            ]), 0)
+        recovered = [event for event in json.loads(output.getvalue())["events"] if event["kind"] == "frame"]
+        self.assertEqual([event["follows_corruption"] for event in recovered], [False, True, True])
+        self.assertEqual(self.raw_path.read_bytes(), data)
+
+    def test_ambiguous_eof_frame_has_warning_and_retain_incomplete_still_disables_it(self):
+        unfinished = protocol.HEADER + struct.pack("<HBBH", 0, 4, 0x80, 800) + b"prefix"
+        nested = frame(bytes(108))
+        self.write_capture(unfinished + nested)
+        result = replay.replay_capture(self.raw_path)
+        recovered = result["events"][-1]
+        self.assertEqual(recovered["raw_hex"], nested.hex())
+        self.assertTrue(recovered["follows_corruption"])
+        self.assertTrue(any("ambiguous EOF" in warning for warning in recovered["interpretation"]["warnings"]))
+        result = replay.replay_capture(self.raw_path, recover_at_eof=False)
+        self.assertEqual(result["counts"], {"partial": 1})
+        self.assertEqual(result["events"][0]["raw_hex"], (unfinished + nested).hex())
+
+    def test_chunk_and_catalogue_parent_links_are_rejected_before_the_linked_open(self):
+        data = frame(bytes(108))
+        self.write_capture(data, chunks_for([data]))
+        link = self.root / "link"
+        link.symlink_to(self.root, target_is_directory=True)
+        opening = stream.os.open
+        for options in (
+            {"chunks_path": link / "chunks.jsonl"},
+            {"catalog_path": link / "catalog.json"},
+        ):
+            with self.subTest(options=options), patch.object(stream.os, "open", wraps=opening) as opened:
+                with self.assertRaisesRegex(ValueError, "symlink path components"):
+                    replay.replay_capture(self.raw_path, **options)
+                self.assertEqual(opened.call_count, 1)
+                self.assertEqual(opened.call_args.args[0], self.raw_path)
+        output = io.StringIO()
+        with redirect_stdout(output), patch.object(stream.os, "open") as opened:
+            self.assertEqual(replay.main([str(link / "received.bin"), "--no-telemetry"]), 2)
+        opened.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())["status"], "input_error")
+        self.assertEqual(self.raw_path.read_bytes(), data)
+
     def test_inconsistent_chunk_offsets_sizes_hex_and_timestamps_are_rejected(self):
         data = frame(bytes(108))
         valid = chunks_for([data[:10], data[10:]])

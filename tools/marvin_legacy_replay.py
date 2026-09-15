@@ -25,9 +25,7 @@ from datetime import datetime
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
-import stat
 import sys
 
 if __package__ in (None, ""):
@@ -52,14 +50,8 @@ def _limit(value, name, *, minimum=0):
 
 
 def read_capture_file(path, *, max_bytes):
-    """Use the existing bounded regular-file reader, additionally rejecting link ancestors."""
+    """Use the shared bounded reader, including its ancestor-symlink rejection."""
     _limit(max_bytes, "max_bytes")
-    path = Path(os.path.abspath(path))
-    if len(path.parts) > 1 and path.parts[1] in ("dev", "proc", "sys"):
-        raise ValueError("Device and kernel-interface paths are not offline capture inputs.")
-    for component in (*reversed(path.parents), path):
-        if stat.S_ISLNK(component.lstat().st_mode):
-            raise ValueError(f"Capture paths must not contain symlinks: {component}")
     return read_regular_file(path, max_bytes=max_bytes)
 
 
