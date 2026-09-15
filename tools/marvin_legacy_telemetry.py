@@ -137,7 +137,7 @@ types/declarations raise instead of substituting defaults.
         result["source"] = {
             "path": _SOURCE_PATH, "sha256": _SOURCE_SHA256,
             "citation": "getPowerState_btn_Click937-940; correlated2-byte0E reply on2026-09-14.",
-            "meaning": "Unlabeled reported16-bit power-state mask only.",
+            "meaning": "Unlabeled reported 16-bit power-state mask only.",
         }
     result.update(status="decoded", reason="exact_legacy_profile_match", profile=profile, fields=fields)
     return result

@@ -1,7 +1,7 @@
 """Explicit, offline source-layout interpretation of legacy GetConfig replies.
 
 Names/types come from the later packed confparams layout and agree with the
-observed108-byte legacy reply. This is a source-derived view, not proof of
+observed 108-byte legacy reply. This is a source-derived view, not proof of
 runtime tuning, calibration, physical limits or exact installed firmware.
 Newer Drive defaults are comparison data only, never suggested replacements.
 The existing general legacy telemetry interpreter still leaves config opaque.
@@ -90,11 +90,11 @@ def interpret_packet(packet, *, direction="unknown", evidence="unspecified"):
         }
     fields["unitInfo.fwVersion"]["default_note"] = "FirmwareVersion macro is build-dependent."
     fields["heartbeatPeriod"]["source_unit_note"] = (
-        "Later m_config.h:71 uses5000 microseconds per unit (8 would mean40ms there); "
+        "Later m_config.h:71 uses 5000 microseconds per unit (8 would mean 40 ms there); "
         "installed heartbeat timing is not established."
     )
     fields["sysClockFreq"]["source_unit_note"] = (
-        "Reported frequency word; newer m_hw.h:27-37 Drive default50MHz, Head80MHz. "
+        "Reported frequency word; newer m_hw.h:27-37 Drive default 50 MHz, Head 80 MHz. "
         "Not a measured oscillator frequency."
     )
     result.update(

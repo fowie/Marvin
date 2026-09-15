@@ -357,7 +357,7 @@
       "source": "m_inc/m_config.h:56",
       "newer_drive_default": 8,
       "differs_from_newer_drive_default": false,
-      "source_unit_note": "Later m_config.h:71 uses5000 microseconds per unit (8 would mean40ms there); installed heartbeat timing is not established."
+      "source_unit_note": "Later m_config.h:71 uses 5000 microseconds per unit (8 would mean 40 ms there); installed heartbeat timing is not established."
     },
     "sysClockFreq": {
       "word": 22,
@@ -373,7 +373,7 @@
       "source": "m_inc/m_config.h:59",
       "newer_drive_default": 50000000,
       "differs_from_newer_drive_default": false,
-      "source_unit_note": "Reported frequency word; newer m_hw.h:27-37 Drive default50MHz, Head80MHz. Not a measured oscillator frequency."
+      "source_unit_note": "Reported frequency word; newer m_hw.h:27-37 Drive default 50 MHz, Head 80 MHz. Not a measured oscillator frequency."
     },
     "cliffStopThreshold": {
       "word": 23,

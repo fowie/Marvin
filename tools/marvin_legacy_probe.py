@@ -69,7 +69,7 @@ def prepare(query, sequence=0):
             "descriptor_hash_source": "tools.marvin_campaign.DESCRIPTOR_HASH",
             "physical_port": "Must equal --expected-physical-port before capture.",
         },
-        "source": "Legacy S/E packet facts and four independently reviewed2026-09-14 query/reply captures; no recovered program executed.",
+        "source": "Legacy S/E packet facts and four independently reviewed 2026-09-14 query/reply captures; no recovered program executed.",
         "required_run_acknowledgments": [
             "--run (selected query and possible line effects)",
             "--actuators-isolated (motor/servo power AND signals)",
