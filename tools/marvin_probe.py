@@ -35,6 +35,9 @@ DEFAULT_PORT = (
     "/dev/serial/by-id/"
     "usb-Microsoft_Corp_2009_Microsoft_Marvin_12345678-if00"
 )
+MIN_BAUDRATE = 300
+MAX_BAUDRATE = 1_000_000
+MAX_CAPTURE_BYTES = 65_536
 
 
 @dataclass(frozen=True)
@@ -70,9 +73,12 @@ def validate_framing(bytesize, parity, stopbits):
 def validate_capture_limits(seconds, baudrate, max_bytes):
     if type(seconds) not in (int, float) or not 0 < seconds <= 120:
         raise ValueError("Capture duration must be finite, greater than 0 and at most 120 seconds.")
-    for name, value in (("Baud rate", baudrate), ("Byte limit", max_bytes)):
-        if type(value) is not int or value <= 0:
-            raise ValueError(f"{name} must be a positive integer.")
+    for name, value, minimum, maximum in (
+        ("Baud rate", baudrate, MIN_BAUDRATE, MAX_BAUDRATE),
+        ("Byte limit", max_bytes, 1, MAX_CAPTURE_BYTES),
+    ):
+        if type(value) is not int or not minimum <= value <= maximum:
+            raise ValueError(f"{name} must be an integer from {minimum} to {maximum}.")
 
 
 def validate_named_query_settings(transcript, *, profile, scheduled, baudrate,
@@ -587,8 +593,10 @@ def main():
     parser.add_argument("--port", default=DEFAULT_PORT)
     parser.add_argument("--output", type=Path, required=True, help="New capture directory")
     parser.add_argument("--seconds", type=float, default=10)
-    parser.add_argument("--baudrate", type=int, default=115200)
-    parser.add_argument("--max-bytes", type=int, default=65536)
+    parser.add_argument("--baudrate", type=int, default=115200,
+                        help=f"Requested baud rate, {MIN_BAUDRATE}..{MAX_BAUDRATE}; not proof of device support")
+    parser.add_argument("--max-bytes", type=int, default=MAX_CAPTURE_BYTES,
+                        help=f"Maximum received bytes, 1..{MAX_CAPTURE_BYTES}")
     parser.add_argument(
         "--dtr",
         action="store_true",

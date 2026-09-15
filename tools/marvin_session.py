@@ -264,7 +264,7 @@ def run_session(
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
         raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
-    marvin_probe.validate_capture_limits(seconds, baudrate, 65536)
+    marvin_probe.validate_capture_limits(seconds, baudrate, marvin_probe.MAX_CAPTURE_BYTES)
     if seconds > 90:
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
     marvin_probe.validate_framing(bytesize, parity, stopbits)
@@ -440,7 +440,7 @@ def run_session(
             try:
                 serial_result = marvin_probe.capture(
                     port, output / "serial", seconds=seconds,
-                    baudrate=baudrate, max_bytes=65536,
+                    baudrate=baudrate, max_bytes=marvin_probe.MAX_CAPTURE_BYTES,
                     actuators_isolated=True, dtr=dtr, rts=rts,
                     line_state_at_open=True, guard=guard,
                     allow_line_state_change=allow_line_state_change,

@@ -41,8 +41,12 @@ def bounded_number(value, minimum, maximum, label):
 def compile_segment(segment):
     if not isinstance(segment, dict) or not isinstance(segment.get("id"), str) or not ID_PATTERN.fullmatch(segment["id"]):
         raise ValueError("Each segment needs a bounded unique identifier.")
-    if type(segment.get("baudrate")) is not int or not 300 <= segment["baudrate"] <= 1000000:
-        raise ValueError("Campaign baud rates must be integer values from 300 to 1000000.")
+    if (type(segment.get("baudrate")) is not int
+            or not marvin_probe.MIN_BAUDRATE <= segment["baudrate"] <= marvin_probe.MAX_BAUDRATE):
+        raise ValueError(
+            f"Campaign baud rates must be integer values from {marvin_probe.MIN_BAUDRATE} "
+            f"to {marvin_probe.MAX_BAUDRATE}."
+        )
     marvin_probe.validate_framing(segment.get("bytesize"), segment.get("parity"), segment.get("stopbits"))
     if type(segment.get("dtr")) is not bool or type(segment.get("rts")) is not bool:
         raise ValueError("Campaign DTR/RTS levels must be explicit booleans.")

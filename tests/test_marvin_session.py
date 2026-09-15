@@ -960,7 +960,8 @@ class SessionTests(unittest.TestCase):
     def test_numeric_type_validation_precedes_coordinator_preflight(self):
         for field, values in (
             ("seconds", (True, False, None, "1", [], float("inf"), float("nan"))),
-            ("baudrate", (True, False, 1.5, 115200.0, None, "115200", [], float("inf"))),
+            ("baudrate", (True, False, 1.5, 115200.0, None, "115200", [], float("inf"),
+                          299, 1_000_001, 10**500)),
             ("usb_tail_seconds", (True, False, None, "5", [])),
             ("probe_delay", (True, False, None, "0", [])),
         ):

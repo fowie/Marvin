@@ -106,8 +106,10 @@ class ListenTests(unittest.TestCase):
 
     def test_numeric_types_and_bounds_are_rejected_before_any_io(self):
         invalid = {
-            "baudrate": (True, False, 1.5, 115200.0, "115200", None, [], 0, -1, float("inf"), float("nan")),
-            "max_bytes": (True, False, 1.5, 3.0, "3", None, [], 0, -1, float("inf"), float("nan")),
+            "baudrate": (True, False, 1.5, 115200.0, "115200", None, [], 0, -1,
+                         1, 299, 1_000_001, 10**500, float("inf"), float("nan")),
+            "max_bytes": (True, False, 1.5, 3.0, "3", None, [], 0, -1,
+                          65_537, 10**500, float("inf"), float("nan")),
             "seconds": (True, False, "1", None, [], 0, -1, 121, 10**500, float("inf"), float("nan")),
             "probe_delay": (True, False, "0", None, [], -1, 31, 10**500, float("inf"), float("nan")),
         }
@@ -120,6 +122,36 @@ class ListenTests(unittest.TestCase):
         self.factory.assert_not_called()
         self.ioctl.assert_not_called()
         self.assertFalse(self.output.exists())
+
+    def test_capture_limit_endpoints_and_defaults_remain_valid(self):
+        for baudrate in (300, 115200, 1_000_000):
+            for byte_limit in (1, 3, 65_536):
+                marvin_probe.validate_capture_limits(120, baudrate, byte_limit)
+            for byte_limit in (1, 3):
+                self.output = Path(self.directory.name) / f"limits-{baudrate}-{byte_limit}"
+                self.transport.read.side_effect = lambda size: b"abc"[:size]
+                result = self.capture(baudrate=baudrate, max_bytes=byte_limit)
+                self.assertEqual(self.factory.call_args.kwargs["baudrate"], baudrate)
+                self.assertEqual(result["bytes_received"], byte_limit)
+                self.assertEqual((self.output / "received.bin").read_bytes(), b"abc"[:byte_limit])
+        self.transport.write.assert_not_called()
+
+    def test_cli_rejects_out_of_range_receive_limits_before_preflight(self):
+        for index, (flag, value) in enumerate((
+            ("--baudrate", 299), ("--baudrate", 1_000_001), ("--baudrate", 10**500),
+            ("--max-bytes", 65_537), ("--max-bytes", 10**500),
+        )):
+            self.output = Path(self.directory.name) / f"invalid-limit-{index}"
+            with self.subTest(flag=flag, value=value), patch.object(sys, "argv", [
+                "marvin_probe", "--actuators-isolated", "--output", str(self.output),
+                "--max-bytes", "3", flag, str(value),
+            ]), patch.object(sys, "stdout"), patch.object(sys, "stderr"):
+                self.assertEqual(marvin_probe.main(), 1)
+            self.assertFalse(self.output.exists())
+        self.udev.assert_not_called()
+        self.ownership.assert_not_called()
+        self.factory.assert_not_called()
+        self.ioctl.assert_not_called()
 
     def test_non_boolean_flags_cannot_authorize_device_access(self):
         for name in ("actuators_isolated", "allow_unknown_command", "allow_telemetry_state_change",

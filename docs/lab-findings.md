@@ -746,8 +746,11 @@ owners with `fuser`, use pySerial's advisory lock, and request Linux `TIOCEXCL`
 after open to prevent later unprivileged opens. These measures cannot exclude
 an already-open or privileged reader, and other-user owners may be invisible.
 Read chunks are transport reads, not identified protocol message boundaries.
-The default byte limit is 65536; capture also has a time limit.
-Python callers must supply positive integers for baud rate and byte limit.
+The receive-byte limit is an integer from 1 to 65536 (default 65536); capture
+also has a time limit. Baud rate must be an integer from 300 to 1000000, matching
+the campaign's numeric range. These are software input bounds, not proof of
+driver/device support or physical UART behavior. Python callers cannot exceed
+the bounds with arbitrarily large integers.
 Duration and probe delay accept bounded finite integers/floats, not booleans.
 These checks precede device checks and evidence-directory creation.
 
