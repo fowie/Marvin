@@ -15,6 +15,34 @@ Original successor-drive software explicitly supports this legacy USB identity.
 Legacy `S`/`E` framing and six read operations are now live-confirmed on this controller.
 No motor/servo command library exists yet.
 
+**Unprivileged isolated read, September 15 at 23:04 UTC:** the present operator
+confirmed motor/servo power AND signal isolation and approved one bounded
+ReadRawData request, including possible serial-open/close line effects. Both
+serial and binary USB recording ran as the ordinary user, without sudo.
+The guarded probe at commit `6721ed5fe4eb5ccabdf233e0d98f5448a6441a02` sent
+exactly one 10-byte request, `530001000000005ec545`, on the pinned physical port
+`1-1.1.3.3` at 57600/8N1. The 144-byte reply matched sequence 256, command `00`,
+status `80` and CRC, with the expected 134-byte payload / 82 raw fields.
+There was no retry, reconnect or application setter. The serial port was
+released after the bounded observation.
+
+The 50-record USB trace pairs the sole complete 10-byte bulk OUT with a successful
+completion. USB reported 144 incoming bytes, retaining 48 bytes and omitting
+96 bytes; retained fragments match the complete serial response. Final monitor
+queued/dropped counts were both zero, and all sealed evidence hashes matched.
+CDC control-line requests included values `3`, `2`, `0` during open and `0` on
+close: requested low DTR/RTS did not prevent transient host assertions.
+
+**Do not infer stopped actuators:** both source-labeled reverse-PWM fields
+reported raw `100`, while forward-PWM fields and reported velocities were zero.
+These differ from the historical zero-PWM snapshots below; neither raw label
+interpretation nor physical output was independently established. Actuator power
+and signals remain isolated; no stop, calibration, sustained-polling or motion
+readiness claim follows. This is correlated read evidence, not an application ACK.
+Private local evidence ID: `readraw-seq256-20260915-unprivileged`; complete serial
+response SHA256: `73af7c9ceefe231238afdc3c0671693a86c089d2e8d0e2917c6267dc9b80993d`.
+Only these reviewed derived facts are published, not the capture files.
+
 **Read-only mapping completed, September 14:** eight guarded requests returned
 eight correlated replies: configuration, unit info, power state, raw telemetry
 (twice), diagnostics (twice, same message, then stopped), and servo-position
