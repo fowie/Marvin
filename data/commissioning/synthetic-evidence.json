@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "kind": "synthetic",
+  "package_id": "SYNTHETIC-NOT-AN-OPERATOR-RECORD",
+  "configuration": {
+    "identity": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+    "wiring_map": [
+      {"channel": "invented-motor", "connector": "invented-J1", "function": "SYNTHETIC disconnected motor channel"},
+      {"channel": "invented-servo", "connector": "invented-J2", "function": "SYNTHETIC disconnected servo channel"},
+      {"channel": "invented-proximity", "connector": "invented-J3", "function": "SYNTHETIC proximity input"},
+      {"channel": "invented-cliff", "connector": "invented-J4", "function": "SYNTHETIC cliff input"}
+    ]
+  },
+  "validity_policy": {
+    "policy_id": "SYNTHETIC-POLICY-NOT-RECOMMENDED",
+    "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+    "reviewer": "SYNTHETIC policy reviewer",
+    "reviewed_at": "2026-01-01T09:00:00Z",
+    "expires_at": "2026-01-02T09:00:00Z",
+    "evidence_reference": "synthetic:policy-no-physical-authority",
+    "rationale": "Invented intervals solely for deterministic software examples; not suitable for physical use.",
+    "max_age_seconds": {
+      "device_profile_identity": 7200,
+      "wiring_channel_map": 7200,
+      "motor_power_isolation": 7200,
+      "motor_signal_isolation": 7200,
+      "servo_power_isolation": 7200,
+      "servo_signal_isolation": 7200,
+      "pend_txcvr_disposition": 7200,
+      "hub_port4_over_current": 7200,
+      "wiring_power_removal": 7200,
+      "supply_protection": 7200,
+      "mechanical_support": 7200,
+      "independent_stop": 7200,
+      "proximity_observations": 7200,
+      "cliff_observations": 7200
+    }
+  },
+  "entries": [
+    {
+      "id": "device_profile_identity",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented inspection; no actual hardware examined.",
+      "observation": "SYNTHETIC individual asset and port trace, explicitly distinguishing legacy S/E from successor Drive/Head. No identity inferred from descriptors or default serials.",
+      "evidence_references": ["synthetic:identity"],
+      "assertions": {"unique_device_identified": true, "physical_port_traced": true, "profile_distinguished": true},
+      "blockers": []
+    },
+    {
+      "id": "wiring_channel_map",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented map review; not a real robot inventory.",
+      "observation": "SYNTHETIC example has only the four fictional mapped channels; real inventories must include every applicable connector, pin, supply and LED.",
+      "evidence_references": ["synthetic:wiring-map"],
+      "assertions": {"all_connectors_and_channels_mapped": true},
+      "blockers": []
+    },
+    {
+      "id": "motor_power_isolation",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented isolation record; no physical action performed.",
+      "observation": "SYNTHETIC motor power isolation statement, not a measurement or software-established fact.",
+      "evidence_references": ["synthetic:motor-power"],
+      "assertions": {"isolated": true},
+      "blockers": []
+    },
+    {
+      "id": "motor_signal_isolation",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented isolation record; no physical action performed.",
+      "observation": "SYNTHETIC motor signal isolation statement, independent of the power-isolation claim.",
+      "evidence_references": ["synthetic:motor-signals"],
+      "assertions": {"isolated": true},
+      "blockers": []
+    },
+    {
+      "id": "servo_power_isolation",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented isolation record; no physical action performed.",
+      "observation": "SYNTHETIC servo power isolation statement; zero positions/PWM are not evidence of isolation.",
+      "evidence_references": ["synthetic:servo-power"],
+      "assertions": {"isolated": true},
+      "blockers": []
+    },
+    {
+      "id": "servo_signal_isolation",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented isolation record; no physical action performed.",
+      "observation": "SYNTHETIC servo signal isolation statement, independent of the power-isolation claim.",
+      "evidence_references": ["synthetic:servo-signals"],
+      "assertions": {"isolated": true},
+      "blockers": []
+    },
+    {
+      "id": "pend_txcvr_disposition",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented disposition review; no real damaged socket repaired or isolated.",
+      "observation": "SYNTHETIC positive isolation disposition. The actual PEND TXCVR blocker is not resolved by this example.",
+      "evidence_references": ["synthetic:pend-disposition"],
+      "assertions": {"repaired_or_positively_isolated": true},
+      "blockers": []
+    },
+    {
+      "id": "hub_port4_over_current",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented fault disposition, with no USB access.",
+      "observation": "SYNTHETIC port-4 over-current resolution before branch use. The real indication remains a human blocker.",
+      "evidence_references": ["synthetic:port4"],
+      "assertions": {"resolved_before_branch_use": true},
+      "blockers": []
+    },
+    {
+      "id": "wiring_power_removal",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented energy-source inventory and chronology; no wiring or power action performed.",
+      "observation": "SYNTHETIC removal of robot power, every relevant battery and USB back-power before any wiring change.",
+      "evidence_references": ["synthetic:all-power-before-wiring"],
+      "assertions": {"robot_power_removed": true, "relevant_batteries_removed": true, "usb_back_power_removed": true, "removal_before_wiring_changes": true},
+      "blockers": []
+    },
+    {
+      "id": "supply_protection",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented supply-document review, not actual fuse/current/ground measurements.",
+      "observation": "SYNTHETIC external reference stands for supply specifications and measured details with units; no usable physical settings are published here.",
+      "evidence_references": ["synthetic:supply-specifications-and-observations"],
+      "assertions": {"fuses_reviewed": true, "current_limits_reviewed": true, "grounds_reviewed": true},
+      "blockers": []
+    },
+    {
+      "id": "mechanical_support",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented fixture review; no robot physically supported.",
+      "observation": "SYNTHETIC support against propulsion and clearance review.",
+      "evidence_references": ["synthetic:fixture"],
+      "assertions": {"supported_against_unexpected_motion": true, "clearances_reviewed": true},
+      "blockers": []
+    },
+    {
+      "id": "independent_stop",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented independent-stop observation, no software stop command or hardware test.",
+      "observation": "SYNTHETIC actuator-energy removal independent of Linux, USB and firmware; not actual stop verification or physical authorization.",
+      "evidence_references": ["synthetic:independent-stop"],
+      "assertions": {"independent_of_linux_usb_firmware": true, "removes_actuator_energy": true},
+      "blockers": []
+    },
+    {
+      "id": "proximity_observations",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented controlled-stimulus record; no stimulus physically applied.",
+      "observation": "SYNTHETIC invented-proximity channel: raw hex 0001 then 0002 under a fictional stimulus; units unknown, not calibration or sensor health.",
+      "evidence_references": ["synthetic:proximity-channel-observations"],
+      "assertions": {"all_mapped_channels_observed": true, "controlled_stimuli_documented": true},
+      "blockers": []
+    },
+    {
+      "id": "cliff_observations",
+      "configuration": {"configuration_id": "SYNTHETIC-ONLY", "revision": "invented-r1", "device_id": "invented-asset-NOT-A-USB-SERIAL", "physical_port": "invented-host/hub/port-4", "protocol_profile": "legacy-se-synthetic-declaration", "wiring_revision": "invented-map-r1"},
+      "state": "reviewed", "outcome": "satisfied", "confidence": "operator_reported",
+      "operator": "SYNTHETIC operator", "reviewer": "SYNTHETIC reviewer",
+      "observed_at": "2026-01-01T10:00:00Z", "reviewed_at": "2026-01-01T11:00:00Z",
+      "method": "Invented controlled-stimulus record; no stimulus, latch clearing or interlock bypass performed.",
+      "observation": "SYNTHETIC invented-cliff channel: raw hex 0003 then 0004 under a fictional stimulus; units unknown, no safety/calibration inference.",
+      "evidence_references": ["synthetic:cliff-channel-observations"],
+      "assertions": {"all_mapped_channels_observed": true, "controlled_stimuli_documented": true, "interlocks_not_bypassed": true},
+      "blockers": []
+    }
+  ],
+  "blockers": []
+}
