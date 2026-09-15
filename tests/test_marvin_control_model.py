@@ -1,5 +1,7 @@
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 import json
+import math
+import sys
 from threading import Thread
 import unittest
 
@@ -99,11 +101,7 @@ class ControlModelTests(unittest.TestCase):
         ]
         for field, value, code in (
             ("reviewed", False, "unreviewed_evidence"),
-            ("reviewed", 1, "unreviewed_evidence"),
             ("measured", False, "unreviewed_evidence"),
-            ("source", "recorded", "unreviewed_evidence"),
-            ("reviewer", "", "invalid_text"),
-            ("expires_at", 0, "stale_evidence"),
             ("valid_from", 1, "stale_evidence"),
             ("policy_reference", "different", "policy_mismatch"),
             ("scope", replace(scope, calibration="different"), "scope_mismatch"),
@@ -124,6 +122,62 @@ class ControlModelTests(unittest.TestCase):
             simulation = m.Model(baseline.state.policy, replace(scope, **{field: value}))
             simulation.step(m.Event(0, "connect", scope=simulation.state.scope))
             self.fault(simulation, code)
+
+    def test_review_schema_is_distinct_from_current_approval(self):
+        baseline = self.make_model(armed=False)
+        review = baseline.state.reviews[0]
+        invalid = [
+            replace(review, **{field: value})
+            for field, value in (
+                ("kind", "unknown"), ("kind", True), ("reviewed", 1),
+                ("measured", None), ("source", "recorded"),
+                ("reference", ""), ("reviewer", " "), ("policy_reference", ""),
+                ("valid_from", True), ("valid_from", -1), ("valid_from", float("nan")),
+                ("expires_at", float("inf")), ("expires_at", 1e13),
+                ("expires_at", 0), ("valid_from", 20), ("valid_from", 21),
+                ("scope", None),
+            )
+        ]
+        for field in fields(m.Scope):
+            for value in ("", True, None):
+                invalid.append(replace(review, scope=replace(
+                    review.scope, **{field.name: value})))
+        for index, value in enumerate(invalid):
+            with self.subTest(case=index):
+                event = m.Event(0, "authorize", owner="SYNTHETIC", reference="SYNTHETIC",
+                                reviews=(value,))
+                target = m.Model(baseline.state.policy, baseline.state.scope)
+                before = target.state
+                with self.assertRaises(m.ModelError):
+                    m.validate_review(value)
+                with self.assertRaises(m.ModelError):
+                    m.validate_event(event)
+                with self.assertRaises(m.ModelError):
+                    m.transition(before, event)
+                self.assertIs(target.state, before)
+                with self.assertRaises(m.ModelError):
+                    target.step(event)
+                self.fault(target, "invalid_event")
+                self.assertEqual(target.records, ())
+        for changed, code in (
+            (replace(review, measured=False, reviewed=False), "unreviewed_evidence"),
+            (replace(review, valid_from=2, expires_at=3), "stale_evidence"),
+            (replace(review, valid_from=0, expires_at=1), "stale_evidence"),
+            (replace(review, policy_reference="SYNTHETIC-other"), "policy_mismatch"),
+            (replace(review, scope=replace(review.scope, profile="SYNTHETIC-other")),
+             "profile_mismatch"),
+            (replace(review, scope=replace(review.scope, velocity_unit="SYNTHETIC-other")),
+             "unknown_units"),
+        ):
+            with self.subTest(code=code):
+                m.validate_review(changed)
+                target = m.Model(baseline.state.policy, baseline.state.scope)
+                target.step(m.Event(1, "connect", scope=target.state.scope))
+                event = m.Event(1, "authorize", owner="SYNTHETIC", reference="SYNTHETIC",
+                                reviews=(changed, *baseline.state.reviews[1:]))
+                m.validate_event(event)
+                self.assertEqual(target.step(event).result, code)
+                self.assertIs(target.records[-1].event, event)
 
     def test_owner_identity_profile_changes_and_cross_model_tokens(self):
         for field, value, code in (
@@ -271,6 +325,67 @@ class ControlModelTests(unittest.TestCase):
         self.write(simulation)
         self.write(simulation, at=0.7)
         self.fault(simulation, "duplicate_write")
+
+    def test_intents_require_strict_latest_arm_boundary_without_resuming_queued_work(self):
+        paths = ((), ("disarm",), ("transport_lost", "reset", "connect"),
+                 ("host_crash", "restart", "connect"))
+        for path in paths:
+            for issued_at in (0.9, 1, math.nextafter(1, math.inf)):
+                for old_token in (False, True):
+                    with self.subTest(path=path, issued_at=issued_at, old_token=old_token):
+                        target = self.make_model(armed=bool(path))
+                        scope, reviews, token = (
+                            target.state.scope, target.state.reviews, target.state.token)
+                        queued = m.Intent(0, issued_at, 0, 0, 1, 1)
+                        if path:
+                            for kind in path:
+                                target.step(m.Event(1, kind, **(
+                                    {"scope": scope} if kind == "connect" else {})))
+                                self.assertIsNone(target.state.armed_at)
+                            target.step(m.Event(
+                                1, "authorize", owner="SYNTHETIC-owner",
+                                reference="SYNTHETIC-fresh", reviews=reviews))
+                            self.assertIsNot(target.state.token, token)
+                        self.authorized(target, 1, "arm")
+                        self.assertEqual(target.state.armed_at, 1)
+                        before = target.state
+                        event = m.Event(1.1, "intent", scope=scope,
+                                        token=token if old_token else before.token, intent=queued)
+                        expected = ("ownership" if old_token and path else
+                                    "stale_intent" if issued_at <= 1 else "accepted")
+                        reduced, result = m.transition(before, event)
+                        self.assertEqual(result, expected)
+                        self.assertIs(target.state, before)
+                        record = target.step(event)
+                        self.assertEqual(record.after, reduced)
+                        self.assertIs(record.event.intent, queued)
+                        self.assertIs(record.before, before)
+                        self.assertEqual(target.state.commands, int(expected == "accepted"))
+                        self.assertEqual(target.state.pending is not None, expected == "accepted")
+
+        for issued_at in (1, math.nextafter(1, math.inf)):
+            target = self.make_model(armed=False)
+            self.authorized(target, 1, "arm")
+            # All lifecycle events share a timestamp: the old intention is still ambiguous.
+            reviews, old = target.state.reviews, target.state.token
+            queued = m.Intent(0, issued_at, 0, 0, 1, 1)
+            target.step(m.Event(1, "disarm"))
+            target.step(m.Event(1, "authorize", owner="SYNTHETIC-owner",
+                                reference="SYNTHETIC-fresh", reviews=reviews))
+            self.authorized(target, 1, "arm")
+            self.assertIsNot(target.state.token, old)
+            record = self.authorized(target, issued_at, "intent", intent=queued)
+            self.assertEqual(record.result, "stale_intent" if issued_at == 1 else "accepted")
+
+        target = self.make_model()
+        self.submit(target)
+        self.write(target)
+        self.reply(target)
+        record = self.submit(target, at=0.71, issued_at=0.49)
+        self.assertEqual(record.result, "accepted")
+        self.assertEqual(target.state.armed_at, 0)
+        self.assertEqual(target.state.commands, 2)
+        self.assertEqual(target.state.last_intent_at, 0.71)
 
     def test_reply_labels_status_candidate_and_duplicate_preserved(self):
         cases = [({"labels": (label,)}, label) for label in sorted(m.REPLY_FAULTS)]
@@ -468,6 +583,59 @@ class ControlModelTests(unittest.TestCase):
         self.assertEqual(state.commands, 65536)
         state, _ = m.transition(state, m.Event(0.6, "restart"))
         self.assertEqual(state.commands, 65536)
+
+    def test_structural_depth_and_total_work_limits_preserve_primary_failure(self):
+        baseline = self.make_model()
+        event = m.Event(0.7, "application_reply", scope=baseline.state.scope,
+                        token=baseline.state.token,
+                        reply=m.Reply(0, b"SYNTHETIC", (), "matched"))
+        labels = "matched_candidate"
+        for _ in range(m.MAX_INPUT_DEPTH - 2):
+            labels = (labels,)
+        at_depth = replace(event, reply=replace(event.reply, labels=labels))
+        m.validate_event(at_depth)
+        too_deep = replace(event, reply=replace(event.reply, labels=(labels,)))
+
+        base_nodes = 1 + sum(len(fields(cls)) for cls in (m.Event, m.Scope, m.Token, m.Reply))
+        remaining = m.MAX_INPUT_NODES - base_nodes
+        groups, last = divmod(remaining, 33)
+        labels = ((None,) * 32,) * groups + ((None,) * (last - 1),)
+        at_nodes = replace(event, reply=replace(event.reply, labels=labels))
+        m.validate_event(at_nodes)
+        too_wide = replace(event, reply=replace(
+            event.reply, labels=(*labels[:-1], (*labels[-1], None))))
+
+        deep_tuple, deep_dataclass = "SYNTHETIC", "SYNTHETIC"
+        for _ in range(sys.getrecursionlimit() + 100):
+            deep_tuple = (deep_tuple,)
+            deep_dataclass = replace(baseline.state.scope, identity=deep_dataclass)
+        invalid = (too_deep, too_wide,
+                   replace(event, reply=replace(event.reply, labels=deep_tuple)),
+                   replace(event, scope=deep_dataclass))
+        for index, rejected in enumerate(invalid):
+            for terminal in (None, "transport_lost", "host_crash", "host_exit"):
+                with self.subTest(case=index, terminal=terminal):
+                    target = self.make_model()
+                    self.submit(target)
+                    self.write(target)
+                    if terminal is not None:
+                        target.step(m.Event(0.65, terminal))
+                    before, records = target.state, target.records
+                    with self.assertRaises(m.ModelError):
+                        m.validate_event(rejected)
+                    with self.assertRaises(m.ModelError):
+                        m.transition(before, rejected)
+                    self.assertIs(target.state, before)
+                    with self.assertRaises(m.ModelError):
+                        target.step(rejected)
+                    self.assertEqual(target.records, records)
+                    if terminal is None:
+                        self.fault(target, "invalid_event")
+                        self.assertEqual(target.state.pending.status, "failed")
+                        self.assertIs(target.state.pending.write, before.pending.write)
+                    else:
+                        self.assertIs(target.state, before)
+                    json.dumps(m.to_json(target.records), allow_nan=False)
 
 
 if __name__ == "__main__":

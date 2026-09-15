@@ -14,6 +14,8 @@ PROFILE = "marvin-legacy-se"
 MAX_RAW_BYTES = 4096
 MAX_TEXT = 256
 MAX_TIME = 1e12
+MAX_INPUT_DEPTH = 16
+MAX_INPUT_NODES = 1024
 REVIEW_KINDS = frozenset(("calibration", "physical_stop", "limits"))
 REPLY_FAULTS = frozenset((
     "late", "stale", "duplicate", "unmatched", "unsolicited", "pre_request",
@@ -28,7 +30,7 @@ SIGNALS = frozenset((
 
 
 class ModelError(ValueError):
-    """Invalid model construction or structurally unretainable input."""
+    """Invalid model construction, structural schema or unretainable input."""
 
 
 class OwnershipError(RuntimeError):
@@ -184,6 +186,7 @@ class State:
     token: Token | None = None
     reviews: tuple[Review, ...] = ()
     last_at: float = 0
+    armed_at: float | None = None
     deadman_deadline: float | None = None
     intent_deadline: float | None = None
     pending: Pending | None = None
@@ -225,23 +228,28 @@ EVENT_FIELDS = MappingProxyType({
 
 def _retainable(value):
     """Reject mutable/unbounded objects before they can enter immutable history."""
-    if value is None or type(value) in (bool, float):
-        return
-    if type(value) is int and value.bit_length() <= 128:
-        return
-    if type(value) is str and len(value) <= MAX_TEXT:
-        return
-    if type(value) is bytes and len(value) <= MAX_RAW_BYTES:
-        return
-    if type(value) is tuple and len(value) <= 32:
-        for item in value:
-            _retainable(item)
-        return
-    if type(value) in _TYPES:
-        for field in fields(value):
-            _retainable(getattr(value, field.name))
-        return
-    raise ModelError("Input must use bounded immutable model values.")
+    pending = [(value, 0)]
+    visited = 0
+    while pending:
+        value, depth = pending.pop()
+        visited += 1
+        if depth > MAX_INPUT_DEPTH or visited > MAX_INPUT_NODES:
+            raise ModelError("Input exceeds the structural depth or node budget.")
+        if value is None or type(value) in (bool, float):
+            continue
+        if type(value) is int and value.bit_length() <= 128:
+            continue
+        if type(value) is str and len(value) <= MAX_TEXT:
+            continue
+        if type(value) is bytes and len(value) <= MAX_RAW_BYTES:
+            continue
+        if type(value) is tuple and len(value) <= 32:
+            children = value
+        elif type(value) in _TYPES:
+            children = tuple(getattr(value, field.name) for field in fields(value))
+        else:
+            raise ModelError("Input must use bounded immutable model values.")
+        pending.extend((item, depth + 1) for item in children)
 
 
 def validate_event(event):
@@ -270,17 +278,50 @@ def validate_event(event):
             raise ModelError(f"{name} has the wrong model type.")
     if type(event.reviews) is not tuple or any(type(r) is not Review for r in event.reviews):
         raise ModelError("reviews must be an immutable tuple of Review values.")
+    for review in event.reviews:
+        _validate_review_schema(review)
 
 
-def _scope(scope):
+def _scope_fields(scope):
     if type(scope) is not Scope:
         raise _Fault("scope_invalid")
     for field in fields(scope):
         _text(getattr(scope, field.name))
+
+
+def _scope(scope):
+    _scope_fields(scope)
     if scope.profile != PROFILE:
         raise _Fault("profile_mismatch")
     if (scope.velocity_unit, scope.acceleration_unit) != ("m/s", "m/s^2"):
         raise _Fault("unknown_units")
+
+
+def _validate_review_schema(review):
+    try:
+        if type(review.kind) is not str or review.kind not in REVIEW_KINDS:
+            raise _Fault("invalid_review_kind")
+        for value in (review.reference, review.reviewer, review.policy_reference):
+            _text(value)
+        _scope_fields(review.scope)
+        if type(review.measured) is not bool or type(review.reviewed) is not bool:
+            raise _Fault("invalid_review_flags")
+        if type(review.source) is not str or review.source != "SYNTHETIC":
+            raise _Fault("non_synthetic_review")
+        _number(review.valid_from)
+        _number(review.expires_at)
+        if review.valid_from >= review.expires_at:
+            raise _Fault("invalid_review_interval")
+    except _Fault as error:
+        raise ModelError(f"Invalid review: {error.code}") from error
+
+
+def validate_review(review):
+    """Validate a declaration's schema, not its approval or current applicability."""
+    if type(review) is not Review:
+        raise ModelError("Expected a Review.")
+    _retainable(review)
+    _validate_review_schema(review)
 
 
 def _same_scope(expected, actual):
@@ -295,16 +336,11 @@ def _reviews(state, reviews, at):
     if len(reviews) != 3 or {r.kind for r in reviews} != REVIEW_KINDS:
         raise _Fault("missing_reviews")
     for review in reviews:
-        _text(review.reference)
-        _text(review.reviewer)
         _same_scope(state.scope, review.scope)
         if review.policy_reference != state.policy.reference:
             raise _Fault("policy_mismatch")
-        if (review.source != "SYNTHETIC" or review.measured is not True
-                or review.reviewed is not True):
+        if review.measured is not True or review.reviewed is not True:
             raise _Fault("unreviewed_evidence")
-        _number(review.valid_from)
-        _number(review.expires_at)
         if not review.valid_from <= at < review.expires_at:
             raise _Fault("stale_evidence")
 
@@ -314,7 +350,7 @@ def _revoke(state, mode, *, fault=None, intention="disarm_intent"):
     # removes it from working state; the bounded immutable audit still holds it.
     return replace(
         state, mode=mode, generation=state.generation + 1, token=None, reviews=(),
-        deadman_deadline=None, intent_deadline=None, fault=fault,
+        armed_at=None, deadman_deadline=None, intent_deadline=None, fault=fault,
         software_intention=intention,
         pending=replace(state.pending, status="failed") if state.pending else None,
     )
@@ -407,7 +443,8 @@ def _operate(state, event):
         if state.mode != "disarmed":
             raise _Fault("invalid_transition")
         return replace(
-            state, mode="armed", deadman_deadline=_deadline(at, state.policy.deadman_timeout),
+            state, mode="armed", armed_at=at,
+            deadman_deadline=_deadline(at, state.policy.deadman_timeout),
             last_intent_at=at, last_velocity=(0, 0), software_intention="model_armed_only",
         )
     if state.mode != "armed":
@@ -428,7 +465,9 @@ def _operate(state, event):
             _number(value, lower=-policy.max_velocity, upper=policy.max_velocity)
         _number(intent.acceleration, upper=policy.max_acceleration, positive=True)
         _number(intent.duration, upper=policy.max_duration, positive=True)
-        if not intent.issued_at <= at < _deadline(intent.issued_at, policy.max_command_age):
+        # Equal timestamps cannot establish creation after the arm boundary.
+        if (intent.issued_at <= state.armed_at
+                or not intent.issued_at <= at < _deadline(intent.issued_at, policy.max_command_age)):
             raise _Fault("stale_intent")
         intent_deadline = _deadline(intent.issued_at, intent.duration)
         if at >= intent_deadline:
