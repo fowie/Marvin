@@ -1,4 +1,4 @@
-"""Process-level recording test using a pipe and synthetic USB/serial traffic."""
+"""Real recorder process with pipe traffic and a virtual synthetic serial clock."""
 
 import hashlib
 import json
@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
@@ -56,6 +57,18 @@ class PipelineTests(unittest.TestCase):
 
     def test_delayed_query_is_suppressed_by_early_data_under_real_recorder(self):
         self.exercise_pipeline(probe_cr=False, probe_get_config=True, probe_delay=0.04)
+
+    def test_fragmented_replies_are_independent_of_metadata_write_latency(self):
+        save_metadata = marvin_probe.save_metadata
+
+        def slow_metadata(*args, **kwargs):
+            time.sleep(0.06)
+            return save_metadata(*args, **kwargs)
+
+        with patch.object(marvin_probe, "save_metadata", side_effect=slow_metadata):
+            for delay in (0, 0.04):
+                with self.subTest(probe_delay=delay):
+                    self.exercise_pipeline(probe_cr=False, probe_get_config=True, probe_delay=delay)
 
     def test_sensor_info_collects_full_synthetic_reply_without_treating_it_as_sensors(self):
         self.exercise_pipeline(probe_cr=False, probe_get_sensor_info=True)
@@ -115,9 +128,11 @@ class PipelineTests(unittest.TestCase):
             fragments = [received_payload[:5], received_payload[5:22], received_payload[22:]] if query else [received_payload]
             serial = Mock()
             received = False
+            clock = SimpleNamespace(now=time.monotonic())
 
             def open_serial():
                 self.assertTrue((output / "usb" / "ready.json").is_file())
+                clock.now = time.monotonic()
                 stamp = int(time.monotonic() * 1000000)
                 emit(
                     f"f1 {stamp} S Co:1:010:0 s 21 20 0000 0000 0007 7 = 00c20100 000008\n"
@@ -129,15 +144,16 @@ class PipelineTests(unittest.TestCase):
             def read_serial(size):
                 nonlocal received
                 if campaign_pair and write_count < 2:
-                    time.sleep(min(serial.timeout, 0.01))
+                    clock.now += min(serial.timeout, 0.01)
                     return b""
                 if not received:
                     received = True
                     stamp = int(time.monotonic() * 1000000)
                     emit(f"f2 {stamp} C Bi:1:010:2 0 {len(received_payload)} = {usb_hex(received_payload[:32])}\n")
                 if fragments:
+                    clock.now += min(serial.timeout, 0.001)
                     return fragments.pop(0)
-                time.sleep(min(serial.timeout, 0.01))
+                clock.now += serial.timeout
                 return b""
 
             def close_serial():
@@ -172,6 +188,7 @@ class PipelineTests(unittest.TestCase):
                      patch.object(marvin_session.subprocess, "Popen", side_effect=spawn), \
                      patch.object(marvin_probe, "check_device", return_value={}), \
                      patch.object(marvin_probe, "check_port_available"), \
+                     patch.object(marvin_probe, "time", SimpleNamespace(monotonic=lambda: clock.now)), \
                      patch.object(marvin_probe.serial, "Serial", return_value=serial), \
                      patch.object(marvin_probe.fcntl, "ioctl"):
                     result = marvin_session.run_session(
