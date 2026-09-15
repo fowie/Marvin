@@ -91,9 +91,15 @@ firmware identity, calibration, units or physical safety evidence**.
 `session.evidence` retains all decoded events, not just the selected reply:
 `unsolicited`, `pre_request`, `stale`, `late`, `duplicate`, `request_echo`,
 `error_status` (uninterpreted non-80 status), `unexpected_command`,
-`unexpected_payload`, `malformed`, `noise`, `partial`, `ambiguous_boundary` and
-`unverified` labels distinguish rejected/uncertain observations. Labels can
-coexist. Unknown commands/payloads remain opaque. All events from one read are
+`unexpected_payload`, `malformed`, `noise`, `partial` and `ambiguous_boundary`
+labels distinguish classified rejected/uncertain observations. Labels can
+coexist. The initial `unverified` label means **classification has not completed**.
+It remains on events retained before a timing/clock failure interrupts
+classification; it is replaced by the classification labels when that step runs.
+A returned `matched_candidate` therefore does not also carry `unverified`.
+Neither the presence nor absence of `unverified` indicates authentication:
+`confidence` and `application_acknowledgment` retain the limitations above.
+Unknown commands/payloads remain opaque. All events from one read are
 processed, including frames after a match. A pre-request partial prefix never
 becomes a fresh reply. Decoder corruption flags are sticky; this client also
 treats unframed noise as boundary uncertainty for subsequent frames. It never

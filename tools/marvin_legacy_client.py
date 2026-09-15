@@ -110,6 +110,12 @@ class Failure:
 
 @dataclass(frozen=True)
 class Evidence:
+    """`unverified` means not yet classified, not an authentication indicator.
+
+Classification replaces this initial label. All confidence/ACK limitations
+remain in force, including for a returned `matched_candidate`.
+    """
+
     stream: LegacyStreamEvent
     started_at: float | None
     ended_at: float | None

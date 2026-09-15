@@ -501,6 +501,8 @@ class LegacyClientTests(unittest.TestCase):
                 with session:
                     session.request("get-config", timeout=1)
             self.assert_partition(session, raw)
+            self.assertEqual(session.evidence[0].labels, ("unverified",))
+            self.assertEqual(session.evidence[0].confidence, "raw_observation")
             self.assert_failed(session, transport, "adapter_timing")
         session, transport, _ = self.make_client()
         with session:
@@ -735,6 +737,8 @@ class LegacyClientTests(unittest.TestCase):
             with self.assertRaises(client.SessionError):
                 session.request("get-config", timeout=1)
             self.assert_partition(session, frame(bytes(108)))
+            self.assertEqual(session.evidence[0].labels, ("unverified",))
+            self.assertEqual(session.evidence[0].application_acknowledgment, "not_established")
             self.assert_failed(session, transport, "adapter_contract")
             self.assertTrue(session.cleanup_errors)
         for result in (b"unmarked bytes", client.Received(b"", 10, 10),
