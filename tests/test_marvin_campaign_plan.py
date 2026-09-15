@@ -8,6 +8,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -460,7 +461,7 @@ class CampaignPlanTests(unittest.TestCase):
                 modules.update(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
                 modules.add(node.module)
-        self.assertEqual(modules, {"argparse", "copy", "json", "struct", "tools.marvin_protocol"})
+        self.assertEqual(modules, {"argparse", "copy", "json", "pathlib", "struct", "sys", "tools.marvin_protocol"})
         script = """
 import sys
 from pathlib import Path
@@ -484,6 +485,19 @@ assert not {'tools.marvin_probe', 'tools.marvin_session', 'tools.marvin_usbmon',
                                 cwd=ROOT, capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout), campaign.make_plan("quick"))
         self.assertEqual(result.stderr, "")
+
+    def test_standalone_cli_is_independent_of_cwd_and_pythonpath(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for cwd in (ROOT, Path(directory)):
+                for profile in ("quick", "full"):
+                    with self.subTest(cwd=cwd, profile=profile):
+                        result = subprocess.run(
+                            [sys.executable, "-I", "-B", str(ROOT / "tools/marvin_campaign_plan.py"),
+                             "--profile", profile],
+                            cwd=cwd, capture_output=True, text=True, check=True,
+                        )
+                        self.assertEqual(json.loads(result.stdout), campaign.make_plan(profile))
+                        self.assertEqual(result.stderr, "")
 
 
 if __name__ == "__main__":

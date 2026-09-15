@@ -18,7 +18,12 @@ No later phase is a clean-state experiment: reopening/delays are not parser rese
 import argparse
 from copy import deepcopy
 import json
+from pathlib import Path
 import struct
+import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.marvin_protocol import crc16
 
