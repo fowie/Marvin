@@ -129,15 +129,37 @@ def write_json(path, value):
 def evidence_manifest(output):
     """Hash local evidence, excluding the manifest itself."""
     entries = []
+    manifest = output / "SHA256SUMS"
     for path in sorted(output.rglob("*")):
         if path.is_symlink():
             raise ValueError("Refusing a symlink inside session evidence.")
-        if path.is_file() and path.name != "SHA256SUMS":
+        if path.is_file() and path != manifest:
             with path.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             entries.append(f"{digest}  {path.relative_to(output).as_posix()}\n")
-    with (output / "SHA256SUMS").open("x", encoding="utf-8") as stream:
+    with manifest.open("x", encoding="utf-8") as stream:
         stream.writelines(entries)
+
+
+def seal_evidence(output, metadata):
+    """Persist final metadata and hashes without masking an active capture failure."""
+    original_error = (sys.exc_info()[1]
+                      if metadata["status"] in ("incomplete", "failed", "interrupted") else None)
+    try:
+        write_json(output / "metadata.json", metadata)
+        evidence_manifest(output)
+    except (OSError, ValueError) as error:
+        metadata.update(status_before_sealing=metadata["status"], status="failed",
+                        evidence_sealing_error=str(error))
+        failure = original_error if original_error is not None else error
+        try:
+            write_json(output / "metadata.json", metadata)
+        except (OSError, ValueError) as metadata_error:
+            metadata["evidence_failure_metadata_error"] = str(metadata_error)
+            failure.add_note(f"Could not persist failed evidence metadata: {metadata_error}")
+        if original_error is None:
+            raise
+        original_error.add_note(f"Evidence sealing also failed: {error}")
 
 
 def wait_ready(process, directory, baseline, port, timeout=10):
@@ -440,6 +462,8 @@ def run_session(
             if usb_metadata.get("status") != "completed":
                 raise OSError("USB recorder did not report a completed capture.")
             marvin_usbmon.validate_capture_completeness(usb_metadata)
+            if usbmon_backend == "binary":
+                marvin_usbmon.validate_monitor_final_stats(usb_metadata)
             if usb_close_grace_seconds:
                 validate_coordinated_completion(usb_metadata, ready, stop_requested_at, hard_deadline)
             check_identity(port, baseline)
@@ -480,8 +504,7 @@ def run_session(
                 raise
         finally:
             metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
-            write_json(metadata_path, metadata)
-            evidence_manifest(output)
+            seal_evidence(output, metadata)
     return metadata
 
 

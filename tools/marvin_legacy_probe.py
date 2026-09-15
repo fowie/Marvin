@@ -223,13 +223,7 @@ def run_probe(query, output, *, sequence=0, expected_physical_port=None,
             except (OSError, ValueError) as error:
                 metadata["partial_metadata_error"] = str(error)
         metadata["finished_at"] = probe.utc_now()
-        try:
-            session.write_json(output / "metadata.json", metadata)
-            session.evidence_manifest(output)
-        except (OSError, ValueError) as error:
-            metadata.update(status="failed", evidence_sealing_error=str(error))
-            session.write_json(output / "metadata.json", metadata)
-            raise
+        session.seal_evidence(output, metadata)
     return metadata
 
 

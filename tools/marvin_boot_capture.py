@@ -192,8 +192,7 @@ def run_boot_capture(port, output, *, actuators_isolated=False, sudo_usbmon=Fals
         raise
     finally:
         metadata["finished_at"] = marvin_probe.utc_now()
-        marvin_session.write_json(output / "metadata.json", metadata)
-        marvin_session.evidence_manifest(output)
+        marvin_session.seal_evidence(output, metadata)
 
 
 def main():

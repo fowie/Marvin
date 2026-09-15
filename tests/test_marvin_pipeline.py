@@ -97,6 +97,7 @@ class PipelineTests(unittest.TestCase):
             def spawn(command, **kwargs):
                 nonlocal process
                 self.assertIn("--actuators-isolated", command)
+                self.assertEqual(command[command.index("--backend") + 1], "text")
                 process = real_popen(
                     [sys.executable, "-c", CHILD, str(read_fd),
                      command[command.index("--output") + 1],
@@ -193,6 +194,7 @@ class PipelineTests(unittest.TestCase):
                      patch.object(marvin_probe.fcntl, "ioctl"):
                     result = marvin_session.run_session(
                         "/dev/fake-marvin", output, seconds=0.1,
+                        usbmon_backend="text",
                         actuators_isolated=True, dtr=True, rts=True,
                         probe_cr=probe_cr, probe_get_config=probe_get_config,
                         probe_get_sensor_info=probe_get_sensor_info,
@@ -210,6 +212,7 @@ class PipelineTests(unittest.TestCase):
                         probe_delay=probe_delay,
                     )
                 self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["usb"]["backend"], "text")
                 serial.open.assert_called_once()
                 serial.close.assert_called_once()
                 if expect_write:
@@ -282,6 +285,7 @@ class CoordinatedPipelineTests(unittest.TestCase):
             def spawn(command, **kwargs):
                 nonlocal process
                 self.assertIn("--coordinator-stop", command)
+                self.assertEqual(command[command.index("--backend") + 1], "text")
                 maximum = command[command.index("--seconds") + 1]
                 self.assertEqual(float(maximum), 35.1)
                 process = real_popen(
@@ -321,7 +325,7 @@ class CoordinatedPipelineTests(unittest.TestCase):
                      patch.object(marvin_probe.serial, "Serial", return_value=serial), \
                      patch.object(marvin_probe.fcntl, "ioctl"):
                     options = dict(seconds=0.1, actuators_isolated=True,
-                                   usb_tail_seconds=5, usb_close_grace_seconds=30,
+                                   usb_tail_seconds=5, usb_close_grace_seconds=30, usbmon_backend="text",
                                    probe_cr=slow_error, allow_unknown_command=slow_error)
                     if slow_error:
                         with self.assertRaises(type(original_error)) as caught:

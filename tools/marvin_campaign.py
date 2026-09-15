@@ -115,8 +115,7 @@ def assess_segment(directory, result, schedule):
     if any(item["status"] != "completed" for item in (result, serial, usb)):
         raise ValueError("The segment did not complete cleanly.")
     marvin_usbmon.validate_capture_completeness(usb)
-    if usb["monitor_final_stats"] != {"queued": 0, "dropped": 0}:
-        raise ValueError("USB recorder loss or queued tail prevents further probing.")
+    marvin_usbmon.validate_monitor_final_stats(usb)
     trace = directory / "usb/usbmon.txt"
     if trace.stat().st_size > 2 * marvin_usbmon.DEFAULT_MAX_BYTES:
         raise ValueError("Segment trace exceeds the analysis bound.")
@@ -198,9 +197,9 @@ def rejected_settings_evidence(directory, baseline):
         raise ValueError("The failed setting already opened or attempted a write; stopping.")
     usb = json.loads((directory / "usb/metadata.json").read_text(encoding="utf-8"))
     marvin_usbmon.validate_capture_completeness(usb)
+    marvin_usbmon.validate_monitor_final_stats(usb)
     if (usb["status"] not in ("completed", "interrupted")
-            or usb["identity"] != baseline["usb"]
-            or usb["monitor_final_stats"] != {"queued": 0, "dropped": 0}):
+            or usb["identity"] != baseline["usb"]):
         raise ValueError("Incomplete USB evidence for a rejected setting.")
     trace = directory / "usb/usbmon.txt"
     summary = marvin_usbmon.analyze_file(trace)
@@ -333,8 +332,7 @@ def run_campaign(plan, output, *, port=marvin_probe.DEFAULT_PORT, actuators_isol
         raise
     finally:
         metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
-        marvin_session.write_json(path, metadata)
-        marvin_session.evidence_manifest(output)
+        marvin_session.seal_evidence(output, metadata)
     return metadata
 
 

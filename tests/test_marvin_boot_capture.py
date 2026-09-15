@@ -110,6 +110,32 @@ class BootTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed_without_reenumeration")
         self.returned.assert_not_called()
 
+    def test_sealing_failure_invalidates_both_completion_paths_and_keeps_original_failure(self):
+        cases = (
+            (False, None, "completed_without_reenumeration"),
+            (True, None, "completed_with_reconnect_gap"),
+            (True, OSError("return capture failed"), "failed"),
+            (True, KeyboardInterrupt(), "interrupted"),
+        )
+        for index, (disconnect, original, status) in enumerate(cases):
+            with self.subTest(status=status):
+                self.output = Path(self.temp.name) / f"seal-{index}"
+                self.disconnect = disconnect
+                self.return_error = original
+                error = OSError("manifest write failed")
+                with patch.object(boot.marvin_session, "evidence_manifest", side_effect=error):
+                    with self.assertRaises(type(original) if original is not None else OSError) as raised:
+                        self.run_boot()
+                self.assertIs(raised.exception, original if original is not None else error)
+                metadata = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(metadata["status"], "failed")
+                self.assertEqual(metadata["status_before_sealing"], status)
+                self.assertEqual(metadata["evidence_sealing_error"], str(error))
+                if disconnect:
+                    self.assertEqual(metadata["initial_segment_error"], str(self.initial_error))
+                if isinstance(original, OSError):
+                    self.assertEqual(metadata["error"], str(original))
+
     def test_failure_without_identity_change_is_not_retried(self):
         self.changed.return_value = False
         with self.assertRaises(OSError):

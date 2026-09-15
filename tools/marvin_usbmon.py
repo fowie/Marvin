@@ -549,6 +549,17 @@ def validate_capture_completeness(metadata):
             raise UsbmonError(f"Incomplete USB capture: {field} is not zero.")
 
 
+def validate_monitor_final_stats(metadata):
+    """Require explicit zero binary-monitor loss and unread-tail counters."""
+    stats = metadata.get("monitor_final_stats")
+    if (not isinstance(stats, dict) or set(stats) != {"queued", "dropped"}
+            or any(type(value) is not int or value != 0 for value in stats.values())):
+        raise UsbmonError(
+            "Incomplete USB capture: final queued/dropped statistics must be explicit integer zeros; "
+            "monitor loss or an unread tail prevents completion."
+        )
+
+
 class _Framer:
     def __init__(self, max_line_bytes, target):
         self.maximum = max_line_bytes

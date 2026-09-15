@@ -88,7 +88,9 @@ class SessionTests(unittest.TestCase):
         self.ready.update(self.ready_overrides)
         (usb / "ready.json").write_text(json.dumps(self.ready))
         self.usb_metadata = dict(self.ready, started_monotonic=self.ready["monotonic"],
-                                 status=self.usb_status, signal=None)
+                                 status=self.usb_status, signal=None,
+                                 monitor_final_stats={"queued": 0, "dropped": 0})
+        self.usb_metadata.update(self.usb_final_overrides)
         (usb / "metadata.json").write_text(json.dumps(self.usb_metadata))
         (usb / "usbmon.txt").write_text("")
         self.process.wait.side_effect = lambda **kw: setattr(self, "finished", True)
@@ -290,6 +292,20 @@ class SessionTests(unittest.TestCase):
                     self.assertIs(serial["line_state_change_authorized"], True)
                     self.assertEqual(serial["application_bytes_written"], 0)
                     self.assertIsNone(session["probe_name"])
+
+    def test_boot_does_not_accept_a_success_shaped_recorder_with_an_unread_tail(self):
+        output = Path(self.temp.name) / "boot-queued"
+        self.usb_final_overrides = {"monitor_final_stats": {"queued": 1, "dropped": 0}}
+        with patch.object(marvin_boot_capture, "wait_for_identity_change", return_value=False), \
+                patch.object(marvin_boot_capture, "wait_for_return") as returned, \
+                self.assertRaisesRegex(ValueError, "final queued/dropped"):
+            self.run_real_consent_chain(lambda: marvin_boot_capture.run_boot_capture(
+                "/dev/test-marvin", output, actuators_isolated=True, allow_line_state_change=True,
+            ))
+        returned.assert_not_called()
+        self.popen.assert_called_once()
+        for path in (output / "metadata.json", output / "before-cycle/metadata.json"):
+            self.assertEqual(json.loads(path.read_text())["status"], "failed")
 
     def test_campaign_and_trials_delegate_consent_through_real_session_and_serial_validation(self):
         data = marvin_session.marvin_protocol.get_config_request()
@@ -938,6 +954,74 @@ class SessionTests(unittest.TestCase):
         self.serial.assert_not_called()
         self.process.send_signal.assert_called_once_with(signal.SIGINT)
 
+    def test_binary_final_statistics_must_be_explicit_integer_zeros(self):
+        invalid = (None, {}, [], {"queued": 0}, {"queued": 1, "dropped": 0},
+                   {"queued": 0, "dropped": 1}, {"queued": False, "dropped": 0},
+                   {"queued": 0, "dropped": 0.0}, {"queued": -1, "dropped": 0},
+                   {"queued": "0", "dropped": 0})
+        for index, stats in enumerate(invalid):
+            with self.subTest(stats=stats):
+                self.output = Path(self.temp.name) / f"stats-{index}"
+                self.clock.now = 0
+                self.finished = False
+                self.ready["monotonic"] = 0
+                self.usb_final_overrides = {"monitor_final_stats": stats}
+                with self.assertRaisesRegex(ValueError, "final queued/dropped"):
+                    self.run_capture(usb_tail_seconds=5, usb_close_grace_seconds=30)
+                result = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(result["status"], "failed")
+                self.assertIn("final queued/dropped", result["error"])
+                self.assertTrue((self.output / "SHA256SUMS").exists())
+
+    def test_missing_binary_stats_fail_but_text_does_not_invent_them(self):
+        capture = self.serial.side_effect
+
+        def without_stats(*args, **kwargs):
+            (self.output / "usb/metadata.json").write_text(json.dumps({
+                "status": "completed", "signal": None,
+            }))
+            return capture(*args, **kwargs)
+
+        self.serial.side_effect = without_stats
+        with self.assertRaisesRegex(ValueError, "final queued/dropped"):
+            self.run_capture()
+        self.output = Path(self.temp.name) / "text"
+        self.clock.now = 0
+        self.finished = False
+        self.assertEqual(self.run_capture(usbmon_backend="text")["status"], "completed")
+
+    def test_sealing_failure_is_failed_and_preserves_transport_or_interrupt(self):
+        for index, original in enumerate((None, OSError("original transport"), KeyboardInterrupt())):
+            with self.subTest(original=original):
+                self.output = Path(self.temp.name) / f"sealing-{index}"
+                self.clock.now = 0
+                self.finished = False
+                self.serial.side_effect = original if original is not None else self.capture
+                error = OSError("manifest write failed")
+                with patch.object(marvin_session, "evidence_manifest", side_effect=error):
+                    with self.assertRaises(type(original) if original is not None else OSError) as raised:
+                        self.run_capture()
+                self.assertIs(raised.exception, original if original is not None else error)
+                metadata = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(metadata["status"], "failed")
+                self.assertEqual(metadata["evidence_sealing_error"], str(error))
+                if isinstance(original, OSError):
+                    self.assertEqual(metadata["error"], str(original))
+                if original is not None:
+                    self.assertIn("Evidence sealing also failed", original.__notes__[-1])
+
+    def test_sealing_failure_preserves_recorder_shutdown_failure(self):
+        original = OSError("recorder shutdown failed")
+        with patch.object(marvin_session, "stop_recorder", side_effect=original), \
+                patch.object(marvin_session, "evidence_manifest", side_effect=OSError("manifest failed")), \
+                self.assertRaises(OSError) as raised:
+            self.run_capture()
+        self.assertIs(raised.exception, original)
+        metadata = json.loads((self.output / "metadata.json").read_text())
+        self.assertEqual(metadata["status"], "failed")
+        self.assertEqual(metadata["shutdown_error"], str(original))
+        self.assertEqual(metadata["evidence_sealing_error"], "manifest failed")
+
     def test_serial_failure_stops_recorder_and_keeps_failure_evidence(self):
         self.serial.side_effect = OSError("serial disconnected")
         with self.assertRaisesRegex(OSError, "disconnected"):
@@ -963,6 +1047,94 @@ class SessionTests(unittest.TestCase):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_hash_failure_marks_metadata_failed_without_modifying_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            evidence = output / "data"
+            evidence.write_bytes(b"retained evidence")
+            with patch.object(marvin_session.hashlib, "file_digest", side_effect=ValueError("hash failed")), \
+                    self.assertRaisesRegex(ValueError, "hash failed"):
+                marvin_session.seal_evidence(output, {"status": "completed"})
+            metadata = json.loads((output / "metadata.json").read_text())
+            self.assertEqual(metadata["status"], "failed")
+            self.assertEqual(metadata["evidence_sealing_error"], "hash failed")
+            self.assertEqual(evidence.read_bytes(), b"retained evidence")
+            self.assertFalse((output / "SHA256SUMS").exists())
+
+    def test_partial_manifest_is_retained_but_never_success_shaped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+
+            def partial_manifest(path):
+                (path / "SHA256SUMS").write_bytes(b"partial digest")
+                raise OSError("manifest disk full")
+
+            with patch.object(marvin_session, "evidence_manifest", side_effect=partial_manifest), \
+                    self.assertRaisesRegex(OSError, "disk full"):
+                marvin_session.seal_evidence(output, {"status": "completed"})
+            metadata = json.loads((output / "metadata.json").read_text())
+            self.assertEqual(metadata["status"], "failed")
+            self.assertEqual(metadata["evidence_sealing_error"], "manifest disk full")
+            self.assertEqual((output / "SHA256SUMS").read_bytes(), b"partial digest")
+
+    def test_root_manifest_includes_nested_manifests_and_detects_their_modification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            child = output / "segment"
+            child.mkdir()
+            (child / "data").write_bytes(b"retained evidence")
+            marvin_session.evidence_manifest(child)
+            nested = child / "SHA256SUMS"
+            marvin_session.evidence_manifest(output)
+            hashes = dict(line.split("  ", 1)[::-1]
+                          for line in (output / "SHA256SUMS").read_text().splitlines())
+            self.assertEqual(set(hashes), {"segment/data", "segment/SHA256SUMS"})
+            self.assertEqual(hashes["segment/SHA256SUMS"], hashlib.sha256(nested.read_bytes()).hexdigest())
+            nested.write_bytes(b"changed nested manifest")
+            self.assertNotEqual(hashes["segment/SHA256SUMS"], hashlib.sha256(nested.read_bytes()).hexdigest())
+
+    def test_final_metadata_write_failure_is_recorded_and_seal_is_not_attempted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            metadata = {"status": "completed"}
+            error = OSError("final metadata write failed")
+            with patch.object(marvin_session, "write_json", side_effect=[error, None]) as write, \
+                    patch.object(marvin_session, "evidence_manifest") as manifest:
+                with self.assertRaises(OSError) as raised:
+                    marvin_session.seal_evidence(output, metadata)
+            self.assertIs(raised.exception, error)
+            self.assertEqual(metadata["status"], "failed")
+            self.assertEqual(metadata["evidence_sealing_error"], str(error))
+            self.assertEqual(write.call_count, 2)
+            manifest.assert_not_called()
+
+    def test_persistent_metadata_failure_never_masks_an_active_capture_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            original = OSError("original capture error")
+            metadata = {"status": "failed", "error": str(original)}
+            with patch.object(marvin_session, "write_json", side_effect=OSError("disk unavailable")), \
+                    self.assertRaises(OSError) as raised:
+                try:
+                    raise original
+                finally:
+                    marvin_session.seal_evidence(output, metadata)
+            self.assertIs(raised.exception, original)
+            self.assertEqual(metadata["error"], str(original))
+            self.assertEqual(metadata["evidence_failure_metadata_error"], "disk unavailable")
+            self.assertTrue(any("Could not persist" in note for note in original.__notes__))
+
+    def test_successful_scope_does_not_suppress_sealing_error_inside_unrelated_except(self):
+        with tempfile.TemporaryDirectory() as directory:
+            error = OSError("manifest error")
+            try:
+                raise ValueError("unrelated caller error")
+            except ValueError:
+                with patch.object(marvin_session, "evidence_manifest", side_effect=error), \
+                        self.assertRaises(OSError) as raised:
+                    marvin_session.seal_evidence(Path(directory), {"status": "completed"})
+            self.assertIs(raised.exception, error)
+
     def test_stop_request_never_clobbers_existing_file_or_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

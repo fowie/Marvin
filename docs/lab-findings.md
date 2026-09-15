@@ -266,6 +266,18 @@ Each new private output directory contains:
 | `usbmon-stdout.log`, `usbmon-stderr.log` | Recorder diagnostics |
 | `SHA256SUMS` | Host-side hashes of retained evidence, including partial failed sessions |
 
+Root manifests include nested segment manifests; only the root manifest itself
+is excluded. Metadata or manifest sealing failures mark the run failed and
+record `evidence_sealing_error`, without replacing an earlier capture exception.
+If failed metadata cannot be persisted either, the exception carries that
+additional failure; files alone may then retain a stale status and must not be
+treated as sealed evidence. Hashes attest retained host bytes, not physical safety.
+
+Binary-backed sessions require explicit integer-zero final `queued` and `dropped`
+monitor statistics before reporting completion. Missing, malformed or nonzero
+counts fail the session, including boot and legacy wrapper captures. Text captures
+do not invent binary statistics; their existing completeness checks still apply.
+
 **Privacy and interpretation:** unrelated devices' events can enter the
 usbmon reader's memory, but are filtered out before storage. Use an isolated
 bus if this transient exposure is unacceptable. Both backends avoid libpcap's

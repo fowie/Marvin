@@ -357,6 +357,28 @@ class CampaignTests(unittest.TestCase):
         self.session.assert_not_called()
         self.assertFalse(self.output.exists())
 
+    def test_sealing_failure_invalidates_all_completion_states_and_preserves_campaign_failure(self):
+        for index, (rx, rejected, failure, before) in enumerate((
+            (False, False, False, "completed_silent"),
+            (True, False, False, "stopped_on_rx"),
+            (False, True, False, "completed_with_unsupported_settings"),
+            (False, False, True, "failed"),
+        )):
+            with self.subTest(before=before):
+                self.output = Path(self.temp.name) / f"seal-{index}"
+                self.rx, self.settings_rejected, self.failure = rx, rejected, failure
+                with patch.object(marvin_session, "evidence_manifest", side_effect=OSError("manifest failed")), \
+                        self.assertRaises(OSError) as raised:
+                    self.run_campaign()
+                self.assertEqual(str(raised.exception), "uncertain write" if failure else "manifest failed")
+                metadata = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(metadata["status"], "failed")
+                self.assertEqual(metadata["status_before_sealing"], before)
+                self.assertEqual(metadata["evidence_sealing_error"], "manifest failed")
+                if failure:
+                    self.assertEqual(metadata["error"], "uncertain write")
+                    self.assertEqual(metadata["segments"][0]["partial"]["transmit_status"], "unknown")
+
     def test_missing_line_authorization_stops_before_preflight_or_output(self):
         for lines in ((True, True), (True, False), (False, False), (False, True)):
             value = plan()

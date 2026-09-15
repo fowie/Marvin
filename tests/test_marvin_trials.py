@@ -161,6 +161,26 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(result["status"], "stopped_on_rx")
         self.assertEqual(len(self.calls), 1)
 
+    def test_sealing_failure_invalidates_completion_and_preserves_trial_error(self):
+        for index, (receive_on, fail_on, before) in enumerate((
+            (None, None, "completed_silent"), (1, None, "stopped_on_rx"), (None, 1, "failed"),
+        )):
+            with self.subTest(before=before):
+                self.output = Path(self.temp.name) / f"seal-{index}"
+                self.calls = []
+                self.receive_on, self.fail_on = receive_on, fail_on
+                with patch.object(marvin_trials.marvin_session, "evidence_manifest",
+                                  side_effect=OSError("manifest failed")), self.assertRaises(OSError) as raised:
+                    self.run_trials()
+                self.assertEqual(str(raised.exception), "write outcome unknown" if fail_on else "manifest failed")
+                metadata = json.loads((self.output / "metadata.json").read_text())
+                self.assertEqual(metadata["status"], "failed")
+                self.assertEqual(metadata["status_before_sealing"], before)
+                self.assertEqual(metadata["evidence_sealing_error"], "manifest failed")
+                if fail_on:
+                    self.assertEqual(metadata["error"], "write outcome unknown")
+                    self.assertEqual(len(self.calls), 1)
+
     def test_uncertain_write_is_not_retried_or_followed_by_another_case(self):
         self.fail_on = 2
         with self.assertRaisesRegex(OSError, "unknown"):

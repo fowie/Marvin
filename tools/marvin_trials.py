@@ -63,8 +63,7 @@ def assess_case(output, result):
     if result["status"] != "completed" or serial["status"] != "completed" or usb["status"] != "completed":
         raise ValueError("Case did not complete cleanly; no subsequent trial is permitted.")
     marvin_usbmon.validate_capture_completeness(usb)
-    if usb["monitor_final_stats"] != {"queued": 0, "dropped": 0}:
-        raise ValueError("USB monitor loss or queued tail prevents continuation.")
+    marvin_usbmon.validate_monitor_final_stats(usb)
     trace = output / "usb" / "usbmon.txt"
     if trace.stat().st_size > 2 * marvin_usbmon.DEFAULT_MAX_BYTES:
         raise ValueError("Case trace exceeds the bounded analysis size.")
@@ -164,8 +163,7 @@ def run_trials(
         raise
     finally:
         metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
-        marvin_session.write_json(path, metadata)
-        marvin_session.evidence_manifest(output)
+        marvin_session.seal_evidence(output, metadata)
     return metadata
 
 

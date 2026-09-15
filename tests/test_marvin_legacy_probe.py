@@ -123,7 +123,10 @@ class LegacyProbeRunTests(unittest.TestCase):
             check_identity=Mock(),
             run_session=Mock(side_effect=self.capture),
             write_json=marvin_session.write_json,
-            evidence_manifest=Mock(side_effect=marvin_session.evidence_manifest),
+            evidence_manifest=patch.object(
+                marvin_session, "evidence_manifest", side_effect=marvin_session.evidence_manifest,
+            ).start(),
+            seal_evidence=marvin_session.seal_evidence,
         )
         self.probe = SimpleNamespace(
             DEFAULT_PORT="/dev/test-by-id", ScheduledWrite=marvin_probe.ScheduledWrite,
@@ -386,6 +389,19 @@ class LegacyProbeRunTests(unittest.TestCase):
         self.assertEqual(metadata["status"], "failed")
         self.assertEqual(metadata["evidence_sealing_error"], "manifest write failed")
         self.assertTrue((self.output / "capture/serial/received.bin").exists())
+
+    def test_sealing_error_does_not_mask_earlier_transport_failure(self):
+        original = OSError("original transport uncertainty")
+        self.session.run_session.side_effect = original
+        self.session.evidence_manifest.side_effect = OSError("manifest write failed")
+        with self.assertRaises(OSError) as raised:
+            self.run_probe()
+        self.assertIs(raised.exception, original)
+        metadata = json.loads((self.output / "metadata.json").read_text())
+        self.assertEqual(metadata["status"], "failed")
+        self.assertEqual(metadata["error"], str(original))
+        self.assertEqual(metadata["evidence_sealing_error"], "manifest write failed")
+        self.session.run_session.assert_called_once()
 
     def test_cli_success_failure_and_interrupt_are_mocked_and_nonzero_on_failure(self):
         args = ["read-raw-data", "--sequence", "6", "--output", str(self.output),
