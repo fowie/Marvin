@@ -143,10 +143,41 @@ class BinaryTests(unittest.TestCase):
             opened.assert_not_called()
 
     def test_unsupported_host_abi_fails_before_open(self):
-        with patch.object(binary.platform, "machine", return_value="aarch64"), \
-             patch.object(binary.os, "open") as opened:
-            with self.assertRaisesRegex(binary.BinaryError, "x86-64"):
-                binary.open_monitor(1)
+        cases = (
+            ("darwin", "little", 8, "x86_64", "only on Linux"),
+            ("freebsd14", "little", 8, "x86_64", "only on Linux"),
+            ("win32", "little", 8, "AMD64", "only on Linux"),
+            ("linux", "little", 8, "aarch64", "x86-64"),
+            ("linux", "big", 8, "x86_64", "x86-64"),
+            ("linux", "little", 4, "x86_64", "x86-64"),
+        )
+        for host, byteorder, pointer_size, machine, message in cases:
+            with self.subTest(host=host, byteorder=byteorder,
+                              pointer_size=pointer_size, machine=machine), \
+                    patch.object(binary.sys, "platform", host), \
+                    patch.object(binary.sys, "byteorder", byteorder), \
+                    patch.object(binary.struct, "calcsize", return_value=pointer_size), \
+                    patch.object(binary.platform, "machine", return_value=machine), \
+                    patch.object(binary.os, "open") as opened:
+                with self.assertRaisesRegex(binary.BinaryError, message):
+                    binary.open_monitor(1)
+                opened.assert_not_called()
+
+    def test_linux_little_endian_x86_64_abi_is_supported(self):
+        for machine in ("x86_64", "AMD64"):
+            with self.subTest(machine=machine), \
+                    patch.object(binary.sys, "platform", "linux"), \
+                    patch.object(binary.sys, "byteorder", "little"), \
+                    patch.object(binary.struct, "calcsize", return_value=8), \
+                    patch.object(binary.platform, "machine", return_value=machine):
+                self.assertIsNone(binary.check_abi())
+
+    def test_offline_header_normalization_does_not_require_linux_host(self):
+        raw = header()
+        with patch.object(binary.sys, "platform", "darwin"), \
+                patch.object(binary.os, "open") as opened:
+            self.assertEqual(binary.address(raw), (1, 10))
+            self.assertEqual(usbmon.parse_record(binary.to_text(raw, b"\r")).payload, b"\r")
             opened.assert_not_called()
 
     def test_debugfs_failure_names_lockdown_and_supported_alternative(self):

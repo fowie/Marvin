@@ -50,7 +50,7 @@ pipe, URL, stdin, or capture-directory write path is supported.
     resolved = path.resolve(strict=True)
     if len(resolved.parts) > 1 and resolved.parts[1] in {"dev", "proc", "sys"}:
         raise ValueError(f"Input resolves to a device or kernel-interface path: {path}")
-    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
     descriptor = os.open(path, flags)
     with os.fdopen(descriptor, "rb") as stream:
         opened = os.fstat(stream.fileno())

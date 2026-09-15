@@ -34,6 +34,8 @@ class BinaryError(ValueError):
 
 
 def check_abi():
+    if sys.platform != "linux":
+        raise BinaryError("Live binary usbmon capture is supported only on Linux.")
     if (sys.byteorder != "little" or struct.calcsize("P") != 8
             or platform.machine() not in ("x86_64", "AMD64")):
         raise BinaryError("Binary usbmon ABI is implemented only for little-endian x86-64.")

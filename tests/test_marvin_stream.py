@@ -1,13 +1,42 @@
+import os
+from pathlib import Path
 import struct
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from tools import marvin_protocol as protocol
+from tools import marvin_stream as stream
 from tools.marvin_stream import StreamDecoder
 
 
 def frame(payload=b"", *, command=4, status=0x80, sequence=0):
     body = protocol.HEADER + struct.pack("<HBBH", sequence, command, status, len(payload)) + payload
     return body + struct.pack("<H", protocol.crc16(body)) + protocol.FOOTER
+
+
+class RegularFileTests(unittest.TestCase):
+    def test_reader_explicitly_requests_non_inheritable_descriptor_and_closes_it(self):
+        opening = os.open
+        observed = []
+
+        def record_open(path, flags):
+            descriptor = opening(path, flags)
+            observed.append((descriptor, flags, os.get_inheritable(descriptor)))
+            return descriptor
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "evidence.bin"
+            path.write_bytes(b"offline evidence")
+            with patch.object(stream.os, "open", side_effect=record_open):
+                self.assertEqual(stream.read_regular_file(path, max_bytes=32), b"offline evidence")
+            self.assertEqual(len(observed), 1)
+            descriptor, flags, inheritable = observed[0]
+            self.assertTrue(flags & os.O_CLOEXEC)
+            self.assertFalse(inheritable)
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
+            self.assertEqual(path.read_bytes(), b"offline evidence")
 
 
 class StreamTests(unittest.TestCase):
