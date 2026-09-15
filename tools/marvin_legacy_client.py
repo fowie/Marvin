@@ -9,6 +9,7 @@ Importing or invoking this module does not access hardware.
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+import sys
 from threading import Lock, current_thread
 import time
 from types import MappingProxyType
@@ -245,8 +246,7 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                     self._failure = Failure("operation_aborted", "Operation interrupted; no resume is permitted.")
                 if self._requests and self._requests[-1].status != "matched":
                     self._requests[-1] = replace(self._requests[-1], status="failed")
-                self._finish()
-                self._cleanup(primary_failure=True)
+                self._finish_and_cleanup(primary_failure=True)
 
     def _now(self):
         now = _number("clock", self._clock(), 0, 1e12)
@@ -373,8 +373,10 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                 self._boundary_uncertain = True
             else:
                 confidence = "framing_integrity_only"
-                previous = next((item for item in self._requests[:-1]
-                                 if item.sequence == packet.sequence), None)
+                # Sequences are contiguous and never reused within this session.
+                previous_index = packet.sequence - self._first_sequence
+                previous = (self._requests[previous_index]
+                            if 0 <= previous_index < len(self._requests) - 1 else None)
                 if previous is not None:
                     labels.append("stale")
                     if previous.reply_event is not None and packet == self._events[previous.reply_event].stream.packet:
@@ -453,6 +455,28 @@ Evidence properties are immutable snapshots, not a polling/recording service.
         for index in self._append_events(self._decoder.finish()):
             self._classify(index, self._last_now)
 
+    def _finish_and_cleanup(self, *, primary_failure):
+        primary_error = sys.exc_info()[1] if primary_failure else None
+        finished = False
+        try:
+            try:
+                self._finish()
+                finished = True
+            finally:
+                finish_error = None if finished else sys.exc_info()[1]
+                if primary_error is None:
+                    primary_error = finish_error
+                elif finish_error is not None and finish_error is not primary_error:
+                    self._cleanup_errors.append(Failure("finish_error", str(finish_error)[:1024]))
+                self._cleanup(primary_failure=primary_failure or primary_error is not None)
+        finally:
+            cleanup_error = sys.exc_info()[1]
+            if primary_error is not None and cleanup_error is not None and cleanup_error is not primary_error:
+                # Retain secondary failures, but never replace the initiating exception.
+                if cleanup_error is not finish_error:
+                    self._cleanup_errors.append(Failure("cleanup_aborted", str(cleanup_error)[:1024]))
+                raise primary_error
+
     def _cleanup(self, *, primary_failure):
         if not self._claimed or self._close_attempted:
             return
@@ -467,10 +491,14 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                 result = self._transport.close(deadline=now + self._cleanup_timeout)
                 if result is not None:
                     self._cleanup_errors.append(Failure("close_result", "Adapter close must return exactly None."))
-                if self._now() >= now + self._cleanup_timeout:
-                    self._cleanup_errors.append(Failure("close_deadline", "Adapter close exceeded its deadline."))
             except (OSError, ValueError, TypeError, RuntimeError) as error:
                 self._cleanup_errors.append(Failure("close_error", str(error)[:1024]))
+            finally:
+                try:
+                    if self._now() >= now + self._cleanup_timeout:
+                        self._cleanup_errors.append(Failure("close_deadline", "Adapter close exceeded its deadline."))
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    self._cleanup_errors.append(Failure("cleanup_clock", str(error)[:1024]))
         finally:
             with _CLAIM_LOCK:
                 del _CLAIMS[self._key]
@@ -485,9 +513,16 @@ Evidence properties are immutable snapshots, not a polling/recording service.
         with self._operation():
             if self._state in ("closed", "invalid"):
                 return
-            self._state = "closed"
-            self._finish()
-            self._cleanup(primary_failure=False)
+            completed = False
+            try:
+                self._finish_and_cleanup(primary_failure=False)
+                self._state = "closed"
+                completed = True
+            finally:
+                if not completed:
+                    self._state = "invalid"
+                    if self._failure is None:
+                        self._failure = Failure("close_aborted", "Close interrupted; no resume is permitted.")
 
     def __enter__(self):
         return self.start()
@@ -500,6 +535,5 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                 self._state = "invalid"
                 if self._failure is None:
                     self._failure = Failure("context_aborted", "Caller failed inside the session context.")
-                self._finish()
-                self._cleanup(primary_failure=True)
+                self._finish_and_cleanup(primary_failure=True)
         return False

@@ -70,7 +70,9 @@ GetConfig validator; `validate_get_config_reply()` remains available.
 
 Every attempted request consumes a monotonically increasing uint16 sequence.
 `first_sequence + limits.max_requests` must fit the sequence space: no wrap,
-reuse, retry, reconnect or automatic resume. A new client and explicit fresh
+reuse, retry, reconnect or automatic resume. Stale/duplicate lookup uses the
+contiguous sequence offset, not a scan or copy of request history.
+A new client and explicit fresh
 revalidation are required after either close or failure. Identity change/loss,
 short or uncertain writes, clock/deadline failure, adapter contract violations
 and exhausted budgets permanently invalidate the session and stop writes.
@@ -113,9 +115,13 @@ invalid count leaves the entire attempted request uncertain.
 details. Diagnostic text is limited to 1024 characters; raw evidence is not
 truncated. Cleanup attempts close once and releases process-local claims.
 Contractual close errors and close-deadline overruns are reported separately
-without replacing an existing primary failure. A close-only failure is raised.
-Unexpected programming exceptions/interruption invalidate the client and
-propagate; adapters must report operational failures as `OSError`.
+without replacing an existing primary failure. The post-close deadline is
+checked even when the adapter raises. A close-only failure is raised.
+Unexpected programming exceptions/interruption invalidate the client;
+finalization still attempts cleanup once and propagates the initiating exception,
+retaining secondary finalization errors separately. The session is marked
+`closed` only after successful finalization. Adapters must report operational
+failures as `OSError`.
 
 ## Bounded operation
 

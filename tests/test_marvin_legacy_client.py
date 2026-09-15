@@ -595,6 +595,125 @@ class LegacyClientTests(unittest.TestCase):
                 raise LookupError("caller failed")
         self.assert_failed(session, transport, "context_aborted", writes=0)
 
+    def test_interrupted_close_invalidates_and_attempts_cleanup_once(self):
+        for stage in ("finish", "close"):
+            for error in (LookupError("cleanup programming error"), KeyboardInterrupt()):
+                with self.subTest(stage=stage, error=type(error).__name__):
+                    session, transport, _ = self.make_client()
+                    session.start()
+                    with patch.object(transport, "close", side_effect=error if stage == "close" else None) as close:
+                        with patch.object(session, "_finish", side_effect=error if stage == "finish" else None):
+                            with self.assertRaises(type(error)) as raised:
+                                session.close()
+                        self.assertIs(raised.exception, error)
+                        self.assertEqual(session.state, "invalid")
+                        self.assertEqual(session.failure.code, "close_aborted")
+                        session.close()
+                        close.assert_called_once()
+                        with self.assertRaises(client.SessionError):
+                            session.request("get-config", timeout=1)
+                    fresh, _, _ = self.make_client()
+                    with fresh:
+                        self.assertEqual(fresh.state, "active")
+
+    def test_finish_error_preserved_when_adapter_close_reports_failure(self):
+        session, transport, _ = self.make_client()
+        session.start()
+        with patch.object(session, "_finish", side_effect=LookupError("finish bug")):
+            with patch.object(transport, "close", side_effect=OSError("close failed")) as close:
+                with self.assertRaisesRegex(LookupError, "finish bug"):
+                    session.close()
+                close.assert_called_once()
+        self.assertEqual(session.state, "invalid")
+        self.assertEqual(session.failure.code, "close_aborted")
+        self.assertEqual(session.cleanup_errors[0].code, "close_error")
+
+    def test_close_failure_after_deadline_retains_both_diagnostics(self):
+        for primary_failure in (False, True):
+            for error in (OSError("late close"), LookupError("late programming error"), KeyboardInterrupt()):
+                with self.subTest(primary_failure=primary_failure, error=type(error).__name__):
+                    session, transport, clock = self.make_client()
+                    session.start()
+
+                    def late_close(*, deadline):
+                        clock.now = deadline
+                        raise error
+
+                    with patch.object(transport, "close", side_effect=late_close) as close:
+                        expected_type = client.SessionError if primary_failure or isinstance(error, OSError) else type(error)
+                        with self.assertRaises(expected_type):
+                            if primary_failure:
+                                transport.count = 3
+                                session.request("get-config", timeout=1)
+                            else:
+                                session.close()
+                        codes = [item.code for item in session.cleanup_errors]
+                        self.assertIn("close_deadline", codes)
+                        if isinstance(error, OSError):
+                            self.assertEqual(codes, ["close_error", "close_deadline"])
+                            self.assertEqual(session.cleanup_errors[0].message, "late close")
+                        elif primary_failure:
+                            self.assertIn("cleanup_aborted", codes)
+                        self.assertEqual(session.state, "invalid")
+                        self.assertEqual(session.failure.code,
+                                         "short_write" if primary_failure else (
+                                             "cleanup_failed" if isinstance(error, OSError) else "close_aborted"))
+                        session.close()
+                        close.assert_called_once()
+
+    def test_finalization_failures_never_replace_an_existing_exception(self):
+        session, transport, _ = self.make_client()
+        original = LookupError("caller failure")
+        with patch.object(session, "_finish", side_effect=RuntimeError("finish failure")):
+            with patch.object(transport, "close", side_effect=KeyboardInterrupt("close interrupted")) as close:
+                with self.assertRaises(LookupError) as raised:
+                    with session:
+                        raise original
+                close.assert_called_once()
+        self.assertIs(raised.exception, original)
+        self.assertEqual(session.state, "invalid")
+        self.assertEqual(session.failure.code, "context_aborted")
+        self.assertEqual([item.code for item in session.cleanup_errors], ["finish_error", "cleanup_aborted"])
+
+    def test_close_failure_inside_handled_exception_still_raises(self):
+        session, transport, _ = self.make_client()
+        session.start()
+        try:
+            raise LookupError("already handled")
+        except LookupError:
+            with patch.object(transport, "close", side_effect=OSError("close failed")):
+                with self.assertRaises(client.SessionError) as raised:
+                    session.close()
+        self.assertEqual(raised.exception.code, "cleanup_failed")
+        self.assertEqual(session.state, "invalid")
+
+    def test_stale_sequence_lookup_never_scans_or_copies_history(self):
+        class NoHistoryScan(list):
+            def __iter__(self):
+                raise AssertionError("Request history must not be scanned for correlation.")
+
+            def __getitem__(self, key):
+                if isinstance(key, slice):
+                    raise AssertionError("Request history must not be copied for correlation.")
+                return super().__getitem__(key)
+
+        session, transport, _ = self.make_client(
+            first_sequence=2000, session_timeout=60, limits=client.Limits(max_requests=1024),
+        )
+        session._requests = NoHistoryScan()
+        with session:
+            for _ in range(1023):
+                session.request("get-power-state", timeout=1)
+            old = frame(bytes(2), command=0x0E, sequence=2000)
+            unrelated = frame(bytes(2), command=0x0E, sequence=1999)
+            transport.on_write = lambda packet: (
+                transport.enqueue(old + unrelated), transport.reply(packet))
+            result = session.request("get-power-state", timeout=1)
+            self.assertEqual(result.stream.packet.sequence, 3023)
+            self.assertIn("stale", session.evidence[-3].labels)
+            self.assertIn("duplicate", session.evidence[-3].labels)
+            self.assertIn("unsolicited", session.evidence[-2].labels)
+
     def test_cleanup_runtime_error_does_not_mask_primary_or_leak_claim(self):
         session, transport, _ = self.make_client()
         transport.count = 1
