@@ -67,7 +67,12 @@ def validate_return(baseline, returned):
                 "descriptors_sha256", "descriptors_bytes"):
         if returned["usb"][key] != baseline["usb"][key]:
             raise ValueError(f"Returned device does not match the original {key}.")
-    if returned["usb"] == baseline["usb"]:
+    markers = ("sysfs_device", "sysfs_inode", "devnum")
+    for identity in (baseline["usb"], returned["usb"]):
+        if (any(type(identity.get(key)) is not int or identity[key] < 0 for key in markers)
+                or not 1 <= identity["devnum"] <= 127):
+            raise ValueError("USB re-enumeration markers must be valid explicit integers.")
+    if all(returned["usb"][key] == baseline["usb"][key] for key in markers):
         raise ValueError("No new USB enumeration was established.")
 
 

@@ -258,6 +258,48 @@ class BootTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "No new USB enumeration"):
             boot.validate_return(BASELINE, BASELINE)
 
+    def test_top_level_metadata_changes_do_not_establish_reenumeration(self):
+        for field, value in (("tty", "/dev/another-test-tty"), ("environment", {"note": "changed"})):
+            returned = copy.deepcopy(BASELINE)
+            returned[field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "No new USB enumeration"):
+                boot.validate_return(BASELINE, returned)
+
+    def test_auxiliary_usb_metadata_is_not_a_reenumeration_marker(self):
+        for changed_side in ("baseline", "returned"):
+            baseline, returned = copy.deepcopy(BASELINE), copy.deepcopy(BASELINE)
+            changed = baseline if changed_side == "baseline" else returned
+            changed["usb"]["diagnostic_note"] = "auxiliary metadata changed"
+            with self.subTest(changed_side=changed_side), self.assertRaisesRegex(
+                    ValueError, "No new USB enumeration"):
+                boot.validate_return(baseline, returned)
+
+    def test_each_explicit_reenumeration_marker_can_establish_a_change(self):
+        for marker in ("sysfs_device", "sysfs_inode", "devnum"):
+            returned = copy.deepcopy(BASELINE)
+            returned["usb"][marker] += 1
+            with self.subTest(marker=marker):
+                boot.validate_return(BASELINE, returned)
+
+    def test_missing_or_invalid_markers_cannot_authorize_the_return(self):
+        for changed_side in ("baseline", "returned"):
+            for marker in ("sysfs_device", "sysfs_inode", "devnum"):
+                for value in (None, False, True, -1, "200", 200.0):
+                    baseline, returned = copy.deepcopy(BASELINE), copy.deepcopy(RETURNED)
+                    changed = baseline if changed_side == "baseline" else returned
+                    if value is None:
+                        changed["usb"].pop(marker)
+                    else:
+                        changed["usb"][marker] = value
+                    with self.subTest(changed_side=changed_side, marker=marker, value=value), \
+                            self.assertRaisesRegex(ValueError, "re-enumeration markers"):
+                        boot.validate_return(baseline, returned)
+        for devnum in (0, 128):
+            returned = copy.deepcopy(RETURNED)
+            returned["usb"]["devnum"] = devnum
+            with self.assertRaisesRegex(ValueError, "re-enumeration markers"):
+                boot.validate_return(BASELINE, returned)
+
 class ReturnTests(unittest.TestCase):
     def setUp(self):
         self.clock = FakeClock()

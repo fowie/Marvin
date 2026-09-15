@@ -688,6 +688,10 @@ observer uses a 90-second deadline for one return on the same physical port
 with matching VID/PID and descriptors, then starts a new USB recorder before
 opening the returned serial port for 60 seconds. A second disconnect or an
 unrelated error stops the observation. No application bytes are sent.
+Return validation requires an explicit change in `sysfs_device`, `sysfs_inode`,
+or `devnum`; unrelated preflight or auxiliary USB metadata cannot establish a
+transition. These are host-observed markers, not proof of an MCU power cycle
+or firmware identity.
 Return preflight shares the remaining deadline across its `udevadm` and `fuser`
 checks, each still capped at five seconds. Expired preflight results are rejected
 before return-identity acceptance. Process creation/cleanup, host scheduling and

@@ -294,10 +294,14 @@ class ListenTests(unittest.TestCase):
 
     def test_requires_both_modem_exclusion_tags(self):
         for tag in ("ID_MM_DEVICE_IGNORE", "ID_MM_PORT_IGNORE"):
-            self.udev.return_value.stdout = IDENTITY.replace(f"{tag}=1\n", "")
-            with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, "exclusion"):
-                self.capture()
+            for value in (None, "", "0", "true", "01", "2"):
+                replacement = "" if value is None else f"{tag}={value}\n"
+                self.udev.return_value.stdout = IDENTITY.replace(f"{tag}=1\n", replacement)
+                with self.subTest(tag=tag, value=value), self.assertRaisesRegex(ValueError, "exclusion"):
+                    self.capture()
+        self.ownership.assert_not_called()
         self.factory.assert_not_called()
+        self.assertFalse(self.output.exists())
 
     def test_does_not_overwrite_existing_capture(self):
         self.output.mkdir()
