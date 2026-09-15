@@ -315,6 +315,24 @@ class CampaignTests(unittest.TestCase):
         options.update(overrides)
         return campaign.run_campaign(plan(), self.output, **options)
 
+    def test_matched_empty_in_error_stops_before_the_next_segment(self):
+        def record_with_error(port, output, **options):
+            result = self.record(port, output, **options)
+            with (output / "usb/usbmon.txt").open("a") as stream:
+                stream.write("ee 201 S Bi:1:018:2 -115 64 <\nee 202 C Bi:1:018:2 -71 0\n")
+            return result
+
+        self.session.side_effect = record_with_error
+        with self.assertRaisesRegex(ValueError, "USB transfer-status errors"):
+            self.run_campaign()
+        self.session.assert_called_once()
+        self.assertFalse((self.output / "segment-b").exists())
+        metadata = json.loads((self.output / "metadata.json").read_text())
+        self.assertEqual(metadata["status"], "failed")
+        self.assertEqual(metadata["segments"][0]["status"], "failed")
+        self.assertEqual(metadata["segments"][0]["partial"]["application_bytes_written"], 24)
+        self.assertTrue((self.output / "SHA256SUMS").is_file())
+
     def test_dangling_output_symlink_cannot_redirect_evidence(self):
         root = Path(self.temp.name)
         for relative in (False, True):

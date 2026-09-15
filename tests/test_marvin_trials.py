@@ -122,6 +122,21 @@ class TrialTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             return marvin_trials.run_trials("/dev/fake", self.output, **kwargs)
 
+    def test_matched_empty_in_error_stops_before_the_next_case(self):
+        def session_with_error(port, output, **options):
+            result = self.session(port, output, **options)
+            with (output / "usb/usbmon.txt").open("a") as stream:
+                stream.write("ee 201 S Ii:1:012:1 -115 64 <\nee 202 C Ii:1:012:1 -71 0\n")
+            return result
+
+        self.run_session.side_effect = session_with_error
+        with self.assertRaisesRegex(ValueError, "USB transfer-status errors"):
+            self.run_trials()
+        self.run_session.assert_called_once()
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(json.loads((self.output / "metadata.json").read_text())["status"], "failed")
+        self.assertTrue((self.output / "SHA256SUMS").is_file())
+
     def test_dangling_output_symlink_cannot_redirect_evidence(self):
         root = Path(self.temp.name)
         for relative in (False, True):

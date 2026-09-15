@@ -128,6 +128,7 @@ def assess_segment(directory, result, schedule):
         "completion_exceeds_requested",
     )):
         raise ValueError("Incomplete USB pairing prevents further probing.")
+    marvin_usbmon.validate_transfer_statuses(summary)
     received = (directory / "serial/received.bin").stat().st_size
     if received != serial["bytes_received"]:
         raise ValueError("Serial byte count disagrees with retained evidence.")
@@ -207,6 +208,7 @@ def rejected_settings_evidence(directory, baseline):
         "completion_exceeds_requested",
     )):
         raise ValueError("Rejected setting has incomplete USB pairing; stopping.")
+    marvin_usbmon.validate_transfer_statuses(summary)
     if any((r.busnum, r.devnum) != (baseline["usb"]["busnum"], baseline["usb"]["devnum"]) for r in records):
         raise ValueError("A rejected setting's trace contains a different device.")
     if any(r.transfer == "Bo" or (r.event == "C" and r.transfer in ("Bi", "Ii") and r.length) for r in records):

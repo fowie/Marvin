@@ -47,6 +47,52 @@ class AssessmentInputTests(unittest.TestCase):
                     "setting_rejected_before_application_io" if kind == "rejected" else "silent_out_confirmed"))
                 self.assertEqual(trace.read_bytes(), original)
 
+    def test_matched_zero_length_input_errors_cannot_be_called_silent(self):
+        for kind in ("campaign", "rejected", "trial"):
+            trace, assess = self.fixture(kind)
+            original = trace.read_text()
+            devnum = 12 if kind == "trial" else 18
+            for transfer, endpoint in (("Bi", 2), ("Ii", 1)):
+                for submitted, completed in ((-115, -71), (-115, 1), (-32, 0), (-32, -104)):
+                    pair = (
+                        f"ee 201 S {transfer}:1:{devnum:03d}:{endpoint} {submitted} 0 <\n"
+                        f"ee 202 C {transfer}:1:{devnum:03d}:{endpoint} {completed} 0\n"
+                    )
+                    trace.write_text(original + pair)
+                    with self.subTest(kind=kind, transfer=transfer, submitted=submitted, completed=completed), \
+                            self.assertRaisesRegex(marvin_usbmon.UsbmonError, "USB transfer-status errors"):
+                        assess()
+                    self.assertEqual(trace.read_text(), original + pair)
+
+    def test_matched_submission_error_events_prevent_all_three_continuation_paths(self):
+        for kind in ("campaign", "rejected", "trial"):
+            trace, assess = self.fixture(kind)
+            devnum = 12 if kind == "trial" else 18
+            with trace.open("a") as stream:
+                stream.write(
+                    f"ee 201 S Bi:1:{devnum:03d}:2 -115 0 <\n"
+                    f"ee 202 E Bi:1:{devnum:03d}:2 -32 0\n"
+                )
+            with self.subTest(kind=kind), self.assertRaisesRegex(
+                    marvin_usbmon.UsbmonError, "USB transfer-status errors"):
+                assess()
+
+    def test_success_and_known_zero_length_in_cancellations_keep_existing_outcomes(self):
+        for kind in ("campaign", "rejected", "trial"):
+            trace, assess = self.fixture(kind)
+            original = trace.read_text()
+            devnum = 12 if kind == "trial" else 18
+            for transfer, endpoint in (("Bi", 2), ("Ii", 1)):
+                for completed in (0, -2, -104, -108):
+                    trace.write_text(
+                        original + f"ee 201 S {transfer}:1:{devnum:03d}:{endpoint} -115 0 <\n"
+                        f"ee 202 C {transfer}:1:{devnum:03d}:{endpoint} {completed} 0\n"
+                    )
+                    with self.subTest(kind=kind, transfer=transfer, completed=completed):
+                        self.assertEqual(assess()["outcome"], (
+                            "setting_rejected_before_application_io"
+                            if kind == "rejected" else "silent_out_confirmed"))
+
     def test_leaf_and_parent_symlinks_are_rejected_before_opening_the_trace(self):
         for kind in ("campaign", "rejected", "trial"):
             trace, assess = self.fixture(kind)

@@ -1293,6 +1293,76 @@ class CaptureTests(LocalFilesTests):
         self.open_trace.assert_not_called()
         self.identity.assert_not_called()
 
+    def test_output_ancestors_are_validated_before_identity_open_or_privilege_drop(self):
+        target = self.root / "target"
+        target.mkdir()
+        link = self.root / "linked"
+        link.symlink_to(target.name, target_is_directory=True)
+        dangling = self.root / "dangling-parent"
+        dangling.symlink_to("missing")
+        file_parent = self.root / "file-parent"
+        file_parent.write_bytes(b"unchanged")
+        paths = (
+            link / "capture", link / ".." / "capture", dangling / "capture", file_parent / "capture",
+        )
+        self.identity.side_effect = AssertionError("identity accessed for invalid output")
+        for path in paths:
+            relative = Path(os.path.relpath(path.anchor)) / path.relative_to(path.anchor)
+            for output in (path, relative):
+                for backend in ("text", "binary"):
+                    self.output = output
+                    with self.subTest(output=output, backend=backend), \
+                            patch.object(Path, "resolve", side_effect=AssertionError("link resolved")), \
+                            patch.object(usbmon.binary, "open_monitor") as binary_open, \
+                            self.assertRaisesRegex(usbmon.UsbmonError, "parents"):
+                        self.capture(backend=backend)
+                    binary_open.assert_not_called()
+        self.identity.assert_not_called()
+        self.open_trace.assert_not_called()
+        self.drop.assert_not_called()
+        self.assertEqual(list(target.iterdir()), [])
+        self.assertEqual(file_parent.read_bytes(), b"unchanged")
+        self.assertFalse((self.root / "missing").exists())
+        self.assertFalse((self.root / "capture").exists())
+
+    def test_missing_usb_output_parents_fail_before_runtime_without_creating_them(self):
+        self.output = self.root / "missing" / "nested" / "capture"
+        for backend in ("text", "binary"):
+            with self.subTest(backend=backend), self.assertRaises(FileNotFoundError):
+                self.capture(backend=backend)
+        self.identity.assert_not_called()
+        self.open_trace.assert_not_called()
+        self.drop.assert_not_called()
+        self.assertFalse((self.root / "missing").exists())
+
+    def test_kernel_output_paths_fail_before_any_metadata_lookup(self):
+        for output in ("/dev/new-capture", "/proc/new-capture", "/sys/new-capture"):
+            self.output = Path(output)
+            with self.subTest(output=output), \
+                    patch.object(Path, "lstat", side_effect=AssertionError("kernel metadata accessed")), \
+                    patch.object(os.path, "lexists", side_effect=AssertionError("kernel metadata accessed")), \
+                    self.assertRaisesRegex(usbmon.UsbmonError, "kernel-interface"):
+                self.capture()
+        self.identity.assert_not_called()
+        self.open_trace.assert_not_called()
+        self.drop.assert_not_called()
+
+    def test_cli_reports_unsafe_usb_output_parent_without_starting_capture(self):
+        link = self.root / "linked"
+        link.symlink_to(self.root, target_is_directory=True)
+        self.output = link / "capture"
+        with patch.object(usbmon.sys, "stderr", new_callable=io.StringIO) as errors:
+            status = usbmon.main([
+                "--usb-path", USB_PATH, "--output", str(self.output),
+                "--seconds", "0.5", "--actuators-isolated",
+            ])
+        self.assertEqual(status, 1)
+        self.assertIn("symlinks", json.loads(errors.getvalue())["error"])
+        self.identity.assert_not_called()
+        self.open_trace.assert_not_called()
+        self.drop.assert_not_called()
+        self.assertFalse((self.root / "capture").exists())
+
     def test_root_validation_happens_before_identity_or_any_opens(self):
         with patch.object(usbmon.os, "geteuid", return_value=0), \
                 patch.object(usbmon.os, "open", side_effect=AssertionError("must not open")):

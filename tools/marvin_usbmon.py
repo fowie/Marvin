@@ -39,6 +39,7 @@ else:
     from . import marvin_usbmon_binary as binary
 
 from tools.marvin_stream import read_regular_file
+from tools.marvin_paths import new_output_path
 
 DEFAULT_MAX_BYTES = 1024 * 1024
 DEFAULT_MAX_RECORDS = 10000
@@ -581,6 +582,17 @@ def validate_monitor_final_stats(metadata):
         )
 
 
+def validate_transfer_statuses(summary):
+    """Reject transfer errors before authorizing another probe; allow known cancellations."""
+    for field, count in (
+        ("completion_status.other_nonzero", summary["completion_status"]["other_nonzero"]),
+        ("submission_status.other_negative", summary["submission_status"]["other_negative"]),
+        ("events.E", summary["events"].get("E", 0)),
+    ):
+        if type(count) is not int or count != 0:
+            raise UsbmonError(f"USB transfer-status errors prevent continuation: {field} is not zero.")
+
+
 class _Framer:
     def __init__(self, max_line_bytes, target):
         self.maximum = max_line_bytes
@@ -706,6 +718,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     Status/CLI exits: completed/duration|coordinator_stop=0; interrupted/signal=130;
     limit_reached/max_bytes|max_records=2; failed=1 (CaptureError).
     Startup failures before directory creation raise without creating evidence.
+    Output parents must already exist without symlinks; validation precedes USB
+    identity access and monitor opening. Checks are snapshots, not protection
+    against concurrent ancestor replacement; final directory creation is exclusive.
     """
     ids = validate_privilege_drop(drop_to_invoking_user)
     if type(coordinator_stop) is not bool:
@@ -722,9 +737,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     _integer_limit(max_records, "max_records", 1, 1000000)
     _integer_limit(max_line_bytes, "max_line_bytes", 64, 16384)
     analyzer = Analyzer(max_pending=max_pending)
-    output = Path(output)
-    if os.path.lexists(output):
-        raise FileExistsError("Output already exists; refusing to overwrite evidence.")
+    try:
+        output = new_output_path(output)
+    except ValueError as error:
+        raise UsbmonError(str(error)) from error
     fd = None
     with _interrupts() as interrupt:
         try:

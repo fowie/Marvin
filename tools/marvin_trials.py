@@ -76,6 +76,7 @@ def assess_case(output, result):
         "completion_exceeds_requested",
     )):
         raise ValueError("Incomplete or inconsistent USB pairing prevents continuation.")
+    marvin_usbmon.validate_transfer_statuses(summary)
     received = (output / "serial" / "received.bin").stat().st_size
     if received != serial["bytes_received"] or received > 65536:
         raise ValueError("Serial byte count disagrees with bounded evidence.")
