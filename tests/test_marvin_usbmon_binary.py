@@ -219,13 +219,16 @@ class BinaryCaptureTests(unittest.TestCase):
                     "descriptors_bytes": len(descriptors),
                     "descriptors_sha256": hashlib.sha256(descriptors).hexdigest()}
         with tempfile.TemporaryDirectory() as directory:
-            for dropped, coordinated in ((0, False), (2, False), (0, True), (2, True)):
-                with self.subTest(dropped=dropped, coordinated=coordinated):
-                    output = Path(directory) / f"capture-{dropped}-{coordinated}"
+            for dropped, coordinated, budget in ((0, False, 32), (2, False, 32),
+                                                 (0, True, 32), (2, True, 32), (0, True, 4096)):
+                with self.subTest(dropped=dropped, coordinated=coordinated, budget=budget):
+                    output = Path(directory) / f"capture-{dropped}-{coordinated}-{budget}"
+                    payload = b"\r" if budget == 32 else bytes(range(144))
                     records = [
                         (header(device=3, length=4, captured=4), b"\xde\xad\xbe\xef"),
-                        (header(), b"\r"),
-                        (header(event="C", captured=0, data_flag=ord(">"), status=0), b""),
+                        (header(length=len(payload), captured=len(payload)), payload),
+                        (header(event="C", captured=0, data_flag=ord(">"), status=0,
+                                length=len(payload)), b""),
                     ]
                     now = [0.0]
                     read_fd, write_fd = os.pipe()
@@ -240,7 +243,7 @@ class BinaryCaptureTests(unittest.TestCase):
                         with patch.object(usbmon, "read_identity", return_value=identity), \
                              patch.object(usbmon, "_cached_descriptors", return_value=descriptors), \
                              patch.object(binary, "open_monitor", return_value=read_fd), \
-                             patch.object(binary, "read_event", side_effect=lambda fd: records.pop(0)), \
+                             patch.object(binary, "read_event", side_effect=lambda fd, **kw: records.pop(0)), \
                              patch.object(binary, "read_stats", side_effect=[
                                  {"queued": 0, "dropped": 0}, {"queued": 0, "dropped": dropped}]), \
                              patch.object(usbmon.select, "select", side_effect=select), \
@@ -249,18 +252,19 @@ class BinaryCaptureTests(unittest.TestCase):
                                 with self.assertRaisesRegex(usbmon.CaptureError, "dropped events"):
                                     usbmon.capture("/fake/sys/1-3.3", output, seconds=0.1,
                                                    actuators_isolated=True, backend="binary",
-                                                   coordinator_stop=coordinated)
+                                                   coordinator_stop=coordinated, binary_payload_limit=budget)
                             else:
                                 result = usbmon.capture("/fake/sys/1-3.3", output, seconds=0.1,
                                                         actuators_isolated=True, backend="binary",
-                                                        coordinator_stop=coordinated)
+                                                        coordinator_stop=coordinated, binary_payload_limit=budget)
                                 self.assertEqual(result["status"], "completed")
                                 self.assertEqual(result["stop_reason"], "coordinator_stop" if coordinated else "duration")
                         raw = (output / "binary-events.bin").read_bytes()
                         self.assertTrue(raw.startswith(binary.FILE_MAGIC))
                         self.assertNotIn(b"\xde\xad\xbe\xef", raw)
                         self.assertNotIn("deadbeef", (output / "usbmon.txt").read_text())
-                        self.assertEqual(len(raw), len(binary.FILE_MAGIC) + 66 * 2 + 1)
+                        self.assertEqual(len(raw), len(binary.FILE_MAGIC) + 66 * 2 + len(payload))
+                        self.assertIn(payload, raw)
                         summary = json.loads((output / "summary.json").read_text())
                         self.assertEqual(summary["pairing"]["matched_completions"], 1)
                     finally:

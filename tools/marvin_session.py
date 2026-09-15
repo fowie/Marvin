@@ -237,6 +237,7 @@ def run_session(
     probe_profile="modern",
     usb_tail_seconds=30, usb_close_grace_seconds=0,
     deadline=None,
+    capture_runner=None, binary_payload_limit=32,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -252,6 +253,11 @@ def run_session(
     """
     if os.geteuid() == 0:
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
+    if capture_runner is not None and not callable(capture_runner):
+        raise ValueError("capture_runner must be a callable serial capture boundary.")
+    marvin_usbmon.binary.payload_budget(binary_payload_limit)
+    if binary_payload_limit != 32 and usbmon_backend != "binary":
+        raise ValueError("Extended payload recording requires binary usbmon.")
     marvin_probe.validate_boolean_flags(
         actuators_isolated=actuators_isolated, sudo_usbmon=sudo_usbmon,
         allow_unknown_command=allow_unknown_command,
@@ -393,6 +399,9 @@ def run_session(
     ]
     if usb_close_grace_seconds:
         command.append("--coordinator-stop")
+    if binary_payload_limit != 32:
+        command.extend(("--binary-payload-limit", str(binary_payload_limit),
+                        "--max-line-bytes", "16384"))
     if sudo_usbmon:
         command = ["sudo", "-n", *command, "--drop-to-invoking-user"]
     process = None
@@ -441,7 +450,7 @@ def run_session(
             if probe_schedule is not None:
                 probe_options = {"probe_schedule": probe_schedule, "allow_unknown_command": True}
             try:
-                serial_result = marvin_probe.capture(
+                serial_result = (capture_runner or marvin_probe.capture)(
                     port, output / "serial", seconds=seconds,
                     baudrate=baudrate, max_bytes=marvin_probe.MAX_CAPTURE_BYTES,
                     actuators_isolated=True, dtr=dtr, rts=rts,

@@ -1,7 +1,8 @@
 """Linux usbmon character-device ABI, without libpcap or USB device requests.
 
 The GETX ABI is documented in drivers/usb/mon/mon_bin.c. Only the first 32
-payload bytes are copied, matching the initial text-based diagnostic budget.
+payload bytes are copied by default, matching the initial text-based diagnostic
+budget. An explicit 32..4096-byte budget supports full bounded LIVE correlation.
 This implementation explicitly supports the current little-endian x86-64 host.
 Binary captured-data flags are zero, not the text-format '=' marker. The kernel
 currently registers 128 monitor minors (0..127); all-buses minor0 is forbidden
@@ -63,17 +64,24 @@ def open_monitor(busnum):
     return fd
 
 
-def read_event(fd):
+def payload_budget(value):
+    if type(value) is not int or not 32 <= value <= 4096:
+        raise BinaryError("Binary payload budget must be an integer from 32 to 4096.")
+    return value
+
+
+def read_event(fd, *, payload_limit=PAYLOAD_LIMIT):
+    payload_budget(payload_limit)
     header = ctypes.create_string_buffer(HEADER.size)
-    payload = ctypes.create_string_buffer(PAYLOAD_LIMIT)
-    request = struct.pack("<QQQ", ctypes.addressof(header), ctypes.addressof(payload), PAYLOAD_LIMIT)
+    payload = ctypes.create_string_buffer(payload_limit)
+    request = struct.pack("<QQQ", ctypes.addressof(header), ctypes.addressof(payload), payload_limit)
     # GETX copies into the two pointed-to buffers; it does not return their bytes
     # in the ioctl argument itself. Strong local references keep both alive.
     fcntl.ioctl(fd, GETX, request)
     raw_header = header.raw
     # Linux usbmon_packet: length at 32, len_cap at 36, setup/ISO union at 40.
     captured = struct.unpack_from("<I", raw_header, 36)[0]
-    return raw_header, payload.raw[:min(captured, PAYLOAD_LIMIT)]
+    return raw_header, payload.raw[:min(captured, payload_limit)]
 
 
 def read_stats(fd):
@@ -89,8 +97,9 @@ def address(header):
     return struct.unpack_from("<H", header, 12)[0], header[11]
 
 
-def to_text(header, payload):
+def to_text(header, payload, *, payload_limit=PAYLOAD_LIMIT):
     """Normalize one target event to the existing analysis format."""
+    payload_budget(payload_limit)
     if len(header) != HEADER.size:
         raise BinaryError("Incomplete binary USB event header.")
     (urb, event, transfer, endpoint, device, bus, setup_flag, data_flag,
@@ -102,7 +111,7 @@ def to_text(header, payload):
     if seconds < 0 or not 0 <= micros < 1000000 or length >= 2**31:
         raise BinaryError("Invalid target binary USB timestamp or transfer length.")
     if (descriptors or captured > length
-            or len(payload) != min(captured, PAYLOAD_LIMIT) or len(payload) > length):
+            or len(payload) != min(captured, payload_limit) or len(payload) > length):
         raise BinaryError("Inconsistent target binary USB payload or ISO descriptors.")
     # mon_bin_get_data uses zero for captured bytes; '=' is a text-format marker,
     # not a binary flag (drivers/usb/mon/mon_bin.c).
@@ -128,7 +137,8 @@ def to_text(header, payload):
     return f"{prefix} {details} {length}{suffix}\n".encode("ascii")
 
 
-def evidence_frame(header, payload):
-    if len(header) != HEADER.size or len(payload) > PAYLOAD_LIMIT:
+def evidence_frame(header, payload, *, payload_limit=PAYLOAD_LIMIT):
+    payload_budget(payload_limit)
+    if len(header) != HEADER.size or len(payload) > payload_limit:
         raise BinaryError("Invalid binary evidence frame size.")
     return struct.pack("<H", len(payload)) + header + payload

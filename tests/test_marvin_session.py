@@ -110,6 +110,15 @@ class SessionTests(unittest.TestCase):
         defaults.update(kwargs)
         return marvin_session.run_session("/dev/test-marvin", self.output, **defaults)
 
+    def test_internal_capture_boundary_and_full_binary_budget_are_opt_in(self):
+        runner = Mock(side_effect=self.capture)
+        result = self.run_capture(capture_runner=runner, binary_payload_limit=4096)
+        self.assertEqual(result["status"], "completed")
+        runner.assert_called_once()
+        self.serial.assert_not_called()
+        command = self.popen.call_args.args[0]
+        self.assertEqual(command[command.index("--binary-payload-limit") + 1], "4096")
+
     def test_dangling_output_symlink_cannot_redirect_evidence(self):
         root = Path(self.temp.name)
         for relative in (False, True):

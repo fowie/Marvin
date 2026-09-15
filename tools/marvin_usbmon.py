@@ -710,7 +710,8 @@ def _coordinator_stop_requested(output):
 def capture(usb_path, output, *, seconds, actuators_isolated=False,
             drop_to_invoking_user=False, max_bytes=DEFAULT_MAX_BYTES,
             max_records=DEFAULT_MAX_RECORDS, max_line_bytes=DEFAULT_MAX_LINE_BYTES,
-            max_pending=DEFAULT_MAX_PENDING, backend="text", coordinator_stop=False):
+            max_pending=DEFAULT_MAX_PENDING, backend="text", coordinator_stop=False,
+            binary_payload_limit=binary.PAYLOAD_LIMIT):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -727,6 +728,11 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         raise UsbmonError("coordinator_stop must be a boolean.")
     if backend not in ("text", "binary"):
         raise UsbmonError("USB monitor backend must be text or binary.")
+    binary.payload_budget(binary_payload_limit)
+    if backend != "binary" and binary_payload_limit != binary.PAYLOAD_LIMIT:
+        raise UsbmonError("An extended payload budget requires the binary backend.")
+    binary_options = ({} if binary_payload_limit == binary.PAYLOAD_LIMIT
+                      else {"payload_limit": binary_payload_limit})
     if (not isinstance(seconds, (int, float)) or isinstance(seconds, bool)
             or (isinstance(seconds, float) and not math.isfinite(seconds))
             or not 0 < seconds <= 120):
@@ -771,7 +777,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 "text_is_normalized_from_binary": backend == "binary",
                 "timestamp_basis": "Unix realtime microseconds" if backend == "binary" else "kernel usbmon text clock",
                 "retained_binary_bytes": 0,
-                "binary_payload_limit": binary.PAYLOAD_LIMIT if backend == "binary" else None,
+                "binary_payload_limit": binary_payload_limit if backend == "binary" else None,
                 "seconds": seconds, "max_bytes": max_bytes, "max_records": max_records,
                 "max_line_bytes": max_line_bytes, "retained_bytes": 0,
                 "retained_records": 0, "ignored_records": 0,
@@ -852,14 +858,15 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                             source_frame = b""
                             if backend == "binary":
                                 try:
-                                    header, payload = binary.read_event(fd)
+                                    header, payload = binary.read_event(fd, **binary_options)
                                 except (BlockingIOError, InterruptedError):
                                     continue
                                 if binary.address(header) != framer.target:
                                     metadata["ignored_records"] += 1
                                     continue
-                                records = iter((binary.to_text(header, payload),))
-                                source_frame = binary.evidence_frame(header, payload)
+                                # Keep the historical text analysis format at 32 bytes.
+                                records = iter((binary.to_text(header, payload[:binary.PAYLOAD_LIMIT]),))
+                                source_frame = binary.evidence_frame(header, payload, **binary_options)
                             else:
                                 try:
                                     chunk = os.read(fd, READ_SIZE)
@@ -995,6 +1002,7 @@ def main(argv=None):
     parser.add_argument("--max-line-bytes", type=int, default=DEFAULT_MAX_LINE_BYTES)
     parser.add_argument("--max-pending", type=int, default=DEFAULT_MAX_PENDING)
     parser.add_argument("--backend", choices=("text", "binary"), default="text")
+    parser.add_argument("--binary-payload-limit", type=int, default=binary.PAYLOAD_LIMIT)
     parser.add_argument("--coordinator-stop", action="store_true",
                         help=f"Allow an empty regular {COORDINATOR_STOP_FILE} file in the output directory to stop capture")
     args = parser.parse_args(argv)
@@ -1021,6 +1029,7 @@ def main(argv=None):
             drop_to_invoking_user=args.drop_to_invoking_user, max_bytes=args.max_bytes,
             max_records=args.max_records, max_line_bytes=args.max_line_bytes, max_pending=args.max_pending,
             backend=args.backend, coordinator_stop=args.coordinator_stop,
+            binary_payload_limit=args.binary_payload_limit,
         )
     except CaptureError as exc:
         result = exc.metadata

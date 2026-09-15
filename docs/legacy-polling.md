@@ -1,9 +1,10 @@
 # Bounded legacy polling and evidence
 
 `tools.marvin_legacy_poll` implements #8 under Epic #1 using one
-[persistent legacy client](legacy-client.md). This is **injection-only software**:
-there is no live adapter, device-opening path, background reader or automatic
-startup hook. The existing four-getter one-shot probe policy and modern EFBE
+[persistent legacy client](legacy-client.md). This module remains **injection-only**:
+there is no device-opening path, background reader or automatic startup hook.
+The separate [guarded LIVE CLI](legacy-live.md) provides the production adapter
+under independent operator authorization. The existing four-getter one-shot probe policy and modern EFBE
 behavior are unchanged. No config, UnitInfo, enabling/heartbeat or actuator
 commands are sent; every request is empty legacy ReadRawData (`00`).
 
@@ -218,7 +219,7 @@ reports and are never fetched by polling.
 
 Legacy S/E 57600/8N1/no-flow-control and DTR/RTS low-after-open are **declared
 requirements**, not applied hardware facts or a guarantee against line glitches.
-A future live adapter needs separate review, approved-port checks, explicit
+The separate LIVE adapter requires review, approved-port checks, explicit
 operator authorization, and operator-confirmed motor/servo power **and signal**
 isolation. One-shot probe consent cannot authorize polling. No implementation or
 merged PR is physical safety sign-off. The damaged PEND TXCVR and hub port-4
