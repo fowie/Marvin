@@ -458,3 +458,20 @@ verification to obtain the operator's post-zero DMM indication; no post-zero
 DMM value is established by these captures. No causality, physical-stop,
 motor connection, further command or supply action is authorized. Hardware
 remains on hold.
+
+### Parent-relayed post-zero DMM result
+
+After the verified phase-B close, the parent reported that the operator's
+post-zero DMM indication was also **0 V** across the same board-side left
+motor pair. The paired **0 V before / 0 V after** observations are
+operator-reported DC indications; software neither acquired them nor verified
+the instrument setup. Phase A already reported all four raw PWM words and both
+raw velocity words as zero **before** this zero command.
+
+These unchanged indications do not establish command causality, physical
+stop, absence of PWM/boot transients or loaded motor behavior. Any later
+all-power-off motor reconnection and restart invalidates carrying this
+observed zero state forward. The parent is considering a separate
+operator-only startup observation; this record does not authorize it.
+The fixed diagnostics remain closed, with no software command, capture or
+automatic motor-stop action authorized during any such future energization.
