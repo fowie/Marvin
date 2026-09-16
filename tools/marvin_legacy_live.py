@@ -22,16 +22,51 @@ import termios
 from threading import current_thread
 import time
 
-from tools.marvin_legacy_client import Received, SETTINGS
+from tools.marvin_legacy_client import Received, SETTINGS, SessionError
 from tools.marvin_legacy_poll import CollectionError, PollPlan, collect
 from tools.marvin_legacy_protocol import decode_packet, read_raw_data_request
 from tools.marvin_paths import new_output_path
 from tools import marvin_usbmon_binary as binary
+from tools import marvin_motor_power_off_consent as consent
+from tools.marvin_legacy_telemetry import interpret_packet
 
 
 USB_PAYLOAD_LIMIT = 4096
 MAX_USB_RECORDS = 10000
 MAX_USB_BYTES = 1024 * 1024
+POWERED_ZERO_FIELDS = (
+    ("motorVelocityL", 72), ("motorVelocityR", 74),
+    ("motorPwmLeftForward", 90), ("motorPwmLeftReverse", 92),
+    ("motorPwmRightForward", 94), ("motorPwmRightReverse", 96),
+)
+
+
+def powered_observation_plan():
+    return live_plan(max_requests=1, interval=1, duration=3, first_sequence=2304)
+
+
+def inspect_powered_evidence(events, telemetry):
+    failure = None
+    for event in events:
+        packet = event.stream.packet
+        if packet is None:
+            failure = "Unknown/partial response evidence."
+            continue
+        decoded = interpret_packet(packet, direction="received", evidence=event.evidence_kind)
+        telemetry.append(decoded)
+        if (event.labels != ("matched_candidate",) or decoded["status"] != "decoded"
+                or packet.sequence != 2304 or packet.command != 0 or packet.response_field != 0x80
+                or len(packet.payload) != 134 or len(decoded.get("fields", {})) != 82):
+            failure = "Unknown/fault response shape or correlation."
+            continue
+        for name, offset in POWERED_ZERO_FIELDS:
+            field = decoded["fields"][name]
+            if (field["offset"] != offset or field["size"] != 2
+                    or field["raw_hex"] != packet.payload[offset:offset + 2].hex()
+                    or field["raw_hex"] != "0000" or field["signed"] != 0 or field["unsigned"] != 0):
+                failure = "Nonzero or inconsistent reported velocity/PWM: " + name
+    if failure:
+        raise SessionError("powered_observation_failed", failure)
 
 
 def _host_call(operation, *args, **kwargs):
@@ -499,14 +534,45 @@ def live_plan(*, max_requests=5, interval=1.0, duration=15.0, first_sequence=512
     return plan
 
 
+@consent.powered_faults
 def run_live(output, *, expected_physical_port, actuators_isolated=False,
-             unprivileged_usbmon=False, plan=None):
+             unprivileged_usbmon=False, plan=None, run=False,
+             left_motor_powered_observation=False, operator_at_external_cutoff=False,
+             motor_left_only_connected=False, motor_right_and_servos_isolated=False,
+             motor_supply_off=False, authorize_unvalidated_zero_velocity=False, new_boot_declared=False):
+    declarations = dict(
+        left_motor_powered_observation=left_motor_powered_observation,
+        operator_at_external_cutoff=operator_at_external_cutoff,
+        motor_left_only_connected=motor_left_only_connected,
+        motor_right_and_servos_isolated=motor_right_and_servos_isolated,
+        motor_supply_off=motor_supply_off, authorize_unvalidated_zero_velocity=authorize_unvalidated_zero_velocity,
+        new_boot_declared=new_boot_declared, unprivileged_usbmon=unprivileged_usbmon)
+    if any(type(value) is not bool for value in (run, actuators_isolated, *declarations.values())):
+        raise ValueError("Live declarations must be literal booleans.")
+    powered = left_motor_powered_observation
+    if powered:
+        if consent.classify(actuators_isolated=actuators_isolated, **declarations) != "left_motor_powered_observation":
+            raise ValueError("Select the complete powered observation scope.")
+        if run is not True:
+            raise ValueError("Powered observation requires explicit run=True.")
+        if plan is not None and (type(plan) is not PollPlan or plan != powered_observation_plan()):
+            raise ValueError("Powered observation accepts only its immutable one-getter plan.")
+        plan = powered_observation_plan()
+    elif any(value for name, value in declarations.items() if name != "unprivileged_usbmon"):
+        raise ValueError("Separate declarations require the explicitly selected powered observation scope.")
+    return _run_live(output, expected_physical_port=expected_physical_port,
+                     actuators_isolated=actuators_isolated, unprivileged_usbmon=unprivileged_usbmon,
+                     plan=plan, powered=powered, declarations=declarations)
+
+
+def _run_live(output, *, expected_physical_port, actuators_isolated,
+              unprivileged_usbmon, plan, powered, declarations):
     plan = live_plan() if plan is None else plan
     if not isinstance(plan, PollPlan) or plan != live_plan(
             max_requests=plan.max_requests, interval=plan.interval,
             duration=plan.duration, first_sequence=plan.first_sequence):
         raise ValueError("Only the bounded live plan is supported.")
-    if actuators_isolated is not True or unprivileged_usbmon is not True:
+    if (not powered and actuators_isolated is not True) or unprivileged_usbmon is not True:
         raise ValueError("Explicit isolation and unprivileged USB recording acknowledgments are required.")
     if (not isinstance(expected_physical_port, str) or len(expected_physical_port) > 100 or
             not re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*(?:\.[1-9][0-9]*)*", expected_physical_port)):
@@ -524,18 +590,49 @@ def run_live(output, *, expected_physical_port, actuators_isolated=False,
     output.mkdir(mode=0o700)
     metadata = {"status": "incomplete", "evidence_kind": "recorded", "baseline": baseline,
                 "plan": plan.to_dict(), "automatic_reconnect": False, "automatic_retries": False,
-                "actuator_power_and_signal_isolation_acknowledged": True,
+                "actuator_power_and_signal_isolation_acknowledged": actuators_isolated,
                 "application_acknowledgment": "not_established"}
+    if powered:
+        metadata.update(**consent.observation_history(declarations), telemetry=[],
+                        immutable_application_transcript_hex=["53000900000000bf0445"],
+                        maximum_application_bytes=10,
+                        collector_deadline_scope="3s operations only; excludes preflight/recorder startup, "
+                                                 "separate 5s cleanup and physical power dwell",
+                        usb_nominal_seconds=8, usb_hard_seconds=13)
 
     def capture(port, directory, *, guard, **options):
         nonlocal outcome
+        if powered:
+            actual = {name: options.get(name, False) for name in declarations}
+            if (consent.classify(actuators_isolated=options.get("actuators_isolated", False), **actual)
+                    != "left_motor_powered_observation" or actual != declarations
+                    or options.get("seconds") != 3 or options.get("baudrate") != 57600
+                    or options.get("probe_schedule") != schedule
+                    or options.get("dtr") is not False or options.get("rts") is not False
+                    or options.get("line_state_at_open") is not True
+                    or options.get("probe_profile") != "legacy"
+                    or options.get("allow_unknown_command") is not True
+                    or options.get("allow_line_state_change") is not False
+                    or options.get("allow_line_state_trial") is not False
+                    or options.get("allow_telemetry_state_change") is not False
+                    or options.get("probe_delay") != 0
+                    or options.get("max_bytes") != marvin_probe.MAX_CAPTURE_BYTES
+                    or set(options) != set(declarations) | {
+                        "actuators_isolated", "seconds", "baudrate", "max_bytes", "dtr", "rts",
+                        "line_state_at_open", "allow_line_state_change", "allow_line_state_trial",
+                        "allow_telemetry_state_change", "probe_delay", "bytesize", "parity", "stopbits",
+                        "probe_profile", "allow_unknown_command", "probe_schedule"}
+                    or (options.get("bytesize"), options.get("parity"), options.get("stopbits")) != (8, "N", 1)):
+                raise ValueError("Capture boundary changed the fixed powered observation scope.")
         directory.mkdir(mode=0o700)
         ingress.open()
         transport = LiveTransport(port, baseline, directory, ingress, guard=guard, plan=plan)
         try:
             outcome = collect(transport, directory / "poll.jsonl", ownership_key=baseline["tty"].encode(),
                               expected_identity=transport.token, plan=plan, evidence_kind="recorded",
-                              wait=transport.wait)
+                              wait=transport.wait,
+                              **({"on_evidence": lambda events: inspect_powered_evidence(events, metadata["telemetry"]),
+                                  "on_failure": consent.notify_cut_power} if powered else {}))
         except CollectionError as error:
             outcome = error.result
             raise OSError(f"LIVE collection failed: {error.code}: {error}") from error
@@ -550,12 +647,15 @@ def run_live(output, *, expected_physical_port, actuators_isolated=False,
         ) for index in range(plan.max_requests))
         result = marvin_session.run_session(
             marvin_probe.DEFAULT_PORT, output / "capture", seconds=plan.duration,
-            baudrate=57600, actuators_isolated=True, probe_schedule=schedule,
+            baudrate=57600, actuators_isolated=actuators_isolated, probe_schedule=schedule,
             allow_unknown_command=True, probe_profile="legacy", usbmon_backend="binary",
             expected_usb_identity=baseline["usb"], ready_callback=lambda _: clock.check(),
             usb_tail_seconds=5, usb_close_grace_seconds=5,
             capture_runner=capture, binary_payload_limit=USB_PAYLOAD_LIMIT,
+            **(declarations if powered else {}),
         )
+        if result.get("status") != "completed":
+            raise OSError("Coordinator did not complete successfully.")
         ingress.finish(plan.max_requests * 10)
         clock.check()
         if ingress.rx_consumed != plan.max_requests * 144:
@@ -564,6 +664,8 @@ def run_live(output, *, expected_physical_port, actuators_isolated=False,
                         usb_in_bytes=ingress.rx_bytes, usb_out_completed_bytes=ingress.completed_tx,
                         observed_line_states=ingress.line_states)
     except BaseException as error:
+        if powered:
+            consent.notify_cut_power(error)
         metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
         raise
     finally:
@@ -574,6 +676,8 @@ def run_live(output, *, expected_physical_port, actuators_isolated=False,
                 try:
                     release()
                 except OSError as error:
+                    if powered:
+                        consent.notify_cut_power(error)
                     cleanup.append(error)
             if cleanup:
                 metadata.update(status="failed", cleanup_error="; ".join(map(str, cleanup)))
@@ -595,15 +699,27 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--actuators-isolated", action="store_true")
-    parser.add_argument("--unprivileged-usbmon", action="store_true")
-    parser.add_argument("--max-requests", type=int, default=5)
-    parser.add_argument("--interval", type=float, default=1)
-    parser.add_argument("--duration", type=float, default=15)
-    parser.add_argument("--first-sequence", type=int, default=512)
-    args = parser.parse_args(argv)
+    consent.add_arguments(parser)
+    consent.add_observation_arguments(parser)
+    parser.add_argument("--max-requests", type=int)
+    parser.add_argument("--interval", type=float)
+    parser.add_argument("--duration", type=float)
+    parser.add_argument("--first-sequence", type=int)
+    args = consent.parse_observation_arguments(parser, argv)
     try:
-        plan = live_plan(max_requests=args.max_requests, interval=args.interval,
-                         duration=args.duration, first_sequence=args.first_sequence)
+        powered = args.left_motor_powered_observation
+        declarations = {**consent.arguments(args), **consent.observation_arguments(args)}
+        if powered:
+            consent.classify(actuators_isolated=args.actuators_isolated, **declarations)
+        elif any(value for name, value in declarations.items() if name != "unprivileged_usbmon"):
+            raise ValueError("Separate declarations require powered observation.")
+        defaults = powered_observation_plan() if powered else live_plan()
+        knobs = {name: getattr(args, name) if getattr(args, name) is not None else getattr(defaults, name)
+                 for name in ("max_requests", "interval", "duration", "first_sequence")}
+        plan = live_plan(**knobs)
+        if powered and plan != defaults:
+            raise ValueError("Conflicting CLI knobs: powered observation is fixed at one request, "
+                             "interval 1, duration 3, sequence 2304; no overrides.")
         if not args.run:
             result = {"status": "dry_run", "evidence_kind": "not_captured", "plan": plan.to_dict(),
                       "maximum_application_bytes": 10 * plan.max_requests,
@@ -612,13 +728,23 @@ def main(argv=None):
                       "required": ["--run", "--output NEWDIR", "--expected-physical-port",
                                    "--actuators-isolated", "--unprivileged-usbmon"],
                       "limitations": "Operator isolation/ownership required. Line glitches possible. No safety/ACK proof."}
+            if powered:
+                result.update(**consent.observation_history(declarations),
+                              immutable_application_transcript_hex=["53000900000000bf0445"],
+                              required=["--run", "--output NEWDIR", "--expected-physical-port",
+                                        *("--" + name.replace("_", "-") for name in consent.OBSERVATION_FLAGS)],
+                              limitations="HARDWARE HOLD: fresh future operator confirmation and bounded power plan "
+                                          "required. 3s collector operations exclude startup, separate 5s cleanup "
+                                          "and power dwell. Host cannot remove energy or detect movement.")
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
             result = run_live(args.output, expected_physical_port=args.expected_physical_port,
                               actuators_isolated=args.actuators_isolated,
-                              unprivileged_usbmon=args.unprivileged_usbmon, plan=plan)
+                              run=args.run, plan=plan, **declarations)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
+        if args.left_motor_powered_observation:
+            consent.notify_cut_power(error)
         print(json.dumps({"status": "failed", "error": str(error)}), file=sys.stderr)
         return 1
     print(json.dumps(result, indent=2, sort_keys=True))

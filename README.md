@@ -16,7 +16,9 @@ python -m unittest discover -s tests -v
 
 Tests use self-contained protocol facts, reviewed fixtures and mocked transport
 boundaries. No robot, USB/serial access, private archive or elevated privileges
-are needed. Installing dependencies may require network access; tests are offline.
+are needed. Native serial-adapter tests use host-created PTYs with synthetic USB
+evidence, not robot devices. Installing dependencies may require network access;
+tests are offline.
 
 ## Confirmed findings and limits
 
@@ -60,6 +62,14 @@ power/configuration writes, motion, servo/LED setters or bypassing interlocks.
 The damaged PEND TXCVR USB-A socket and reported hub port-4 over-current remain
 unresolved. Keep that branch unused; successful communication does not clear
 electrical faults.
+
+The explicitly selected [left-motor-powered read-only observation](docs/legacy-live.md#left-motor-powered-read-only-observation)
+is implemented **software-only, under HARDWARE HOLD**: exactly one fixed
+ReadRawData (sequence 2304), no zero/setter or power switch. It truthfully does
+not claim full isolation or supply-OFF. Its 3-second collector deadline is not
+a wall-time/power-dwell guarantee; separate cleanup and USB tail remain.
+Fresh future operator confirmation and a new bounded physical power plan are
+required. A clean observation is not a motor-stop or commissioning result.
 
 ## Contributing
 

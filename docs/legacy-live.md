@@ -32,6 +32,10 @@ the expected five-reply shape.
 
 ## Operator and ownership gates
 
+The following gates are the unchanged fully isolated default. The separately
+selected [left-motor-powered read-only scope](#left-motor-powered-read-only-observation)
+below is not full isolation and must never claim it.
+
 Do not run hardware commands in CI or unattended development. A separately
 authorized operator must confirm all four isolations (motor power, motor signals,
 servo power, servo signals), the reviewed J10 connection and exclusive ownership.
@@ -87,6 +91,97 @@ correlation. USB control-line requests are retained, not represented as physical
 measurements. Low requested/read-back lines do not imply glitch-free open/close.
 The adapter never reads/drains the tty during close. The same owner attempts
 descriptor close once even if recording fails, and records errors explicitly.
+
+## Left-motor-powered read-only observation
+
+**SOFTWARE ONLY implemented; HARDWARE HOLD.** The operator currently reports
+HY1803D OFF. No device access, preflight, power action or repeat trial is
+authorized by this implementation or its tests. Shared HY1803D power supplies
+both controller and motors, so the unchanged motor-power-OFF preparation
+profile is physically inapplicable to the current wiring. This scope neither
+weakens that profile nor sends its zero command.
+
+This opt-in uses the existing `LiveTransport`, `LegacyClient`, `PollPlan`,
+collector, coordinator and USB recorder. The immutable plan is:
+
+| Bound | Fixed value |
+|---|---|
+| Application TX | **One** empty ReadRawData, sequence **2304** |
+| Entire allowed frame | `53000900000000bf0445` (10 bytes maximum) |
+| Request count / interval / timeout | 1 / 1 second / 0.5 second |
+| Collector operational deadline | 3 seconds |
+| Separate existing cleanup allowance | 5 seconds |
+| USB nominal / hard recording window | 8 / 13 seconds (tail 5 + grace 5) |
+| Serial | 57600/8N1, low requested/read-back DTR/RTS, raw/unflushed |
+| Raw pre-request quiet | 1 second; any input suppresses the getter |
+| Full USB payload / serial RX budget | 4096 / 8192 bytes |
+| USB evidence limits | 1 MiB combined evidence, 10000 records |
+
+**Three seconds is not an end-to-end wall-time or power-dwell limit.** It does
+not include initial preflight, recorder startup/coordinator pre-open checks,
+separate cleanup or evidence finalization. Existing identity/ownership work
+inside the collector consumes its operational budget. If guards and quiet
+leave insufficient time, the attempt fails closed; no limit is relaxed.
+The host cannot remove energy, detect physical movement or guarantee a power
+cutoff. Closing the tty is not a motor stop. The operator must continuously
+watch, including boot and serial open, with an independent external cutoff.
+
+For **offline review only**, omit `--run` and `--output` from this exact future
+invocation. Every positive declaration requires **new, current operator
+confirmation and a separately approved bounded physical power plan** before
+any future `--run`. This example is not that permission:
+
+```sh
+python3 -B -m tools.marvin_legacy_live \
+  --left-motor-powered-observation \
+  --motor-left-only-connected --motor-right-and-servos-isolated \
+  --operator-at-external-cutoff --unprivileged-usbmon \
+  --expected-physical-port 1-1.1.3.3 --output NEW-PRIVATE-CAPTURE --run
+```
+
+Full actuator isolation and motor-supply-OFF must both be **false**. Do not add
+`--actuators-isolated` or `--motor-supply-off`; neither is forwarded as a false
+claim to the USB subprocess. Partial, mixed, truthy/non-boolean API declarations,
+preparation/zero flags and modified plans are rejected before hardware access.
+Explicit conflicting CLI count, sequence, duration or interval flags are errors,
+not silently overridden defaults. `run_live` requires literal `run=True` for
+this scope. The ordinary isolated CLI/API retains its original defaults.
+Pinned reviewed physical port/known descriptor hash, fresh identity, exclusive
+ownership and no-sudo recorder gates remain in effect.
+
+Exactly one matching CRC-valid status-`80` 134-byte/82-field reply is required.
+The existing decoder interprets **actual retained bytes**, not an injected zero
+template. Both motor velocities (payload offsets 72/74) and all four PWM words
+(90/92/94/96) must each be raw `0000`, unsigned 0 and signed 0. Decoded values,
+raw bytes and confidence labels are retained even when nonzero or unknown.
+Nonzero/unknown, malformed/partial/unsolicited/extra input, uncertain/short
+write, deadline, constructor/preflight, USB tail/drop, cleanup or sealing
+faults fail the observation; there is no retry, reopen, init, zero, setter or
+automatic power action.
+
+Detected failures issue a flushed **“OPERATOR: CUT EXTERNAL POWER NOW”**
+diagnostic before subsequent slow cleanup/drain work. Client evidence/failure
+callbacks expose faults before the client's own close; coordinator faults are
+reported before recorder drain. In this scope alone the USB subprocess inherits
+stderr to emit its urgent diagnostics without waiting for log/tail completion.
+Delivery or immediate operator visibility is not guaranteed by a flushed stream.
+The scoped `usbmon-stderr.log` is not used for those diagnostics, as recorded in
+`usb_diagnostic_delivery`; failure metadata and raw evidence remain independently retained. A fault
+only discovered during late validation is reported then, and cannot return a
+successful result. This is not a real-time physical interlock.
+
+Even a clean result means **`observation_only_not_stop_or_commissioning`**.
+Historical declarations are not standing permission; metadata explicitly keeps
+`motor_supply_on_permission=not_granted`. No observed zero word proves absence
+of boot/PWM transients, physical stillness, successful stopping or safe future
+energization. See the [operator's physical-only stationary trial finding](lab-findings.md#operator-reported-physical-only-left-motor-startup).
+
+Software verification uses synthetic actual-payload variations for each motor
+word, truthfulness checks at API/CLI/capture/coordinator/USB boundaries, exact TX
+and fault-prefix assertions, notification ordering and late-failure tests.
+A **host-created PTY** exercises native one-open/one-write/read/close; its USB
+events, identity and unsupported modem-line readbacks are explicitly synthetic.
+It is not a robot, USB capture or powered-motor test.
 
 ## Conservative host-ingress timestamps
 

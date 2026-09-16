@@ -15,6 +15,40 @@ Original successor-drive software explicitly supports this legacy USB identity.
 Legacy `S`/`E` framing and six read operations are now live-confirmed on this controller.
 No motor/servo command library exists yet.
 
+## Operator-reported physical-only left-motor startup
+
+On September 16, 2026 UTC (September 15 operator-local evening), the parent
+relayed the actual operator result after one separately accepted **physical-only**
+startup/stationary-intent plan, with an intended powered interval **no more than
+one second**:
+
+> “no twitch, no motion, HY1803D is off”
+
+The declared setup was MotorL only; MotorR and servos disconnected; supports
+secured and clearance established; full power OFF before connection. The shared
+HY1803D supplies controller electronics **and** motors. This is an
+**operator-observed** outcome, without independent timing or current trace.
+The intended interval is not a measured duration. It did **not** test stopping
+from motion and does not establish an effective software stop.
+
+Earlier DMM readings of 0 V before/after, and Phase A raw PWM/velocity words
+already equal to zero, do not establish causality or exclude PWM/boot
+transients. Stillness observed in one startup is not proof of future startup
+behavior, absent torque, calibration, current limits or electrical readiness.
+No private path, photo or unreviewed raw capture is published with this derived
+finding.
+
+The current operator statement is **HY1803D OFF**. Hardware access remains on
+hold. The unchanged supply-OFF preparation profile remains physically
+inapplicable in this shared-supply wiring; its gates must not be bypassed.
+The newly implemented [fixed powered read-only scope](legacy-live.md#left-motor-powered-read-only-observation)
+was tested with software mocks and a host PTY only. All its ready flags require
+future fresh operator confirmation and a **new bounded physical power plan**;
+neither this past physical trial nor historical metadata grants access,
+energization, another trial, an automatic power switch or a motor-stop action.
+
+## Earlier isolated communication observations
+
 **Explicit operator reconnect and fresh session, September 15 at 23:44-45 UTC:**
 after clean close, the operator unplugged/replugged only the reviewed same-port
 J10 host USB cable and reconfirmed all four isolations with nothing unexpected.

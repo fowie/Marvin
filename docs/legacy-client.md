@@ -9,6 +9,14 @@ integration separately; it does not authorize routine hardware use.
 The existing `marvin_legacy_probe` one-shot path and modern EFBE behavior are
 unchanged. Importing/invoking the client module does not perform I/O.
 
+Optional synchronous `on_evidence()` and `on_failure(error)` hooks support
+the separately guarded powered observation without adding commands or changing
+default behavior. The collector's `on_evidence(events)` receives newly retained
+classified evidence, including final partial events; its validator can refuse
+nonzero/unknown telemetry. Failure notification runs before client failure
+cleanup, not merely after collector finalization. Hooks must be bounded and
+cooperative; they are not physical interlocks or power-removal mechanisms.
+
 Run the complete in-memory example, using only synthetic replies and a fake
 clock:
 
