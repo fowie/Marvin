@@ -136,3 +136,36 @@ authorized.
 After this one observation, close all handles and return the actual raw result
 for review. No additional command, wiring/power change, powered trial, issue
 closure or relaxed safety gate follows automatically.
+
+## First authorized invocation: preflight refusal
+
+On September 16, 2026 at approximately 00:06 UTC (September 15 local time), the
+parent released exactly one isolated diagnostic invocation at
+`466e06316a2a05b168a55675d0b536e6357e3b84`, following the operator's renewed
+four-path isolation confirmation. The command failed during cached udev
+preflight: lookup of the approved by-id serial path returned exit status 1.
+
+The refusal occurred **before any tty open, USB recorder launch, application
+submission or capture-directory creation**. Subsequent cached-only exact-path
+checks at 00:06:53.421320 UTC found the expected by-id link, `ttyACM0` and the
+previously reviewed USB sysfs path `1-1.1.3.3` all absent. This records host path
+absence; it does not identify the physical cause or authorize changing cables,
+power or ports.
+At 00:07:47.763384-00:07:47.767005 UTC, a second cached-only check confirmed
+the by-id link still had no target and `/sys/bus/usb/devices/1-1.1.3.3` was
+absent. The exact cached udev query again returned 1 with `No such device`
+and empty stdout. No matching `045e:4444` identity was available at the pinned
+port. This is more than a single transient udev-query failure, but still does
+not distinguish cable, power, hub, enumeration or other physical causes.
+
+No zero request was sent, sequence 1024 remains unsubmitted, and there is no
+installed zero-command response or stop evidence. No USB trace was opened, so
+there is no wire-capture claim about other host USB activity. No handle created
+by this diagnostic remained open, and no retry or other command was attempted.
+Private audit ID: `zero-1024-preflight-refusal`. The planned capture directory
+was not created; the audit is not a capture or synthetic replacement for one.
+
+**Hold:** the parent/operator must review the absent expected connection.
+Any subsequent invocation requires fresh explicit release and all normal
+preflight/isolation/ownership guards. Powered motion and physical-stop claims
+remain out of scope.
