@@ -364,3 +364,97 @@ physically inapplicable in the current wiring. Its no-TX refusal is consistent
 with absent controller power, not proof of a USB fault. The statement is
 operator-declared, not electrically measured. No supply-ON authorization,
 guard bypass or change to the earlier raw-byte findings follows.
+
+## Isolated left-output DMM comparison: read-only baseline then zero
+
+On September 16, 2026, the parent authorized a bounded two-phase observation
+at `4733f2613c1e2d22e5e1814d578b45a4d569e6bc`, without software changes.
+The operator declared MotorL disconnected again after all-power/USB removal;
+MotorR and servo power/signals remained isolated. The controller was then
+powered by the shared HY1803D at the operator-reported 12 V / 1 A setting.
+**The board was powered; the motor loads were disconnected.**
+
+Before any new software command, the operator reported a multimeter DC
+indication of **0 V across the board-side left motor pair**. Pin identification,
+meter setup, unchanged measurement placement and declared power cycle are
+operator statements, not measurements made by this software. The reading
+does not exclude boot/PWM transients, establish physical stop, or measure
+loaded motor behavior. The supply current-limit setting is not a guaranteed
+transient-energy cap.
+
+Fresh cached preflight at 05:13:05.714332 UTC pinned `045e:4444` at the known
+port `1-1.1.3.3`, bus 1/device **18**, sysfs device 25/inode **72764**,
+`ttyACM0`/rdev 42496. The 71-byte descriptor SHA256 remained
+`7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b`.
+Both run baselines and cached checks between phases (05:14:04.103983 UTC)
+and after final close (05:14:48.949001 UTC) agreed exactly. Visible-owner
+checks passed; their normal cross-user/root visibility limitations remain.
+
+### Phase A: actual pre-zero snapshot
+
+From 05:13:10.196539 to 05:13:30.721863 UTC, one ReadRawData request at
+sequence **2048**, `5300080000000082c445`, produced one matching CRC-valid
+status-80 reply of 144 bytes / 134 payload bytes / 82 decoded fields.
+Exactly 10 application OUT bytes and all 144 received bytes matched the
+full USB evidence, adapter journal and poll journal.
+
+Before the new zero command, **both raw motor velocity words and all four
+raw PWM words were already zero** (`00 00`, offsets 72/74 and 90/92/94/96).
+Unlike the earlier sequences 512-516 and 768-772, neither reverse PWM word
+reported 100 in this snapshot. This does not establish an invariant boot
+default or explain the earlier state.
+
+Only after independent byte/hash/tail review and unchanged identity was
+phase B admitted. Private phase-A audit ID: `left-output-pre-zero-2048`.
+
+### Phase B: separately authorized zero after the declared power cycle
+
+From 05:14:08.413694 to 05:14:28.956624 UTC, exactly one fixed 14-byte
+sequence-1024 request, `5300041100040000000000fdc145`, produced exactly
+10 received bytes, `53000411800000961145`. Header/footer/CRC (`1196`),
+sequence 1024, command `11`, response field `80` and empty payload matched
+the earlier observation. The full binary USB payload matched the serial
+journal exactly. This remains **command/sequence correlation only**,
+`unverified_shape_and_semantics`, not an application ACK or applied-zero/
+physical-stop confirmation.
+
+Reuse of sequence 1024 was explicitly authorized for this new observation
+after the operator-declared power cycle; it was not a retry or reuse within
+an existing capture. There was no post-zero getter, corrective zero or other
+application command. Private phase-B audit ID: `isolated-zero-1024-dmm`.
+
+### Independent evidence checks and final hold
+
+| Observed property | Phase A | Phase B |
+|---|---|---|
+| Target USB records / paired transfers | 46 / 23 | 42 / 21 |
+| Nonempty bulk-IN transfers | 2 | 1 |
+| Initial quiet after tty configuration | 1.005366248 s | 1.005000868 s |
+| Conservative ingress after host submission | 467.274-534.864 us | 174.404-175.933 us |
+| Tty close duration | 0.034362969 s | 0.034777360 s |
+| Recorded tail after close | 17.723894885 s | 14.712513774 s |
+| Recorder lifetime from readiness | 20.188876755 s | 20.268479737 s |
+| Independently rehashed manifest entries | 26 | 24 |
+| CDC line requests | `3 -> 0` | `3 -> 0` |
+
+Both recorders stopped normally by coordinator request before their individual
+25-second hard limits, with zero queued/dropped events, no incomplete or
+unmatched retained transfers, and no uncertain application TX. Phase B
+observed 3.000190243 seconds after submission before initiating close.
+Its 17 zero-byte cancellation completions are not reply/error semantics;
+24 unrelated bus records were filtered, not retained as target evidence.
+Ingress times are host USB-completion bounds, not controller execution times.
+
+| Artifact SHA256 | Phase A | Phase B |
+|---|---|---|
+| Root manifest | `9a707ba33ab491f54e570f7bd0cc0c7ca7bb594d696fb62cf0d173c16b790fd1` | `d0382e05fa1a1b213d984c30660ea9f5ce5d5414393cfe3785c5e10a82ae7a69` |
+| Adapter journal | `05483bc55fb7276ae90934e6e054501bab5dfb3ec1cedd2c34156e21163f97f2` | `bb61aa2e5212538899cd9416f59b00bcee93dddaeab8b6e4b9eac9d540c4fd23` |
+| Full binary USB | `5841f3552f8ca33f1a0edd57c496337fc6c78c08453985c2ec6b30ea46302c71` | `041aa3804127146991e7eed1625a7a5b816a6fa3b12953c96103871d5256fe36` |
+| Concatenated RX | `a2bff18c8c876eb4302360a463d90d5b945725f5398a9b89bfde5b24c479b054` | `d4b4e0fcaaa910b5f161397b6a62ae192eca83395a0d57e83d69b3eadbf4bb10` |
+
+The total plan used **two tty opens, 24 application TX bytes and 154 RX bytes**.
+All software handles closed. The parent was notified after independent
+verification to obtain the operator's post-zero DMM indication; no post-zero
+DMM value is established by these captures. No causality, physical-stop,
+motor connection, further command or supply action is authorized. Hardware
+remains on hold.
