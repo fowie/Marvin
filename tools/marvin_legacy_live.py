@@ -392,6 +392,11 @@ class LiveTransport:
                 data != read_raw_data_request(self.plan.first_sequence + self.writes)
                 or self.writes >= self.plan.max_requests):
             raise OSError("Only the next approved ReadRawData request may be written.")
+        return self._submit_once(data, deadline=deadline)
+
+    def _submit_once(self, data, *, deadline):
+        """Internal submission mechanics; public write retains the getter policy."""
+        self._check(deadline)
         self.ingress.pump()
         if self.ingress.pending:
             raise OSError("Incomplete USB evidence publication before request; no write.")

@@ -75,6 +75,7 @@ owner's approval.** Publication acceptance is tracked in
 - [Persistent legacy getter client and offline API example](docs/legacy-client.md)
 - [Bounded read-only polling, recording and offline inspection](docs/legacy-polling.md)
 - [Explicitly guarded LIVE serial/USB collection](docs/legacy-live.md)
+- [Isolated one-shot zero-velocity characterization](docs/legacy-zero.md)
 - [Full historical/modern command catalogue](docs/marvin-command-map.json)
 - [Configuration export: 108 bytes, 27 words](docs/marvin-configuration.json)
 - [Raw telemetry snapshot: 134 bytes, 82 fields](docs/marvin-telemetry-snapshot.json)

@@ -52,7 +52,7 @@ USBMON_ROOT = Path("/sys/kernel/debug/usb/usbmon")
 LIMITATIONS = [
     "Bus-wide events transiently enter memory before filtering; only output is target-scoped.",
     "usbmon is a host URB trace, not wire-level ACK/NAK evidence.",
-    "Both backends retain at most 32 payload bytes per event; omitted bytes cannot be recovered from these files.",
+    "Text retains at most 32 payload bytes per event; binary uses its declared payload budget. Bytes omitted from binary cannot be recovered from that file.",
     "Successful USB completions and zero-length IN are not serial/application acknowledgments.",
     "Submission -115 means in progress; pending IN at trace end is not a timeout.",
     "Cancellation/shutdown statuses do not by themselves establish a device failure.",

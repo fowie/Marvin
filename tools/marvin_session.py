@@ -238,6 +238,7 @@ def run_session(
     usb_tail_seconds=30, usb_close_grace_seconds=0,
     deadline=None,
     capture_runner=None, binary_payload_limit=32,
+    _isolated_zero_velocity=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -255,6 +256,21 @@ def run_session(
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
     if capture_runner is not None and not callable(capture_runner):
         raise ValueError("capture_runner must be a callable serial capture boundary.")
+    if type(_isolated_zero_velocity) is not bool:
+        raise ValueError("Internal isolated-zero mode must be an explicit boolean.")
+    if _isolated_zero_velocity:
+        from tools.marvin_legacy_zero import ZERO_TRANSCRIPT, SERIAL_SECONDS
+        if (capture_runner is None or actuators_isolated is not True
+                or allow_unknown_command is not True or sudo_usbmon is not False
+                or usbmon_backend != "binary" or binary_payload_limit != 4096
+                or probe_profile != "legacy" or baudrate != 57600
+                or (bytesize, parity, stopbits) != (8, "N", 1)
+                or seconds != SERIAL_SECONDS or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
+                or dtr is not False or rts is not False
+                or any((probe_cr, probe_get_config, probe_get_unit_info, probe_get_sensor_info,
+                        allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
+                or probe_schedule is not None or probe_delay):
+            raise ValueError("Isolated zero characterization requires its separate fixed, isolated legacy plan.")
     marvin_usbmon.binary.payload_budget(binary_payload_limit)
     if binary_payload_limit != 32 and usbmon_backend != "binary":
         raise ValueError("Extended payload recording requires binary usbmon.")
@@ -277,7 +293,7 @@ def run_session(
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
     marvin_probe.validate_framing(bytesize, parity, stopbits)
     marvin_tx_policy.validate_profile(probe_profile)
-    if probe_profile != "modern" and probe_schedule is None:
+    if probe_profile != "modern" and probe_schedule is None and not _isolated_zero_velocity:
         raise ValueError("Named coordinator probes require the modern profile.")
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
@@ -349,11 +365,13 @@ def run_session(
         "started_at": marvin_probe.utc_now(),
         "baseline": baseline,
         "requested_application_bytes": (
+            len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
             else len(probe) if probe is not None else 0
         ),
-        "requested_probe_hex": probe.hex() if probe is not None else None,
-        "probe_name": probe_name,
+        "requested_probe_hex": (ZERO_TRANSCRIPT[0].hex() if _isolated_zero_velocity else
+                                probe.hex() if probe is not None else None),
+        "probe_name": "IsolatedZeroVelocityCharacterization" if _isolated_zero_velocity else probe_name,
         "probe_profile": probe_profile,
         "source_expected_response_payload_bytes": expected_payload_bytes,
         "telemetry_state_change_authorized": bool(
@@ -361,7 +379,7 @@ def run_session(
             and allow_telemetry_state_change
         ),
         "unknown_command_authorized": bool(
-            (probe is not None or probe_schedule is not None) and allow_unknown_command
+            (probe is not None or probe_schedule is not None or _isolated_zero_velocity) and allow_unknown_command
         ),
         "probe_delay_seconds": probe_delay,
         "line_state_trial_authorized": allow_line_state_trial,
@@ -385,6 +403,11 @@ def run_session(
             "Electrical faults are not cleared by successful capture.",
         ],
     }
+    if _isolated_zero_velocity:
+        metadata.update(unvalidated_zero_velocity_authorized=True,
+                        immutable_application_transcript_hex=[raw.hex() for raw in ZERO_TRANSCRIPT],
+                        application_acknowledgment="not_established", physical_stop="not_established")
+        metadata["limitations"][2] = "Kernel-open line transitions remain possible; this diagnostic uses an unflushed raw tty."
     if deadline is not None:
         metadata["shared_deadline_monotonic"] = deadline
     metadata_path = output / "metadata.json"

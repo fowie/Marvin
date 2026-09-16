@@ -119,6 +119,25 @@ class SessionTests(unittest.TestCase):
         command = self.popen.call_args.args[0]
         self.assertEqual(command[command.index("--binary-payload-limit") + 1], "4096")
 
+    def test_isolated_zero_mode_has_fixed_guards_and_separate_transcript_metadata(self):
+        from tools.marvin_legacy_zero import ZERO_TRANSCRIPT
+        options = dict(seconds=15, actuators_isolated=True, baudrate=57600,
+                       allow_unknown_command=True, probe_profile="legacy",
+                       capture_runner=Mock(side_effect=self.capture), binary_payload_limit=4096,
+                       usb_tail_seconds=5, usb_close_grace_seconds=5, _isolated_zero_velocity=True)
+        for invalid in ({"actuators_isolated": 1}, {"allow_unknown_command": 1},
+                        {"dtr": True}, {"seconds": 30}, {"baudrate": 9600},
+                        {"capture_runner": None}, {"sudo_usbmon": True},
+                        {"probe_get_config": True}, {"_isolated_zero_velocity": 1}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.run_capture(**(options | invalid))
+        self.preflight.assert_not_called()
+        result = self.run_capture(**options)
+        self.assertEqual(result["requested_application_bytes"], 14)
+        self.assertEqual(result["immutable_application_transcript_hex"], [ZERO_TRANSCRIPT[0].hex()])
+        self.assertEqual(result["physical_stop"], "not_established")
+        self.serial.assert_not_called()
+
     def test_dangling_output_symlink_cannot_redirect_evidence(self):
         root = Path(self.temp.name)
         for relative in (False, True):
