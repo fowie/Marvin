@@ -711,7 +711,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             drop_to_invoking_user=False, max_bytes=DEFAULT_MAX_BYTES,
             max_records=DEFAULT_MAX_RECORDS, max_line_bytes=DEFAULT_MAX_LINE_BYTES,
             max_pending=DEFAULT_MAX_PENDING, backend="text", coordinator_stop=False,
-            binary_payload_limit=binary.PAYLOAD_LIMIT):
+            binary_payload_limit=binary.PAYLOAD_LIMIT,
+            motor_supply_off=False, motor_left_only_connected=False,
+            motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
+            unprivileged_usbmon=False, new_boot_declared=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -723,6 +726,22 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     identity access and monitor opening. Checks are snapshots, not protection
     against concurrent ancestor replacement; final directory creation is exclusive.
     """
+    from tools import marvin_motor_power_off_consent as motor_consent
+    declarations = dict(
+        motor_supply_off=motor_supply_off, motor_left_only_connected=motor_left_only_connected,
+        motor_right_and_servos_isolated=motor_right_and_servos_isolated,
+        authorize_unvalidated_zero_velocity=authorize_unvalidated_zero_velocity,
+        unprivileged_usbmon=unprivileged_usbmon, new_boot_declared=new_boot_declared,
+    )
+    try:
+        preparation = motor_consent.validate(actuators_isolated=actuators_isolated, **declarations)
+    except ValueError as error:
+        raise UsbmonError(str(error)) from error
+    if preparation and (
+            drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
+            or binary_payload_limit != 4096 or seconds != 25 or coordinator_stop is not True
+            or max_bytes != 1048576 or max_records != 10000 or max_line_bytes != 16384):
+        raise UsbmonError("Preparation recorder requires ordinary-user fixed full binary evidence budgets.")
     ids = validate_privilege_drop(drop_to_invoking_user)
     if type(coordinator_stop) is not bool:
         raise UsbmonError("coordinator_stop must be a boolean.")
@@ -737,7 +756,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             or (isinstance(seconds, float) and not math.isfinite(seconds))
             or not 0 < seconds <= 120):
         raise UsbmonError("seconds must be finite, greater than zero and at most 120.")
-    if actuators_isolated is not True:
+    if actuators_isolated is not True and not preparation:
         raise UsbmonError("Explicit --actuators-isolated confirmation is required.")
     _integer_limit(max_bytes, "max_bytes", 1, 64 * DEFAULT_MAX_BYTES)
     if backend == "binary" and max_bytes < len(binary.FILE_MAGIC):
@@ -787,6 +806,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                                 "source": "cached sysfs descriptors"},
                 "privileges_dropped": ids is not None,
             }
+            if preparation:
+                metadata.update(**motor_consent.history(declarations),
+                                actuator_power_and_signal_isolation_acknowledged=False,
+                                consent_profile="motor_power_off_preparation")
             framer = _Framer(max_line_bytes, (identity["busnum"], identity["devnum"]))
             failure = None
             started = None
@@ -988,12 +1011,14 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
 
 
 def main(argv=None):
+    from tools import marvin_motor_power_off_consent as motor_consent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--analyze", metavar="FILE", help="Offline evidence-only analysis to stdout as JSON.")
     parser.add_argument("--usb-path", type=Path)
     parser.add_argument("--output", type=Path, help="New private directory; must not exist.")
     parser.add_argument("--seconds", type=float, default=90)
     parser.add_argument("--actuators-isolated", action="store_true")
+    motor_consent.add_arguments(parser)
     parser.add_argument("--drop-to-invoking-user", action="store_true")
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
                         help="Capture evidence or offline input byte limit (default: 1048576; maximum: 67108864)")
@@ -1007,7 +1032,8 @@ def main(argv=None):
                         help=f"Allow an empty regular {COORDINATOR_STOP_FILE} file in the output directory to stop capture")
     args = parser.parse_args(argv)
     if args.analyze:
-        if args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated or args.coordinator_stop:
+        if (args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated
+                or args.coordinator_stop or any(motor_consent.arguments(args).values())):
             parser.error("--analyze cannot be combined with capture paths or privilege/isolation flags.")
         try:
             result = analyze_file(
@@ -1030,6 +1056,7 @@ def main(argv=None):
             max_records=args.max_records, max_line_bytes=args.max_line_bytes, max_pending=args.max_pending,
             backend=args.backend, coordinator_stop=args.coordinator_stop,
             binary_payload_limit=args.binary_payload_limit,
+            **motor_consent.arguments(args),
         )
     except CaptureError as exc:
         result = exc.metadata

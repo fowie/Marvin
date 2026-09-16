@@ -29,6 +29,7 @@ if __package__ in (None, ""):
 
 from tools import marvin_probe, marvin_protocol, marvin_tx_policy, marvin_usbmon
 from tools.marvin_paths import new_output_path
+from tools import marvin_motor_power_off_consent as motor_consent
 
 
 USB_POST_CLOSE_DRAIN_SECONDS = 0.25
@@ -239,6 +240,10 @@ def run_session(
     deadline=None,
     capture_runner=None, binary_payload_limit=32,
     _isolated_zero_velocity=False,
+    _motor_power_off_preparation=False,
+    motor_supply_off=False, motor_left_only_connected=False,
+    motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
+    unprivileged_usbmon=False, new_boot_declared=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -256,8 +261,30 @@ def run_session(
         raise ValueError("Run the coordinator as the ordinary user, not under sudo.")
     if capture_runner is not None and not callable(capture_runner):
         raise ValueError("capture_runner must be a callable serial capture boundary.")
-    if type(_isolated_zero_velocity) is not bool:
-        raise ValueError("Internal isolated-zero mode must be an explicit boolean.")
+    if any(type(flag) is not bool for flag in (_isolated_zero_velocity, _motor_power_off_preparation)):
+        raise ValueError("Internal diagnostic modes must be explicit booleans.")
+    declarations = dict(
+        motor_supply_off=motor_supply_off, motor_left_only_connected=motor_left_only_connected,
+        motor_right_and_servos_isolated=motor_right_and_servos_isolated,
+        authorize_unvalidated_zero_velocity=authorize_unvalidated_zero_velocity,
+        unprivileged_usbmon=unprivileged_usbmon, new_boot_declared=new_boot_declared,
+    )
+    preparation_consent = motor_consent.validate(actuators_isolated=actuators_isolated, **declarations)
+    if preparation_consent != _motor_power_off_preparation or (
+            _motor_power_off_preparation and _isolated_zero_velocity):
+        raise ValueError("Preparation consent is only valid for the separate fixed preparation profile.")
+    if _motor_power_off_preparation:
+        from tools.marvin_legacy_motor_power_off_prep import TRANSCRIPT
+        if (capture_runner is None or allow_unknown_command is not True or sudo_usbmon is not False
+                or usbmon_backend != "binary" or binary_payload_limit != 4096
+                or probe_profile != "legacy" or baudrate != 57600
+                or (bytesize, parity, stopbits) != (8, "N", 1)
+                or seconds != 15 or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
+                or dtr is not False or rts is not False
+                or any((probe_cr, probe_get_config, probe_get_unit_info, probe_get_sensor_info,
+                        allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
+                or probe_schedule is not None or probe_delay):
+            raise ValueError("Motor-power-OFF preparation requires its separate fixed legacy plan.")
     if _isolated_zero_velocity:
         from tools.marvin_legacy_zero import ZERO_TRANSCRIPT, SERIAL_SECONDS
         if (capture_runner is None or actuators_isolated is not True
@@ -283,7 +310,7 @@ def run_session(
         probe_cr=probe_cr, probe_get_config=probe_get_config,
         probe_get_unit_info=probe_get_unit_info, probe_get_sensor_info=probe_get_sensor_info,
     )
-    if actuators_isolated is not True:
+    if actuators_isolated is not True and not _motor_power_off_preparation:
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
@@ -293,7 +320,8 @@ def run_session(
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
     marvin_probe.validate_framing(bytesize, parity, stopbits)
     marvin_tx_policy.validate_profile(probe_profile)
-    if probe_profile != "modern" and probe_schedule is None and not _isolated_zero_velocity:
+    if (probe_profile != "modern" and probe_schedule is None
+            and not (_isolated_zero_velocity or _motor_power_off_preparation)):
         raise ValueError("Named coordinator probes require the modern profile.")
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
@@ -365,6 +393,7 @@ def run_session(
         "started_at": marvin_probe.utc_now(),
         "baseline": baseline,
         "requested_application_bytes": (
+            sum(map(len, TRANSCRIPT)) if _motor_power_off_preparation else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
             else len(probe) if probe is not None else 0
@@ -408,6 +437,16 @@ def run_session(
                         immutable_application_transcript_hex=[raw.hex() for raw in ZERO_TRANSCRIPT],
                         application_acknowledgment="not_established", physical_stop="not_established")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; this diagnostic uses an unflushed raw tty."
+    if _motor_power_off_preparation:
+        metadata.update(
+            **motor_consent.history(declarations),
+            actuator_power_and_signal_isolation_acknowledged=False,
+            probe_name="MotorPowerOffPreparation",
+            immutable_application_transcript_hex=[raw.hex() for raw in TRANSCRIPT],
+            requested_probe_hex=b"".join(TRANSCRIPT).hex(),
+            unknown_command_authorized=True,
+        )
+        metadata["limitations"][2] = "Kernel-open line transitions remain possible; preparation uses an unflushed raw tty."
     if deadline is not None:
         metadata["shared_deadline_monotonic"] = deadline
     metadata_path = output / "metadata.json"
@@ -417,9 +456,12 @@ def run_session(
         "--usb-path", baseline["usb"]["usb_path"],
         "--output", str(usb_output),
         "--seconds", str(usb_max_seconds),
-        "--actuators-isolated",
         "--backend", usbmon_backend,
     ]
+    if _motor_power_off_preparation:
+        command.extend("--" + name.replace("_", "-") for name in motor_consent.PREPARATION_FLAGS)
+    else:
+        command.append("--actuators-isolated")
     if usb_close_grace_seconds:
         command.append("--coordinator-stop")
     if binary_payload_limit != 32:
@@ -476,7 +518,7 @@ def run_session(
                 serial_result = (capture_runner or marvin_probe.capture)(
                     port, output / "serial", seconds=seconds,
                     baudrate=baudrate, max_bytes=marvin_probe.MAX_CAPTURE_BYTES,
-                    actuators_isolated=True, dtr=dtr, rts=rts,
+                    actuators_isolated=actuators_isolated, dtr=dtr, rts=rts,
                     line_state_at_open=True, guard=guard,
                     allow_line_state_change=allow_line_state_change,
                     allow_line_state_trial=allow_line_state_trial,
@@ -485,6 +527,7 @@ def run_session(
                     probe_profile=probe_profile,
                     allow_telemetry_state_change=allow_telemetry_state_change,
                     **probe_options, **deadline_options,
+                    **(declarations if _motor_power_off_preparation else {}),
                 )
             finally:
                 serial_returned = time.monotonic()

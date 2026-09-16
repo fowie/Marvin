@@ -49,7 +49,7 @@ class _ZeroTransport(LiveTransport):
 
 
 class _ResponseEvidence:
-    def __init__(self, record):
+    def __init__(self, record, *, sequence=SEQUENCE, command=COMMAND, validate_packet=None):
         self.decoder = LegacyStreamDecoder(max_input_bytes=8192)
         self.spans = deque()
         self.events = []
@@ -57,6 +57,8 @@ class _ResponseEvidence:
         self.submitted_at = self.deadline = None
         self.candidates = 0
         self.last_bounds = None
+        self.sequence, self.command = sequence, command
+        self.validate_packet = validate_packet
 
     def feed(self, received, now):
         start = self.decoder.input_bytes
@@ -87,7 +89,7 @@ class _ResponseEvidence:
                 labels.append(event.kind)
             else:
                 packet = event.packet
-                if packet.command != COMMAND or packet.sequence != SEQUENCE:
+                if packet.command != self.command or packet.sequence != self.sequence:
                     labels.append("unexpected_command_or_sequence")
                 if packet.response_field != 0x80:
                     labels.append("uninterpreted_non80_status")
@@ -95,6 +97,8 @@ class _ResponseEvidence:
                     labels.append("additional_frame")
                 if event.follows_corruption:
                     labels.append("ambiguous_boundary")
+                if self.validate_packet is not None:
+                    labels.extend(self.validate_packet(packet))
                 if len(labels) == 1:
                     labels.append("correlated_command_sequence_only")
                     self.candidates += 1
@@ -142,6 +146,27 @@ def prepare():
     }
 
 
+def _observe_response(transport, response, *, deadline, clock=time.monotonic):
+    """Observe a complete bounded window without owning open, write or close."""
+    for _ in range(4096):
+        if clock() >= response.deadline:
+            break
+        transport.identity(deadline=deadline)
+        transport.ingress.pump()
+        remaining = response.deadline - clock()
+        if remaining <= 0:
+            break
+        readable, _, _ = select.select([transport.fd], [], [], min(0.005, remaining))
+        if readable:
+            received = transport.read(512, deadline=response.deadline)
+            response.feed(received, clock())
+    else:
+        raise OSError("Response observation iteration budget exhausted.")
+    response.finish(clock())
+    if response.candidates != 1:
+        raise OSError("response_not_observed: no single clean correlation candidate; no stop/ACK conclusion.")
+
+
 def _observe(transport, report, *, clock=time.monotonic):
     response = _ResponseEvidence(transport.event)
     primary = None
@@ -164,23 +189,7 @@ def _observe(transport, report, *, clock=time.monotonic):
                       response_deadline=response.deadline)
         if response.deadline != response.submitted_at + RESPONSE_SECONDS:
             raise OSError("Insufficient remaining budget for the approved observation window.")
-        for _ in range(4096):
-            if clock() >= response.deadline:
-                break
-            transport.identity(deadline=deadline)
-            transport.ingress.pump()
-            remaining = response.deadline - clock()
-            if remaining <= 0:
-                break
-            readable, _, _ = select.select([transport.fd], [], [], min(0.005, remaining))
-            if readable:
-                received = transport.read(512, deadline=response.deadline)
-                response.feed(received, clock())
-        else:
-            raise OSError("Response observation iteration budget exhausted.")
-        response.finish(clock())
-        if response.candidates != 1:
-            raise OSError("response_not_observed: no single clean correlation candidate; no stop/ACK conclusion.")
+        _observe_response(transport, response, deadline=deadline, clock=clock)
         report["observation_window_completed"] = True
     except BaseException as error:
         primary = error
@@ -219,6 +228,18 @@ def run_zero(output, *, expected_physical_port, actuators_isolated=False,
     if any(flag is not True for flag in (
             actuators_isolated, authorize_unvalidated_zero_velocity, unprivileged_usbmon)):
         raise ValueError("Literal isolation, unvalidated-zero-command and ordinary-user USB recording consent required.")
+    return _run_diagnostic(
+        output, expected_physical_port=expected_physical_port, review=review,
+        transport_type=_ZeroTransport, observe=_observe, limits=_Limits(),
+        session_options={"actuators_isolated": True, "_isolated_zero_velocity": True},
+        declarations={"actuator_power_and_signal_isolation_acknowledged": True},
+        expected_tx=14, success_status="observation_complete_unverified",
+    )
+
+
+def _run_diagnostic(output, *, expected_physical_port, review, transport_type, observe,
+                    limits, session_options, declarations, expected_tx, success_status):
+    """Shared evidence/USB lifecycle for the two separately gated fixed diagnostics."""
     if (not isinstance(expected_physical_port, str) or len(expected_physical_port) > 100 or
             not re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*(?:\.[1-9][0-9]*)*", expected_physical_port)):
         raise ValueError("Name the separately reviewed physical USB port.")
@@ -234,16 +255,22 @@ def run_zero(output, *, expected_physical_port, actuators_isolated=False,
     report = {"status": "not_started", "accepted_tx_bytes": 0, "uncertain_tx_bytes": 0,
               "write_status": "not_attempted"}
     metadata = {"status": "incomplete", "evidence_kind": "recorded", "review": review, "baseline": baseline,
-                "actuator_power_and_signal_isolation_acknowledged": True,
+                **declarations,
                 "unvalidated_zero_velocity_authorized": True, "application_acknowledgment": "not_established",
                 "physical_stop": "not_established", "automatic_retries": False, "automatic_reconnect": False}
     output.mkdir(mode=0o700)
 
     def capture(port, directory, *, guard, **options):
+        if session_options.get("_motor_power_off_preparation"):
+            from tools import marvin_motor_power_off_consent as consent
+            if not consent.validate(
+                    actuators_isolated=options.get("actuators_isolated"),
+                    **{name: options.get(name) for name in consent.PREPARATION_FLAGS}):
+                raise ValueError("Preparation capture requires its truthful separate declarations.")
         directory.mkdir(mode=0o700)
         ingress.open()
-        transport = _ZeroTransport(port, baseline, directory, ingress, guard=guard, plan=_Limits())
-        _observe(transport, report)
+        transport = transport_type(port, baseline, directory, ingress, guard=guard, plan=limits)
+        observe(transport, report)
         return {"status": "completed", "zero_observation": report}
 
     try:
@@ -252,16 +279,16 @@ def run_zero(output, *, expected_physical_port, actuators_isolated=False,
         marvin_session.write_json(output / "metadata.json", metadata)
         result = marvin_session.run_session(
             marvin_probe.DEFAULT_PORT, output / "capture", seconds=SERIAL_SECONDS,
-            baudrate=57600, actuators_isolated=True, allow_unknown_command=True,
+            baudrate=57600, allow_unknown_command=True,
             probe_profile="legacy", usbmon_backend="binary", expected_usb_identity=baseline["usb"],
             ready_callback=lambda _: clock.check(), usb_tail_seconds=5, usb_close_grace_seconds=5,
-            capture_runner=capture, binary_payload_limit=USB_PAYLOAD_LIMIT, _isolated_zero_velocity=True,
+            capture_runner=capture, binary_payload_limit=USB_PAYLOAD_LIMIT, **session_options,
         )
-        ingress.finish(14)
+        ingress.finish(expected_tx)
         clock.check()
         if ingress.rx_consumed != report["serial_rx_bytes"]:
             raise OSError("Serial/USB evidence byte accounting differs.")
-        metadata.update(status="observation_complete_unverified", session=result,
+        metadata.update(status=success_status, session=result,
                         usb_in_bytes=ingress.rx_bytes, usb_out_completed_bytes=ingress.completed_tx,
                         observed_line_states=ingress.line_states)
     except BaseException as error:
