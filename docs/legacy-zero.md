@@ -169,3 +169,99 @@ was not created; the audit is not a capture or synthetic replacement for one.
 Any subsequent invocation requires fresh explicit release and all normal
 preflight/isolation/ownership guards. Powered motion and physical-stop claims
 remain out of scope.
+
+## Separately released observation after operator USB return
+
+After the operator reported unplugging/reconnecting Marvin and requested
+continuation, the parent separately released one new invocation at
+`c26cadcfd17745f38641ae8edce0b690a3f42880` (unchanged diagnostic implementation
+`466e06316a2a05b168a55675d0b536e6357e3b84`). The last explicit operator statement
+was that all four actuator power/signal paths remained disconnected; no
+actuator reconnection was requested or reported. This was not an automatic
+retry. The earlier refusal had submitted no request.
+
+The real observation ran on September 16, 2026, 01:07:36.384578 through
+01:07:56.802256 UTC. Cached preflight at 01:07:12.498738-01:07:12.610920 UTC,
+the fresh run baseline and recorder identity, and post-close cached preflight
+at 01:08:05.195676 UTC agreed on:
+
+| Identity field | Observed value |
+|---|---|
+| Device / physical port | `045e:4444` / `1-1.1.3.3` |
+| USB generation | Bus 1, device 14; sysfs device 25, inode 67806 |
+| Serial node / rdev | `/dev/ttyACM0` / 42496, through the approved by-id selector |
+| Cached descriptors | 71 bytes; SHA256 `7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b` |
+
+The previous successful read-only generation was bus 1/device 10, inode 65032;
+the intervening refusal observed no device at the pinned port. No continuous
+presence observer covered this later operator reconnect, so its disappearance/
+return timestamps and intermediate generations are not established.
+
+### Exact request and opaque response
+
+Exactly **one sequence-1024 request** was submitted, with 14 accepted bytes,
+zero uncertain bytes and one matching successful 14-byte USB bulk-OUT
+completion. Independent offline parsing of the complete binary USB records
+matched the request to the serial write journal. There was no second request,
+getter, trailing zero or other application OUT.
+
+Exactly one nonempty USB bulk-IN completion contained the same complete
+10 bytes as the sole serial RX chunk:
+
+| Field | Observed value |
+|---|---|
+| Request | `5300041100040000000000fdc145` |
+| Response | `53000411800000961145` |
+| Response sequence / command / response field | 1024 / `11` / `80` |
+| Response payload | Empty, declared length 0 |
+| Response CRC | `1196`, stored little-endian as `96 11`; framing/CRC valid |
+| Classification | `unverified_shape_and_semantics`, `correlated_command_sequence_only` |
+
+This is **command/sequence correlation only**, not an established application
+ACK, applied zero target, zero motor output, validated stop command or physical
+stop. The reply has no telemetry fields; the getter's 134-byte layout was not
+applied. The observation does not validate nonzero values, physical channel
+mapping, units, brake/coast behavior or watchdog behavior.
+
+### Timing, close and evidence health
+
+The prewrite quiet interval after completed tty configuration was
+1.005706305 seconds. Conservative USB-completion ingress bounds were
+131.766-134.044 microseconds after the host submission marker, not a measured
+controller execution time. Close began 3.000868208 seconds after that marker,
+after the full three-second receive window, and completed in 0.034601712
+seconds. The journal records one open and one close with no cleanup errors.
+
+The recorder stopped normally by coordinator request 20.197632136 seconds
+after readiness, before its 25-second hard deadline, retaining
+14.888707921 seconds after completed tty close. All 44 records paired into
+22 transfers, without unmatched transfers, dropped/queued records, partial
+records or omitted payload bytes. The 17 zero-byte cancellation completions
+remain close/cancellation evidence, not command errors or responses.
+CDC line requests were again **3 -> 0** despite requested low DTR/RTS; there
+is no glitch-free-line claim. Post-close cached preflight found no visible
+conflicting tty owner; this retains the usual other-user/root visibility
+limitation.
+
+All 24 entries across the nested evidence manifests were independently
+rehashed. Private audit ID: `isolated-zero-1024-after-return`.
+
+| Artifact | SHA256 |
+|---|---|
+| Root manifest | `3f00214236cf7eff14498c73dcb8ef77282c6399a5072f67d81592ece3106037` |
+| Root metadata | `c12deae3de8f9104f738135862bafb5749c3915d457782443a5d646bbd5a5e7c` |
+| Adapter journal | `22fb73ed93e60ce70d91e18d3e363ea1c8ce7da6ad406c3d7a1ea379a2edcc53` |
+| Full binary USB | `bb8057449769b1d95322fa9b4e9bafeadde534be4c902a973e419ddc5dfcfb4d` |
+| Concatenated raw RX | `d4b4e0fcaaa910b5f161397b6a62ae192eca83395a0d57e83d69b3eadbf4bb10` |
+
+The private captures remain unpublished. Sequence 1024 is now submitted and
+must not be treated as unused. This observation advances only #11's isolated
+interface evidence; #9 readiness, #11 physical stop and #13 commissioning
+remain independent, unresolved operator gates.
+
+**Next hold:** no further hardware request is authorized by this result.
+A separately released read-only batch at unused sequences 1280-1284 may inspect
+raw PWM/velocity fields while all four actuator paths remain isolated, before
+any motor-power reconnection. Compare against the prior raw reverse PWM 100,
+forward PWM 0 and velocity 0 without inferring physical stop or causation from
+a post-command snapshot. No second zero or powered trial follows automatically.
