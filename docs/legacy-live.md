@@ -5,6 +5,12 @@ records sequences 1280-1284 and compares their raw motor fields with the earlier
 baseline/reconnect batches. That comparison is not physical-stop or causality
 evidence.
 
+The later [operator power-topology clarification](legacy-motor-power-off-prep.md#operator-declared-shared-supply-topology)
+states that the HY1803D powered controller electronics during the successful
+isolated captures. Their actuator-load isolation did not mean a deenergized
+controller board or USB-only operation; their recorded communication evidence
+is unchanged.
+
 `tools.marvin_legacy_live` connects the persistent client and collector to one
 Linux tty owner for Epic #1. It is separate from the unchanged synthetic CLI
 and unchanged four-getter one-shot probe. **Only empty ReadRawData `00` requests

@@ -348,3 +348,19 @@ behavior. The parent is requesting operator evidence of support/clearance
 and disconnected motor connections/supply wiring before considering a new
 plan. The accessible HY1803D supply remains an operator-declared motor-energy
 abort method, not a measured stop or a requirement to install a new switch.
+
+## Later power-topology clarification
+
+On September 16, 2026 at approximately 05:09 UTC, the parent relayed the
+operator's clarification that the HY1803D powers controller electronics as
+well as motors and was ON during the successful isolated captures above.
+The motor load power/signals were disconnected; the controller board was
+powered. Earlier isolation declarations must not be rewritten as claims of
+a deenergized board or USB-only controller operation.
+
+This newly clarified shared-supply dependency makes the subsequent
+[MotorL-connected, supply-OFF preparation](legacy-motor-power-off-prep.md#operator-declared-shared-supply-topology)
+physically inapplicable in the current wiring. Its no-TX refusal is consistent
+with absent controller power, not proof of a USB fault. The statement is
+operator-declared, not electrically measured. No supply-ON authorization,
+guard bypass or change to the earlier raw-byte findings follows.

@@ -1,5 +1,15 @@
 # Motor-power-OFF preparation: software only until separately authorized
 
+**Physically inapplicable in the currently reported shared-supply wiring.**
+On September 16, 2026, the operator clarified that the HY1803D powers both
+controller electronics and motors; USB alone does not provide operational
+controller power in this setup. With MotorL attached and the HY1803D
+OFF/output disconnected, the preparation cannot communicate with the
+controller. Do not bypass `--motor-supply-off`, turn on the shared supply,
+or treat this profile as a powered-motor mode. The tool and refusal history
+below are retained; no successful robot execution of this profile exists.
+See [the topology clarification](#operator-declared-shared-supply-topology).
+
 This is a separate fixed preparation profile, **not a motor-supply-ON test,
 validated stop API, or permission to change wiring or power**. MotorL is
 attached under this profile, so `--actuators-isolated` would be false and is
@@ -188,3 +198,34 @@ The released attempt is consumed by this refusal. Hardware remains on hold
 for the parent/operator to review the missing connection. A subsequent
 attempt requires a new explicit release and fresh guards; no supply
 connection/ON, wiring change, retry or other command is authorized.
+
+## Operator-declared shared-supply topology
+
+At 05:09 UTC on September 16, 2026 (22:09 September 15 operator-local time),
+the parent relayed the operator's clarification: the HY1803D was **ON during
+earlier successful captures**, with the motor plugs disconnected, and supplies
+**controller electronics as well as motors**. The preparation plan's
+assumption that restoring only J10 USB would power operational controller
+logic was incorrect for this reported topology.
+
+The current declared configuration is MotorL attached, HY1803D OFF/output
+disconnected, and USB restored. The missing cached controller identity and
+zero-TX refusal are consistent with absent operational controller power;
+they do not prove a USB fault. This explanation is operator-declared, not a
+new electrical measurement, cached device observation or powered experiment.
+The earlier refusal record and its then-unknown cause are preserved.
+
+The earlier all-actuators-isolated captures remain valid communication
+evidence: **motor load power/signals were disconnected while the controller
+board was powered**. Full actuator isolation did not mean the controller board
+was deenergized or USB-only powered. Do not reinterpret those observations as
+board-power-off tests or infer that USB presence alone keeps the board running.
+
+This preparation profile's required supply-OFF condition prevents operational
+communication in the current wiring. Turning the shared supply on with MotorL
+attached would change the physical test envelope, not fix a software guard.
+No guard bypass, code broadening, supply connection/ON, retry or powered
+MotorL test is authorized. The parent is determining available meter/scope
+capability for a separately reviewed **no-load motor-output characterization**
+before considering any powered-MotorL attempt; no measurement procedure or
+hardware action is authorized here. Hardware remains closed and on hold.
