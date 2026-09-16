@@ -265,3 +265,81 @@ raw PWM/velocity fields while all four actuator paths remain isolated, before
 any motor-power reconnection. Compare against the prior raw reverse PWM 100,
 forward PWM 0 and velocity 0 without inferring physical stop or causation from
 a post-command snapshot. No second zero or powered trial follows automatically.
+
+## Separately released post-zero ReadRawData batch
+
+The parent subsequently released exactly one read-only batch at
+`7dec580e6ed9bc02cef962e98872428c36f1c403`, with the same operator-declared
+four-path isolation and no wiring or power change authorized. It ran on
+September 16, 2026, 01:09:48.400513-01:10:08.840957 UTC, using the existing
+getter-only LIVE tool, one persistent tty open and sequences **1280-1284**.
+No further zero or other setter was sent.
+
+All five CRC-valid status-80 replies were 144 bytes with 134-byte payloads.
+The offline authored layout decoded 82 fields per reply. Independent extraction
+from the original payload offsets agreed with the telemetry decoder:
+
+| Raw field (payload offset, LE uint16 view) | Prior 512-516 and 768-772, every sample | Post-zero 1280-1284, every sample |
+|---|---|---|
+| `motorVelocityL` (72), `motorVelocityR` (74) | 0, 0 | 0, 0 |
+| `motorPwmLeftForward` (90), `motorPwmRightForward` (94) | 0, 0 | 0, 0 |
+| `motorPwmLeftReverse` (92), `motorPwmRightReverse` (96) | 100, 100 | 0, 0 |
+
+Both earlier actual captures were re-decoded for this comparison. The reverse
+PWM words changed from raw `64 00` to `00 00`; the other listed words remained
+`00 00`. These are source-derived field labels and raw values, not calibrated
+velocity, measured PWM pins or motor-energy evidence. In particular, an
+intervening USB disconnect/return and the absence of an immediate pre-zero
+snapshot prevent assigning this difference solely to the zero request.
+**No causal effect, applied-zero confirmation or physical stop is established.**
+
+Independent binary parsing verified exactly five ten-byte ReadRawData OUT
+submissions/completions, with request sequences 1280-1284 and no other
+application OUT. All 720 received bytes matched across the complete binary
+USB payloads, adapter journal and poll evidence. Ten nonempty USB-IN transfers
+carried the five replies without omitted bytes. Every conservative ingress
+interval was strictly after its host submission and before its deadline.
+
+Write-attempt intervals were 1.024176125, 1.022048610, 1.020430012 and
+1.015304154 seconds. The shortest correlated-reply-to-next-write idle interval
+was 1.006640351 seconds; initial post-configuration quiet was 1.008738919
+seconds. The collection accepted 50 TX bytes, with zero uncertain TX bytes,
+no rejected input, no gap/failure and a sealed recording.
+
+The 68 USB records paired into 34 transfers with no unmatched/partial records
+or queued/dropped events. Seventeen zero-byte cancellation completions were
+retained. Same-owner tty close took 0.035173581 seconds; the recorder retained
+13.684503415 seconds after close and stopped normally by coordinator request
+20.174346241 seconds after readiness, within its 25-second hard limit.
+CDC line requests remained **3 -> 0**. The raw unflushed adapter journal is
+authoritative for tty configuration; the nested coordinator's inherited
+generic pySerial-flush limitation string does not describe this adapter.
+
+Run baseline, recorder identity and post-close cached preflight at
+01:10:18.078181 UTC matched the zero observation's bus 1/device 14, inode
+67806, port `1-1.1.3.3`, tty/rdev and 71-byte descriptor hash above.
+The post-close visible-owner guard passed. All 26 entries across the nested
+manifests were independently rehashed. Private audit ID:
+`live-readraw-1280-after-isolated-zero`.
+
+| Artifact | SHA256 |
+|---|---|
+| Root manifest | `0e44a8e9bc2a6d117f4f1639bd87b2e664c3c0ce69139cb897ef682490322e9d` |
+| Root metadata | `7b0ea7abfae6794aac444785ece24d9ecd7b831cd41114289b7663ee5744cab9` |
+| Poll journal | `f9b9583c9431fd60030df50d7c5e200ef58d777cefb66c55d4de8901ce008ff2` |
+| Adapter journal | `8e4089a33cbc7b21296a7c7fb41bf14f34db7fee6f04cec6dc799878f0e00e47` |
+| Full binary USB | `03ed4756cec23faad43d05675835f3af61fe3d6002b0750f08c0919e470f0514` |
+| Concatenated raw RX | `ea5f2a0cf5b853928f090df6da5709f47a1e441d01def7d0722544fc0898c8e6` |
+
+**Hardware hold:** all diagnostic handles are closed. Sequences 1280-1284
+are consumed. No further getter, setter, reconnect, motor-power wiring or
+powered experiment follows from this result; the independent readiness,
+physical-stop and commissioning gates remain unresolved.
+
+Any later all-power/USB-off wiring step creates a new controller boot/state
+boundary. Do not carry these raw PWM-zero observations forward across it:
+the earlier reverse-PWM 100 values remain unresolved initialization/state
+behavior. The parent is requesting operator evidence of support/clearance
+and disconnected motor connections/supply wiring before considering a new
+plan. The accessible HY1803D supply remains an operator-declared motor-energy
+abort method, not a measured stop or a requirement to install a new switch.

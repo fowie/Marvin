@@ -1,5 +1,10 @@
 # Bounded LIVE legacy collection
 
+The separately authorized [post-zero ReadRawData observation](legacy-zero.md#separately-released-post-zero-readrawdata-batch)
+records sequences 1280-1284 and compares their raw motor fields with the earlier
+baseline/reconnect batches. That comparison is not physical-stop or causality
+evidence.
+
 `tools.marvin_legacy_live` connects the persistent client and collector to one
 Linux tty owner for Epic #1. It is separate from the unchanged synthetic CLI
 and unchanged four-getter one-shot probe. **Only empty ReadRawData `00` requests
