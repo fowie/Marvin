@@ -147,3 +147,44 @@ the USB publication comes from an explicitly synthetic emulator, with the real
 ingress reader and clock bridge. It does not claim USB hardware capture,
 physical isolation, reboot, motor behavior or safety. No captures, private
 paths or photos belong in the repository.
+
+## First released preparation: cached preflight refusal
+
+On September 16, 2026, the parent released one attempt at implementation
+`2f6c6e47fb27d1813f350442e91a687f1ca98819` after the operator declared:
+"Prepared: Motor L connected; right motor/servos isolated; USB restored after
+full power removal; motor supply off and disconnected." This is an operator
+statement, not an electrical measurement or proof of reboot.
+
+The **first cached preflight failed**, before invoking the preparation CLI or
+opening any serial device/USB recorder. The approved by-id selector's
+`udevadm info --query=property` command returned exit status 1. The traceback
+retained the command and exit status but did not expose captured stdout/stderr;
+the query was not repeated to recover those streams.
+
+A bounded exact-path metadata check at **04:58:55.182376 UTC** found both the
+approved by-id link and `/sys/bus/usb/devices/1-1.1.3.3` absent. The planned
+capture directory was also absent. No current USB identity/generation could be
+pinned; no alternative port was searched. This supports absence of the
+expected host connection at that time, not a diagnosis of its physical cause.
+
+The parent then separately authorized **one cached sysfs inventory** for exact
+VID/PID `045e:4444` across ports, without device opens or substitution.
+At 04:59:23.675808-04:59:23.677381 UTC it found no match anywhere in that
+inventory; the expected by-id link, `/dev/ttyACM0` and pinned port were absent.
+The inventory had no cached-read errors or stderr. No udev/preflight query
+was repeated. These snapshots do not prove a physical disconnection or rule
+out an enumeration problem, but provide no evidence of a changed host port
+containing the expected identity.
+
+There were **zero device-open attempts, recorder launches or application
+submissions** by this attempt. All sequences **1536-1541 remain unsubmitted**.
+There is no USB/serial capture, reply, decoded motor field or tail evidence
+from this refusal, and no claim about unrelated host bus activity.
+Private audit ID: `motor-power-off-prep-1536-first-refusal`, retained outside
+the nonexistent capture directory.
+
+The released attempt is consumed by this refusal. Hardware remains on hold
+for the parent/operator to review the missing connection. A subsequent
+attempt requires a new explicit release and fresh guards; no supply
+connection/ON, wiring change, retry or other command is authorized.
