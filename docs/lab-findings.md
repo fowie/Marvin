@@ -41,13 +41,29 @@ finding.
 The current operator statement is **HY1803D OFF**. Hardware access remains on
 hold. The unchanged supply-OFF preparation profile remains physically
 inapplicable in this shared-supply wiring; its gates must not be bypassed.
-The newly implemented [fixed powered read-only scope](legacy-live.md#left-motor-powered-read-only-observation)
-was tested with software mocks and a host PTY only. All its ready flags require
-future fresh operator confirmation and a **new bounded physical power plan**;
+The [fixed powered read-only scope](legacy-live.md#left-motor-powered-read-only-observation)
+was initially verified with software mocks and a host PTY; the later separately
+authorized real observation is recorded below. Any new invocation requires
+fresh operator confirmation and a **new bounded physical power plan**;
 neither this past physical trial nor historical metadata grants access,
 energization, another trial, an automatic power switch or a motor-stop action.
 
-## Earlier isolated communication observations
+## Powered read-only result and earlier isolated observations
+
+**Subsequent powered read-only observation, September 16 at 23:57 UTC:**
+the separately released [single sequence-2304 getter](legacy-live.md#first-authorized-powered-read-only-result)
+completed with 10 exact OUT bytes and one fully correlated 144-byte reply,
+reporting both raw velocity and all four raw PWM words zero. MotorL-only
+powered/cutoff consent was recorded without claiming full isolation or supply
+OFF during capture. The operator afterward reported no twitch or motion and
+supply OFF. The independent 30-second manual limit was accepted, not measured
+by the software; CLI runtime is not power duration. No motor command was sent,
+and stopping from motion, transient exclusion and commissioning remain
+unestablished. This later result supersedes the preceding implementation-only
+status, not its safety limitations. Hardware remains on hold. The parent is
+checking left encoder feedback before considering any velocity trial;
+unknown closed-loop feedback can make even a small raw command inappropriate.
+No nonzero command or additional hardware activity is authorized.
 
 **Explicit operator reconnect and fresh session, September 15 at 23:44-45 UTC:**
 after clean close, the operator unplugged/replugged only the reviewed same-port

@@ -94,9 +94,10 @@ descriptor close once even if recording fails, and records errors explicitly.
 
 ## Left-motor-powered read-only observation
 
-**SOFTWARE ONLY implemented; HARDWARE HOLD.** The operator currently reports
-HY1803D OFF. No device access, preflight, power action or repeat trial is
-authorized by this implementation or its tests. Shared HY1803D power supplies
+**HARDWARE HOLD; one separately authorized observation is recorded below.**
+The operator reports HY1803D OFF after that observation. No new device access,
+preflight, power action or repeat trial is authorized by this implementation,
+its tests or the past observation. Shared HY1803D power supplies
 both controller and motors, so the unchanged motor-power-OFF preparation
 profile is physically inapplicable to the current wiring. This scope neither
 weakens that profile nor sends its zero command.
@@ -182,6 +183,85 @@ and fault-prefix assertions, notification ordering and late-failure tests.
 A **host-created PTY** exercises native one-open/one-write/read/close; its USB
 events, identity and unsupported modem-line readbacks are explicitly synthetic.
 It is not a robot, USB capture or powered-motor test.
+
+### First authorized powered read-only result
+
+On September 16, 2026, the parent separately authorized one conditional
+first-appearance observation at `470d02508cbf9fbb97150f1757b093bd613c6101`.
+The operator freshly accepted MotorL only connected, MotorR/servos isolated,
+secured supports and clearance, accessible external cutoff, and an independent
+**30-second maximum from supply ON**, with earlier OFF for any twitch, motion
+or unexpected behavior. HY1803D 12 V / 1 A were operator-reported settings,
+not a verified transient-energy limit.
+
+A private cached-only watcher recorded the pinned target and approved by-id
+selector absent at **23:56:47.651000 UTC**. It sampled at 0.25-second intervals
+with a 90-second arming deadline of **23:58:17.650964 UTC**. That was a wait
+limit, not a power-duration allowance. After the parent delivered the power
+prompt, first pinned-path presence was recorded at **23:57:49.217488 UTC**.
+The same physical port `1-1.1.3.3`, VID/PID `045e:4444` and known 71-byte
+descriptor hash matched. The new cached generation was bus 1/device **22**,
+sysfs device 25/inode **98548**; the run used `/dev/ttyACM0`, rdev 42496.
+Descriptor SHA256:
+`7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b`.
+
+The watcher invoked the committed CLI exactly once. Fresh identity/ownership
+guards admitted the run; the watcher identity, run/coordinator baselines and
+recorder identity agreed. The session ran **23:57:49.517610-23:57:57.781984
+UTC**, and the command exited 0 at **23:57:57.795480 UTC**. This was an
+explicitly armed first connection, not reconnect/resume or an automatic retry.
+The watcher then terminated. No later device check or capture was performed
+to prolong or verify operator power.
+
+Exactly **one ten-byte ReadRawData request**, sequence **2304**,
+`53000900000000bf0445`, had a successful matching USB OUT completion.
+There was no zero, initialization, setter, second getter or nonzero command.
+The single CRC-valid status-80 reply contained 144 frame bytes / 134 payload
+bytes / 82 decoded fields. All 144 bytes agreed across complete binary USB
+payloads, the raw adapter journal, poll evidence and stored decoded telemetry.
+The two raw velocity words at offsets 72/74 and four raw PWM words at
+90/92/94/96 were each **`00 00`**, signed/unsigned zero.
+
+All 46 target USB records paired into 23 transfers; two nonempty bulk-IN
+transfers carried the reply. Seventeen zero-byte cancellation completions
+were retained as cancellation evidence, not response semantics. Initial/final
+queued and dropped counts were zero, with no incomplete or unmatched retained
+transfers. The prewrite quiet interval was 1.004515563 seconds. Conservative
+USB-completion ingress bounds were 485.825-608.614 microseconds after host
+submission, not controller execution time. Tty close took 0.036853844 seconds;
+the recorder retained 5.830690019 seconds after close and stopped normally by
+coordinator request at 8.119733968 seconds after readiness, within its
+13-second hard limit. CDC line requests were again **`3 -> 0`**.
+
+Full-isolation and supply-OFF acknowledgments were **false** at root,
+coordinator and recorder levels; left-only powered observation/cutoff
+declarations were retained truthfully. All 26 nested manifest entries were
+independently rehashed. Private audit ID: `left-powered-readonly-2304-first`.
+
+| Artifact | SHA256 |
+|---|---|
+| Root manifest | `2de2468e95e392edf302eb2556b00d9b8741d8f6c29441b6e1e7bc6e502ee703` |
+| Root metadata | `170103ec99b84cd28d917933307eabb900403ac4a57a1efe6894a506bed0603f` |
+| Adapter journal | `e1f755ad7f80d523f39408db7801aedec2431b4b8a9ce2ce48bcdda44c66a1ed` |
+| Poll journal | `8910a30222b0e3cc2cd8a8684dd30d814b6a45a4bf52b18b058c32e2cb20a8de` |
+| Full binary USB | `3251aac3009c842248827d75311dfce9b21998bd05c6cac36e59adc088e996c0` |
+| Concatenated RX | `eb85bdd181337d6ad6bc3e11cb5d42ac8c5c50287c2f4173167c170a1f94f8f7` |
+| Cached appearance/command audit | `f71c0ea57efcf205626c557fe9c67c6a013363cf7d7d5366c16add64b483d3d5` |
+
+Afterward the parent relayed the operator's actual result:
+**"Completed--no twitch or motion; supply is off."** This is operator-observed
+absence of movement and OFF state, not software measurement. The
+8.577990098 seconds from sampled appearance to CLI exit is **not** the supply
+ON duration; actual power dwell was not independently measured. The host
+neither switched power nor detected physical motion.
+
+This completes only this bounded read-only observation. It does not test
+stopping from motion, validate a motor-stop command, prove absence of torque/
+PWM/boot transients, establish causal control, or complete readiness/
+commissioning gates. Software handles and watcher are closed, the operator
+reports supply OFF, and sequence 2304 is consumed. **Hardware hold:** no
+further device check, command, capture, retry, reconnect or powered experiment
+follows from this result.
 
 ## Conservative host-ingress timestamps
 

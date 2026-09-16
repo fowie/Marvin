@@ -64,7 +64,7 @@ unresolved. Keep that branch unused; successful communication does not clear
 electrical faults.
 
 The explicitly selected [left-motor-powered read-only observation](docs/legacy-live.md#left-motor-powered-read-only-observation)
-is implemented **software-only, under HARDWARE HOLD**: exactly one fixed
+has one separately authorized recorded result and remains **under HARDWARE HOLD**: exactly one fixed
 ReadRawData (sequence 2304), no zero/setter or power switch. It truthfully does
 not claim full isolation or supply-OFF. Its 3-second collector deadline is not
 a wall-time/power-dwell guarantee; separate cleanup and USB tail remain.
