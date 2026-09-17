@@ -286,6 +286,174 @@ motion trial follows this result. Parent retains hardware ownership and the next
 physical decision. Left-feedback function/mapping remains unresolved; no stop,
 calibration or commissioning gate is closed.
 
+### Subsequent robot-right and robot-left feedback observations
+
+The parent separately authorized and executed **two new complete captures** at
+`2bb12e9b5c7029d231072004faa3c5dc23eb20f9`, with unchanged implementation
+`4c0e25ae47798074e28e8eb1b751e9ce3b2cb63a`. Each deliberately reused the fixed
+sequences 2560-2579 in a new evidence directory; neither was an automatic retry
+of a failed request or a continuation of an old capture. Both motor **POWER**
+plugs remained physically disconnected, both complete encoder harnesses
+connected, servo actuator power/control isolated, and controller/shared HY
+powered. No motor command, corrective zero, reset or other application opcode
+was sent.
+
+**Coordinate clarification:** after the second capture the operator explicitly
+identified the moved wheel as **"The wheel on my left when facing the robot's
+front"**. That is the **robot's own right**, and its source-labeled R response
+aligns with the clarified body coordinate. This is not evidence of crosswiring.
+Original operator "left/right" wording remains historical; the source field
+names are not renamed. Earlier powered trials selected the physically labeled
+**MotorL connector**, which must not be reinterpreted using this viewer-relative
+terminology.
+
+Before the second capture the operator reported a **5 V** DMM measurement at
+the "left encoder" logic supply relative to its own return. This is an operator
+measurement independent of the telemetry, not a verified terminal/channel
+assignment, waveform, calibrated supply characterization or under-load test.
+
+The second run, private ID `encoder-feedback-2560-second`, was at
+**01:01:36-01:02:16 UTC on September 17, 2026**. The operator confirmed a
+quarter-turn and hold through `COLLECTION_ENDED`, leaving the other wheel
+untouched. Applying the subsequent coordinate clarification, the moved wheel
+was robot-right. The third run, `encoder-feedback-2560-robot-left`, was at
+**02:45:47-02:46:27 UTC**. The instruction explicitly named **robot LEFT
+(front-facing user's right)**, a forward quarter-turn and hold, with robot-right
+untouched. The actual operator response was:
+
+> Left wheel turned1/4rotation,rightwheeluntouched
+
+The requested direction/hold, operator quarter-turn report and sampled plateau
+are separate evidence; neither angle nor action timing was independently
+measured. Approximately 1 Hz samples must not be converted into an exact
+counts/revolution calibration.
+
+The complete position trajectories below group only consecutive identical
+samples. All values are direct little-endian words at payload offsets 64 (L)
+and 68 (R); uint32 and int32 interpretations agree for these positive values.
+
+| Run / sequence | `motorPositionL` raw / uint32 / int32 | `motorPositionR` raw / uint32 / int32 |
+|---|---|---|
+| Second 2560-2567 | `00000000` / 0 / 0 | `5a000000` / 90 / 90 |
+| Second 2568 | `00000000` / 0 / 0 | `a1000000` / 161 / 161 |
+| Second 2569 | `00000000` / 0 / 0 | `ee000000` / 238 / 238 |
+| Second 2570 | `00000000` / 0 / 0 | `10010000` / 272 / 272 |
+| Second 2571-2579 | `00000000` / 0 / 0 | `25010000` / 293 / 293 |
+| Third 2560-2566 | `00000000` / 0 / 0 | `25010000` / 293 / 293 |
+| Third 2567 | `21000000` / 33 / 33 | `25010000` / 293 / 293 |
+| Third 2568 | `72000000` / 114 / 114 | `25010000` / 293 / 293 |
+| Third 2569 | `bd000000` / 189 / 189 | `25010000` / 293 / 293 |
+| Third 2570-2579 | `dc000000` / 220 / 220 | `25010000` / 293 / 293 |
+
+Second-run R sampled range and net change were **203**, from 90 to 293;
+the nonzero adjacent shortest signed modulo-32 deltas were **+71, +77, +34,
++21**. L range/net and every L delta were zero. Third-run L range and net
+change were **220**, from 0 to 220, with nonzero adjacent deltas **+33, +81,
++75, +31**; R range/net and every R delta were zero. All other adjacent
+deltas were zero. These are within-capture differences, not cross-boot
+accumulation or proof against unobserved wraps. The shared saved host generation
+and retained R=293 do not independently prove uninterrupted firmware execution.
+
+**Raw velocity and PWM changed without host actuation commands.** All values
+below are uncalibrated 16-bit words; signed and unsigned interpretations agree.
+The velocity offsets are 72/74, and PWM offsets are 90/92/94/96.
+
+| Run / sequence | Moving channel velocity raw / value | Forward PWM raw / value | Reverse PWM raw / value |
+|---|---|---|---|
+| Second (R) 2560-2567 | `0000` / 0 | `0000` / 0 | `2000` / 32 |
+| Second (R) 2568 | `4000` / 64 | `f404` / 1268 | `0000` / 0 |
+| Second (R) 2569 | `4000` / 64 | `4009` / 2368 | `0000` / 0 |
+| Second (R) 2570 | `0000` / 0 | `b007` / 1968 | `0000` / 0 |
+| Second (R) 2571 | `0000` / 0 | `5805` / 1368 | `0000` / 0 |
+| Second (R) 2572-2579 | `0000` / 0 | `4400` / 68 | `0000` / 0 |
+| Third (L) 2560-2566 | `0000` / 0 | `0000` / 0 | `0000` / 0 |
+| Third (L) 2567 | `2000` / 32 | `5802` / 600 | `0000` / 0 |
+| Third (L) 2568 | `6000` / 96 | `280a` / 2600 | `0000` / 0 |
+| Third (L) 2569 | `4000` / 64 | `040d` / 3332 | `0000` / 0 |
+| Third (L) 2570 | `0000` / 0 | `5408` / 2132 | `0000` / 0 |
+| Third (L) 2571-2579 | `0000` / 0 | `2000` / 32 | `0000` / 0 |
+
+Second-run L velocity and both L PWM words were zero throughout. Third-run R
+velocity and reverse PWM stayed zero, while R forward PWM stayed **raw 68**
+throughout. Thus third-run final velocities were zero but forward PWM words
+were **L=32/R=68**. These are controller-reported state changes possibly related
+to feedback, **not measured electrical PWM, duty cycle, applied motor output or
+proof of a specific control algorithm**. No host actuation bytes explain them.
+Keep motor loads disconnected; zero measured velocity does not mean zero
+reported output state, and neither reading establishes an effective stop.
+
+Both captures independently passed full raw-byte, CRC/shape, timing, identity,
+consent and storage checks:
+
+| Observation | Second: robot-right | Third: robot-left |
+|---|---|---|
+| Exact requests / completed TX | 20 / 200 bytes | 20 / 200 bytes |
+| Replies / full matching RX | 20 / 2880 bytes | 20 / 2880 bytes |
+| Target USB records / paired transfers | 158 / 79 | 158 / 79 |
+| Nonempty bulk IN / bulk OUT | 40 / 20 | 40 / 20 |
+| Zero-byte cancellations; other completion errors | 17; 0 | 17; 0 |
+| Initial/final queued and dropped | all 0 | all 0 |
+| Unrelated USB records filtered, not target loss | 742 | 216 |
+| Manifest entries verified / complete poll seal | 26 / yes | 26 / yes |
+| Quiet before first write | 1.005596 s | 1.005346 s |
+| Write spacing | 1.012020-1.020431 s | 1.011620-1.019499 s |
+| Minimum post-correlation idle | 1.005353 s | 1.004824 s |
+| First-to-last reply | 19.274215 s | 19.262621 s |
+| Close / post-close USB tail | 0.034449 / 18.491666 s | 0.035235 / 18.693142 s |
+| USB ready-to-normal-stop, below 45 s hard bound | 40.135402 s | 40.280921 s |
+
+Each reply was command-00/status-80, 144 bytes with 134-byte payload and 82
+fields. Full binary USB, serial journal, poll and decoded metadata match;
+stdout JSON equals the sealed root metadata. No pending/unmatched/evicted
+transfers, incomplete target records, uncertain TX, rejected RX or
+collection/cleanup errors were found. Conservative USB ingress bounds were
+independently reconstructed and fell after submission and before each 0.5 s
+reply deadline. Each capture records one raw-tty open and close, with ordinary
+user identity/ownership guards, 57600/8N1 termios readback and no input flush.
+CDC line requests were **3 then 0**; no redundant CDC line-coding request was
+observed in these runs. Low requested lines are not glitch-free guarantees.
+
+Saved identity agreed throughout both captures: approved `045e:4444`,
+physical port `1-1.1.3.3`, known 71-byte descriptor hash, **bus 1/device 24,
+sysfs device 25/inode 101027**, `ttyACM0` rdev 42496. Parent reported exit 0
+and return to an idle shell for each; no post-run owner/device scan was
+performed during offline verification.
+
+Unlike the first capture, each sibling `-progress.log` retained exactly
+**one BASELINE_READY, 19 SAMPLE_PROGRESS, then one COLLECTION_ENDED**.
+Their actual schema, order, sequences and raw/signed/unsigned position and
+velocity values match the packets. Remaining operation seconds decrease from
+33.738482 to 14.463869 (second) and 33.750185 to 14.483523 (third), consistently
+with a common operation deadline and journal bounds. These are **not wall
+timestamps** or an independent measurement of flush/persistence/close timing.
+Code orders notification after persistence and ending before close/tail;
+the auxiliary log alone does not independently timestamp those boundaries or
+the operator's movement. No manual window remained after `COLLECTION_ENDED`
+despite the unused operation budget and continuing USB tail.
+
+Private verification files use each capture ID plus `-verification.json`;
+`encoder-feedback-orientation-addendum.json` preserves the later coordinate,
+action and DMM qualifications without altering earlier audit records.
+The sibling stdout/progress logs are outside original capture manifests and
+were hashed separately. Raw evidence remains private.
+
+| SHA256 artifact | Second | Third |
+|---|---|---|
+| Root manifest | `a4af10977a453a711485bfd286d36420088dc0018d22b6b69c8d5b1c17c3fd28` | `617ddd156f2b7a3efaaf5e008f343244e7f973e976b4fb118fe9bc5a025c0498` |
+| Full RX stream | `072afd53d17ed4c6d19ca3b8e45773696831945ee391049dbbf147e2f7ffaa2e` | `8346e8fe784ac9b99c32f321a9bd9a44ed3d13a33989ed300083c27ac9bf1038` |
+| Progress log | `7126efe32f00c96f3912e9cc4614b5bf95dcea97d14387fb61a1c49aaee26bda` | `fd4d762fc57a1069ffd16d98ddf4471b7dcf71407a7ae28f6e3547644e8dd8a1` |
+| Stdout JSON | `1e0c0a9c1f7884fb3f56342a5354c9afbe5b8ed179730f09d730ce3d67a9b953` | `a327a5ecbbc32419117b2da0f094fb13ab047ed80d06d44462ceb8f9b1eeed34` |
+| Offline audit | `78dea6881b22708e2c869f13fd3eec9fd97a5a2074d8c6629240e1d0ca645595` | `6802520df507caac62fe2d5d26ebb4805741f4f021901798cf8758c9cd0afcb3` |
+
+**Outcome and hold:** separate reported movements of robot-right and robot-left
+correlate with the respective source-labeled position channels while the other
+channel stays unchanged. This supplies mapping/response evidence absent from
+the first run; it does not explain that first result or establish calibrated
+counts, command polarity, control-loop stability, safe command magnitude,
+motor actuation, physical stop or commissioning. All motor loads remain
+disconnected. Parent retains ownership and the next decision; no further query,
+zero/nonzero command, power action or powered trial is authorized here.
+
 ## Left-motor-powered read-only observation
 
 **HARDWARE HOLD; one separately authorized observation is recorded below.**

@@ -46,6 +46,50 @@ can be inferred. Clean communication is not successful feedback acceptance.
 No further device check or command was performed during offline verification.
 Parent retains the hardware hold; do not proceed to a velocity trial while
 feedback remains unestablished, or treat these reported zeros as a physical stop.
+This describes the first run's conclusion; the separately authorized later
+observations below add response evidence without explaining the first result.
+
+### Subsequent body-coordinate feedback response
+
+The parent ran two further fixed getter-only captures at
+`2bb12e9b5c7029d231072004faa3c5dc23eb20f9`, with the same isolated motor-power
+plugs and connected encoder harnesses, board powered. The operator clarified
+"The wheel on my left when facing the robot's front": their earlier viewer-left
+term means **robot-right**. Source R responded in the second run; this is not
+evidence of crosswiring. Do not reinterpret the previously selected physical
+**MotorL connector** or rename source fields using viewer-relative terminology.
+The operator also reported 5 V at the "left encoder" supply relative to its own
+return; retain that DMM report without an unverified terminal/channel assignment.
+
+At 01:01-01:02 UTC on September 17, the reported robot-right quarter-turn and
+hold corresponded to source R position **90, 161, 238, 272, 293**, with final
+plateau 293 and sampled net change **+203**; source L stayed 0. At 02:45-02:46 UTC,
+following explicit robot-LEFT (front-facing user's right) forward-quarter-and-hold
+instructions, the operator reported **"Left wheel turned1/4rotation,rightwheeluntouched"**.
+Source L position changed **0, 33, 114, 189, 220**, plateauing at 220, net **+220**;
+source R stayed 293. Angle/direction/hold timing were not independently measured.
+These observations support separate body-coordinate channel response, not
+counts/revolution calibration or validated closed-loop safety.
+
+**Reported PWM changed without any host motor command.** In the second capture,
+R reverse PWM started at 32; R forward PWM reached 2368 and settled to 68.
+In the third, L forward PWM reached 3332 and settled to 32, while R forward
+PWM remained 68. Final velocities were zero despite those nonzero PWM words.
+These are raw controller-reported states, possibly feedback-related, not
+electrical PWM measurements, duty-cycle units or proof of an applied output.
+Keep **all motor loads disconnected**; no command magnitude or effective stop
+can be justified from this evidence.
+
+Each capture independently verified 20 exact requests/200 TX bytes and 20
+full matching replies/2880 RX bytes; CRC, poll seal, all manifest hashes and
+normal close/tail passed, with zero recorded drops or uncertain writes.
+Each durable auxiliary progress log contains one baseline, 19 sample records
+and one ended marker, values matched to raw replies; auxiliary logs are
+separately hashed and remaining-budget values are not wall timestamps.
+See [complete trajectories, PWM words and capture audit](legacy-live.md#subsequent-robot-right-and-robot-left-feedback-observations).
+No device scan or additional hardware command occurred during verification.
+Parent retains the hold; no zero/nonzero command, powered trial or commissioning
+approval follows these results.
 
 ## Operator-reported physical-only left-motor startup
 
