@@ -301,6 +301,9 @@ def run_session(
         raise ValueError("Preparation consent is only valid for the separate fixed preparation profile.")
     observation = left_motor_powered_observation or encoder_feedback_observation
     if observation:
+        declarations = {name: value for name, value in declarations.items()
+                        if name not in (*motor_consent.POWERED_TRIAL_ONLY_FLAGS,
+                                        *motor_consent.MAPPING_TRIAL_ONLY_FLAGS)}
         from tools.marvin_legacy_protocol import read_raw_data_request
         fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
                                                          "legacy-read-raw-data")
