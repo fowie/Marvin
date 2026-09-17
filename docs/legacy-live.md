@@ -1,5 +1,8 @@
 # Bounded LIVE legacy collection
 
+The separate [powered Motor-L +1 / planned zero characterization](legacy-powered-left-stop.md)
+does not widen this getter-only collector or the encoder-feedback read-only scope.
+
 The separately authorized [post-zero ReadRawData observation](legacy-zero.md#separately-released-post-zero-readrawdata-batch)
 records sequences 1280-1284 and compares their raw motor fields with the earlier
 baseline/reconnect batches. That comparison is not physical-stop or causality

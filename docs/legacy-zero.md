@@ -1,5 +1,9 @@
 # Isolated, one-shot zero-velocity characterization
 
+The separate [powered Motor-L +1 / planned zero characterization](legacy-powered-left-stop.md)
+has its own truthful motor-load-disconnected scope and six-frame transcript.
+It does not reuse this profile's full-isolation authorization.
+
 The separate [motor-power-OFF preparation](legacy-motor-power-off-prep.md)
 profile must be used for its reviewed MotorL-attached topology. It does not
 reuse this tool's full-isolation declaration or sequence. This isolated

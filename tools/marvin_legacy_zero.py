@@ -238,8 +238,10 @@ def run_zero(output, *, expected_physical_port, actuators_isolated=False,
 
 
 def _run_diagnostic(output, *, expected_physical_port, review, transport_type, observe,
-                    limits, session_options, declarations, expected_tx, success_status):
-    """Shared evidence/USB lifecycle for the two separately gated fixed diagnostics."""
+                    limits, session_options, declarations, expected_tx, success_status,
+                    report_key="zero_observation", authorizations=None, capture_validator=None,
+                    on_failure=None, serial_seconds=SERIAL_SECONDS):
+    """Shared evidence/USB lifecycle; each fixed diagnostic keeps its own consent gate."""
     if (not isinstance(expected_physical_port, str) or len(expected_physical_port) > 100 or
             not re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*(?:\.[1-9][0-9]*)*", expected_physical_port)):
         raise ValueError("Name the separately reviewed physical USB port.")
@@ -256,11 +258,14 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
               "write_status": "not_attempted"}
     metadata = {"status": "incomplete", "evidence_kind": "recorded", "review": review, "baseline": baseline,
                 **declarations,
-                "unvalidated_zero_velocity_authorized": True, "application_acknowledgment": "not_established",
+                **({"unvalidated_zero_velocity_authorized": True} if authorizations is None else authorizations),
+                "application_acknowledgment": "not_established",
                 "physical_stop": "not_established", "automatic_retries": False, "automatic_reconnect": False}
     output.mkdir(mode=0o700)
 
     def capture(port, directory, *, guard, **options):
+        if capture_validator is not None:
+            capture_validator(options)
         if session_options.get("_motor_power_off_preparation"):
             from tools import marvin_motor_power_off_consent as consent
             if not consent.validate(
@@ -271,14 +276,14 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
         ingress.open()
         transport = transport_type(port, baseline, directory, ingress, guard=guard, plan=limits)
         observe(transport, report)
-        return {"status": "completed", "zero_observation": report}
+        return {"status": "completed", report_key: report}
 
     try:
         clock.start()
         metadata["clock_offset_nanoseconds"] = clock.offset
         marvin_session.write_json(output / "metadata.json", metadata)
         result = marvin_session.run_session(
-            marvin_probe.DEFAULT_PORT, output / "capture", seconds=SERIAL_SECONDS,
+            marvin_probe.DEFAULT_PORT, output / "capture", seconds=serial_seconds,
             baudrate=57600, allow_unknown_command=True,
             probe_profile="legacy", usbmon_backend="binary", expected_usb_identity=baseline["usb"],
             ready_callback=lambda _: clock.check(), usb_tail_seconds=5, usb_close_grace_seconds=5,
@@ -293,6 +298,8 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
                         observed_line_states=ingress.line_states)
     except BaseException as error:
         metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
+        if on_failure is not None:
+            on_failure(error)
         raise
     finally:
         original = sys.exc_info()[1]
@@ -301,8 +308,10 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
             for release in (ingress.close, clock.close):
                 try:
                     release()
-                except OSError as error:
+                except BaseException as error:
                     failures.append(error)
+                    if on_failure is not None:
+                        on_failure(error)
             if failures:
                 metadata.update(status="failed", cleanup_errors=[str(error)[:1024] for error in failures])
                 if original is None:
@@ -311,7 +320,20 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
                     original.add_note(str(error))
         finally:
             metadata.update(observation=report, finished_at=marvin_probe.utc_now())
-            marvin_session.seal_evidence(output, metadata)
+            pending = sys.exc_info()[1]
+            try:
+                marvin_session.seal_evidence(output, metadata)
+            except BaseException as error:
+                if on_failure is not None:
+                    on_failure(error)
+                    metadata.update(status="failed", sealing_error=f"{type(error).__name__}: {error}"[:1024])
+                    try:
+                        marvin_session.write_json(output / "metadata.json", metadata)
+                    except BaseException as retention_error:
+                        error.add_note(f"Could not retain failed sealing metadata: {retention_error}")
+                if pending is None:
+                    raise
+                pending.add_note(f"Additional evidence sealing error: {error}")
     return metadata
 
 

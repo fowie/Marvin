@@ -226,6 +226,6 @@ communication in the current wiring. Turning the shared supply on with MotorL
 attached would change the physical test envelope, not fix a software guard.
 No guard bypass, code broadening, supply connection/ON, retry or powered
 MotorL test is authorized. The parent is determining available meter/scope
-capability for a separately reviewed **no-load motor-output characterization**
+capability for a separately reviewed **powered motor-output characterization**
 before considering any powered-MotorL attempt; no measurement procedure or
 hardware action is authorized here. Hardware remains closed and on hold.

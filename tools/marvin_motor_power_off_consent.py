@@ -17,12 +17,25 @@ ENCODER_ONLY_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected",
 )
 ENCODER_FLAGS = (*ENCODER_ONLY_FLAGS, "unprivileged_usbmon")
+POWERED_TRIAL_ONLY_FLAGS = (
+    "powered_left_stop_characterization", "motor_left_connected",
+    "motor_right_disconnected", "robot_secured_on_blocks",
+    "authorize_unvalidated_left_one_and_zero",
+)
+POWERED_TRIAL_FLAGS = (*POWERED_TRIAL_ONLY_FLAGS, "both_encoder_feedback_connected",
+                       "servos_isolated", "operator_at_external_cutoff",
+                       "unprivileged_usbmon")
+ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
+                                *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS)))
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              operator_at_external_cutoff=False, encoder_feedback_observation=False,
              motor_power_plugs_disconnected=False, servos_isolated=False,
-             both_encoder_feedback_connected=False, **declarations):
+             both_encoder_feedback_connected=False, powered_left_stop_characterization=False,
+             motor_left_connected=False, motor_right_disconnected=False,
+             robot_secured_on_blocks=False, authorize_unvalidated_left_one_and_zero=False,
+             **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
                operator_at_external_cutoff=operator_at_external_cutoff)
@@ -30,11 +43,22 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                    motor_power_plugs_disconnected=motor_power_plugs_disconnected,
                    servos_isolated=servos_isolated,
                    both_encoder_feedback_connected=both_encoder_feedback_connected)
-    if any(type(value) is not bool for value in (actuators_isolated, *new.values(),
+    trial = dict(powered_left_stop_characterization=powered_left_stop_characterization,
+                 motor_left_connected=motor_left_connected,
+                 motor_right_disconnected=motor_right_disconnected,
+                 robot_secured_on_blocks=robot_secured_on_blocks,
+                 authorize_unvalidated_left_one_and_zero=authorize_unvalidated_left_one_and_zero)
+    if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
                                                 *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
     if set(declarations) - set(PREPARATION_FLAGS):
         raise ValueError("Unknown operator declaration.")
+    if any(trial.values()):
+        flags = {**declarations, **new, **encoder, **trial}
+        if (actuators_isolated or not all(flags.get(name) is True for name in POWERED_TRIAL_FLAGS)
+                or any(flags.get(name, False) for name in set(ALL_FLAGS) - set(POWERED_TRIAL_FLAGS))):
+            raise ValueError("Powered left +1/zero requires its complete separate literal scope; no mixed scopes.")
+        return "powered_left_stop_characterization"
     if any(encoder.values()):
         if (actuators_isolated or not all(encoder.values())
                 or declarations.get("unprivileged_usbmon") is not True or any(new.values())
@@ -59,6 +83,18 @@ def notify_cut_power(error):
           file=sys.stderr, flush=True)
 
 
+def notify_powered_trial_fault(error):
+    try:
+        print("CUT_POWER_REQUIRED: OPERATOR CUT HY1803D POWER independently NOW. "
+              "Motor output or stop state is UNVERIFIED. "
+              "Host cannot remove energy; closing the tty is NOT stopping. "
+              f"Fault: {str(error)[:512]}. Do not retain power for logging.",
+              file=sys.stderr, flush=True)
+    except (OSError, ValueError) as delivery_error:
+        if isinstance(error, BaseException):
+            error.add_note(f"External-cutoff diagnostic delivery failed: {delivery_error}")
+
+
 def notify_collection_ended(error):
     print("COLLECTION_ENDED: no movement window remains; if startup failed, no movement window "
           f"opened. Stop manual movement. {str(error)[:256]}. Preliminary evidence only; "
@@ -72,6 +108,8 @@ def powered_faults(operation):
         try:
             return operation(*args, **kwargs)
         except BaseException as error:
+            if kwargs.get("powered_left_stop_characterization") is True:
+                notify_powered_trial_fault(error)
             if kwargs.get("left_motor_powered_observation") is True:
                 notify_cut_power(error)
             if kwargs.get("encoder_feedback_observation") is True:
@@ -85,6 +123,15 @@ def add_observation_arguments(parser):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
+def add_powered_trial_arguments(parser):
+    for name in POWERED_TRIAL_ONLY_FLAGS:
+        parser.add_argument("--" + name.replace("_", "-"), action="store_true")
+
+
+def powered_trial_arguments(args):
+    return {name: getattr(args, name) for name in POWERED_TRIAL_ONLY_FLAGS}
+
+
 def observation_arguments(args):
     return {name: getattr(args, name) for name in (*OBSERVATION_ONLY_FLAGS, *ENCODER_ONLY_FLAGS)}
 
@@ -94,6 +141,8 @@ def parse_observation_arguments(parser, argv):
     try:
         return parser.parse_args(argv)
     except SystemExit as error:
+        if error.code and "--powered-left-stop-characterization" in argv:
+            notify_powered_trial_fault("Invalid powered-trial CLI arguments; no run started.")
         if error.code and "--left-motor-powered-observation" in argv:
             notify_cut_power("Invalid powered observation CLI arguments; no run started.")
         if error.code and "--encoder-feedback-observation" in argv:
@@ -126,6 +175,23 @@ def encoder_history(declarations):
         "outcome_meaning": "raw_observation_only_not_calibration_or_power_permission",
         "host_can_remove_energy": False,
         "new_boot_basis": "not_claimed",
+    }
+
+
+def powered_trial_history(declarations):
+    return {
+        **encoder_history(declarations),
+        "scope": "powered_left_stop_characterization",
+        "load_scope": "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED",
+        "outcome_meaning": "operator_motion_and_stop_observations_required_not_protocol_inferred",
+        "unvalidated_left_one_and_zero_authorized": True,
+        "raw_one_units": "unvalidated_raw_word_not_physical_speed",
+        "planned_zero_policy": "attempt_once_after_fully_accepted_start_on_same_owned_fd",
+        "planned_zero_guaranteed": False,
+        "physical_output_duration_bound": "not_established",
+        "operator_observed_motion": "not_recorded_by_software",
+        "operator_observed_stop_after_zero": "not_recorded_by_software",
+        "operator_cutoff_stop_observation": "separate_later_trial_not_part_of_this_run",
     }
 
 
