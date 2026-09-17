@@ -25,8 +25,22 @@ POWERED_TRIAL_ONLY_FLAGS = (
 POWERED_TRIAL_FLAGS = (*POWERED_TRIAL_ONLY_FLAGS, "both_encoder_feedback_connected",
                        "servos_isolated", "operator_at_external_cutoff",
                        "unprivileged_usbmon")
+MAPPING_TRIAL_SCOPE = "powered_left_command_right_connected"
+MAPPING_TRIAL_ONLY_FLAGS = (
+    MAPPING_TRIAL_SCOPE, "motor_left_disconnected", "motor_right_connected",
+)
+MAPPING_TRIAL_FLAGS = (
+    *MAPPING_TRIAL_ONLY_FLAGS, "robot_secured_on_blocks",
+    "authorize_unvalidated_left_one_and_zero", "both_encoder_feedback_connected",
+    "servos_isolated", "operator_at_external_cutoff", "unprivileged_usbmon",
+)
+POWERED_TRIAL_SCOPES = {
+    "powered_left_stop_characterization": POWERED_TRIAL_FLAGS,
+    MAPPING_TRIAL_SCOPE: MAPPING_TRIAL_FLAGS,
+}
 ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
-                                *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS)))
+                                *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS,
+                                *MAPPING_TRIAL_ONLY_FLAGS)))
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
@@ -35,6 +49,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              both_encoder_feedback_connected=False, powered_left_stop_characterization=False,
              motor_left_connected=False, motor_right_disconnected=False,
              robot_secured_on_blocks=False, authorize_unvalidated_left_one_and_zero=False,
+             powered_left_command_right_connected=False,
+             motor_left_disconnected=False, motor_right_connected=False,
              **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
@@ -47,7 +63,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                  motor_left_connected=motor_left_connected,
                  motor_right_disconnected=motor_right_disconnected,
                  robot_secured_on_blocks=robot_secured_on_blocks,
-                 authorize_unvalidated_left_one_and_zero=authorize_unvalidated_left_one_and_zero)
+                 authorize_unvalidated_left_one_and_zero=authorize_unvalidated_left_one_and_zero,
+                 powered_left_command_right_connected=powered_left_command_right_connected,
+                 motor_left_disconnected=motor_left_disconnected,
+                 motor_right_connected=motor_right_connected)
     if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
                                                 *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
@@ -55,10 +74,11 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
         raise ValueError("Unknown operator declaration.")
     if any(trial.values()):
         flags = {**declarations, **new, **encoder, **trial}
-        if (actuators_isolated or not all(flags.get(name) is True for name in POWERED_TRIAL_FLAGS)
-                or any(flags.get(name, False) for name in set(ALL_FLAGS) - set(POWERED_TRIAL_FLAGS))):
-            raise ValueError("Powered left +1/zero requires its complete separate literal scope; no mixed scopes.")
-        return "powered_left_stop_characterization"
+        for scope, required in POWERED_TRIAL_SCOPES.items():
+            if (not actuators_isolated and all(flags.get(name) is True for name in required)
+                    and not any(flags.get(name, False) for name in set(ALL_FLAGS) - set(required))):
+                return scope
+        raise ValueError("Powered left +1/zero requires its complete separate literal command/load scope; no mixed scopes.")
     if any(encoder.values()):
         if (actuators_isolated or not all(encoder.values())
                 or declarations.get("unprivileged_usbmon") is not True or any(new.values())
@@ -108,7 +128,7 @@ def powered_faults(operation):
         try:
             return operation(*args, **kwargs)
         except BaseException as error:
-            if kwargs.get("powered_left_stop_characterization") is True:
+            if any(kwargs.get(scope) is True for scope in POWERED_TRIAL_SCOPES):
                 notify_powered_trial_fault(error)
             if kwargs.get("left_motor_powered_observation") is True:
                 notify_cut_power(error)
@@ -124,12 +144,12 @@ def add_observation_arguments(parser):
 
 
 def add_powered_trial_arguments(parser):
-    for name in POWERED_TRIAL_ONLY_FLAGS:
+    for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
 def powered_trial_arguments(args):
-    return {name: getattr(args, name) for name in POWERED_TRIAL_ONLY_FLAGS}
+    return {name: getattr(args, name) for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS)}
 
 
 def observation_arguments(args):
@@ -141,7 +161,7 @@ def parse_observation_arguments(parser, argv):
     try:
         return parser.parse_args(argv)
     except SystemExit as error:
-        if error.code and "--powered-left-stop-characterization" in argv:
+        if error.code and any("--" + scope.replace("_", "-") in argv for scope in POWERED_TRIAL_SCOPES):
             notify_powered_trial_fault("Invalid powered-trial CLI arguments; no run started.")
         if error.code and "--left-motor-powered-observation" in argv:
             notify_cut_power("Invalid powered observation CLI arguments; no run started.")
@@ -179,10 +199,14 @@ def encoder_history(declarations):
 
 
 def powered_trial_history(declarations):
+    scope = classify(**declarations)
+    if scope not in POWERED_TRIAL_SCOPES:
+        raise ValueError("Powered trial history requires a complete powered-trial scope.")
     return {
         **encoder_history(declarations),
-        "scope": "powered_left_stop_characterization",
-        "load_scope": "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED",
+        "scope": scope,
+        "load_scope": ("MOTOR_L_DISCONNECTED_MOTOR_R_CONNECTED" if scope == MAPPING_TRIAL_SCOPE
+                       else "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED"),
         "outcome_meaning": "operator_motion_and_stop_observations_required_not_protocol_inferred",
         "unvalidated_left_one_and_zero_authorized": True,
         "raw_one_units": "unvalidated_raw_word_not_physical_speed",

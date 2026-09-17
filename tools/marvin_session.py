@@ -251,6 +251,8 @@ def run_session(
     powered_left_stop_characterization=False, motor_left_connected=False,
     motor_right_disconnected=False, robot_secured_on_blocks=False,
     authorize_unvalidated_left_one_and_zero=False,
+    powered_left_command_right_connected=False,
+    motor_left_disconnected=False, motor_right_connected=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -271,6 +273,9 @@ def run_session(
     if any(type(flag) is not bool for flag in (_isolated_zero_velocity, _motor_power_off_preparation)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     declarations = dict(
+        powered_left_command_right_connected=powered_left_command_right_connected,
+        motor_left_disconnected=motor_left_disconnected,
+        motor_right_connected=motor_right_connected,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -287,7 +292,7 @@ def run_session(
         operator_at_external_cutoff=operator_at_external_cutoff,
     )
     scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
-    powered_trial = scope == "powered_left_stop_characterization"
+    powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
     if powered_trial and (_motor_power_off_preparation or _isolated_zero_velocity):
         raise ValueError("Powered stop characterization forbids other diagnostic profiles.")
     preparation_consent = scope == "preparation"
@@ -505,7 +510,8 @@ def run_session(
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; observation uses an unflushed raw tty."
     if powered_trial:
         metadata.update(**motor_consent.powered_trial_history(declarations),
-                        probe_name="PoweredLeftStopCharacterization",
+                        probe_name=("PoweredLeftCommandRightConnected" if scope == motor_consent.MAPPING_TRIAL_SCOPE
+                                    else "PoweredLeftStopCharacterization"),
                         immutable_application_transcript_hex=[raw.hex() for raw in TRANSCRIPT],
                         requested_probe_hex=b"".join(TRANSCRIPT).hex(),
                         unknown_command_authorized=True,
@@ -523,7 +529,7 @@ def run_session(
         "--backend", usbmon_backend,
     ]
     if powered_trial:
-        command.extend("--" + name.replace("_", "-") for name in motor_consent.POWERED_TRIAL_FLAGS)
+        command.extend("--" + name.replace("_", "-") for name in motor_consent.POWERED_TRIAL_SCOPES[scope])
     elif encoder_feedback_observation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.ENCODER_FLAGS)
     elif left_motor_powered_observation:

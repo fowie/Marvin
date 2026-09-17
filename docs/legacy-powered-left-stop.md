@@ -66,6 +66,43 @@ Offline review:
 python3 -B -m tools.marvin_legacy_powered_left_stop
 ```
 
+## Left-command / physical Motor-R mapping scope
+
+The same runner also accepts the separate
+`--powered-left-command-right-connected` cabling/channel mapping scope.
+Its **command bytes are unchanged**: left velocity word `+1`, right velocity
+word `0`, then both zero, then the gated getter. The physical setup is instead
+Motor L **power disconnected**, Motor R **power connected**, both encoder
+harnesses connected, all servos isolated, robot secured on blocks, and the
+operator continuously at the HY1803D cutoff. The command-word names do not
+establish which physical motor responds.
+
+For this scope, replace the three declarations
+`--powered-left-stop-characterization --motor-left-connected --motor-right-disconnected`
+with
+`--powered-left-command-right-connected --motor-left-disconnected --motor-right-connected`.
+Keep every other declaration, including
+`--authorize-unvalidated-left-one-and-zero`: it truthfully authorizes the
+unchanged **left command word**, not a claim about physical wiring.
+The scopes cannot be mixed. Evidence records the separate scope and
+`MOTOR_L_DISCONNECTED_MOTOR_R_CONNECTED` load declaration; declarations are
+operator statements, not software-verified wiring or physical-stop proof.
+All existing timing, response gates, cutoff, no-retry, and no-reconnect rules
+above apply unchanged. Software preparation does not authorize a live trial.
+
+Offline review of this complete alternate scope (no `--run`):
+
+```sh
+python3 -B -m tools.marvin_legacy_powered_left_stop \
+  --powered-left-command-right-connected \
+  --motor-left-disconnected --motor-right-connected \
+  --both-encoder-feedback-connected --servos-isolated \
+  --robot-secured-on-blocks --authorize-unvalidated-left-one-and-zero \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+## Separately authorized original Motor-L trial
+
 Future operator-only invocation:
 
 ```bash
