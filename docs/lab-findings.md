@@ -15,6 +15,35 @@ Original successor-drive software explicitly supports this legacy USB identity.
 Legacy `S`/`E` framing and six read operations are now live-confirmed on this controller.
 No motor/servo command library exists yet.
 
+## Load-disconnected manual encoder observation
+
+On September 17, 2026 at 00:53-00:54 UTC, the parent ran the fixed
+[20-sample feedback observation](legacy-live.md#first-load-disconnected-encoder-result)
+once at `4c0e25ae47798074e28e8eb1b751e9ce3b2cb63a`. The operator confirmed
+both motor **POWER** plugs disconnected, both complete original encoder
+harnesses connected (including logic supply/reference), servos isolated and
+controller/shared HY powered. This was not all-signal isolation or supply OFF.
+
+The operator reported a left-wheel forward 360-degree rotation followed by a
+reverse 360-degree rotation, with the right wheel untouched. Communication
+completed cleanly: 20 exact ReadRawData requests, sequences 2560-2579, 200 TX
+bytes and 2880 full matching serial/USB RX bytes; normal close and complete
+USB tail, all hashes verified. Parent reported shell exit 0.
+
+**Neither authored position channel changed in any sample:** `motorPositionL`
+and `motorPositionR` remained raw `00000000`, uint32/int32 0; both raw velocity
+and all four PWM words were also zero. Both sampled position ranges/net changes
+and all 19 adjacent wrap-aware differences were zero. Other sensor fields and
+the raw tick changed, but this does not establish individual encoder-field
+freshness. The operator's turns were not time-synchronized or independently
+measured; 1 Hz observations can miss intervening movement/turning points.
+No counts/revolution, wheel mapping, functioning left feedback, or fault cause
+can be inferred. Clean communication is not successful feedback acceptance.
+
+No further device check or command was performed during offline verification.
+Parent retains the hardware hold; do not proceed to a velocity trial while
+feedback remains unestablished, or treat these reported zeros as a physical stop.
+
 ## Operator-reported physical-only left-motor startup
 
 On September 16, 2026 UTC (September 15 operator-local evening), the parent

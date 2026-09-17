@@ -34,7 +34,7 @@ the expected five-reply shape.
 
 The following gates are the unchanged fully isolated default. The separately
 selected [left-motor-powered read-only scope](#left-motor-powered-read-only-observation)
-and [encoder-feedback scope](#encoder-feedback-observation-software-only) below
+and [encoder-feedback scope](#encoder-feedback-observation) below
 are not full isolation and must never claim it.
 
 Do not run hardware commands in CI or unattended development. A separately
@@ -93,9 +93,11 @@ measurements. Low requested/read-back lines do not imply glitch-free open/close.
 The adapter never reads/drains the tty during close. The same owner attempts
 descriptor close once even if recording fails, and records errors explicitly.
 
-## Encoder-feedback observation (software only)
+## Encoder-feedback observation
 
-**No physical run is approved or claimed here.** At software approval the
+The following scope was initially approved **software only**; the later,
+separately authorized [first real result](#first-load-disconnected-encoder-result)
+is recorded below. Neither grants another run. At software approval the
 reported setup was HY OFF with MotorL attached; the following required setup
 was **not done**. A future operator must separately confirm both motor **POWER**
 plugs physically disconnected, servo **actuator power and control** isolated,
@@ -167,6 +169,116 @@ Those facts do not identify which encoder changed or establish units/causality.
 No private captures/photos are copied here. Software tests exercise changing
 actual payloads and one native **host-created PTY**, with explicitly synthetic
 USB, identity and unsupported modem readbacks—not robot access or a live result.
+
+### First load-disconnected encoder result
+
+On **September 17, 2026 at 00:53:29-00:54:09 UTC** (September 16 operator-local
+evening), the parent executed the committed CLI **once**, at
+`4c0e25ae47798074e28e8eb1b751e9ce3b2cb63a`, in a visible terminal.
+Fresh operator preparation was:
+
+> Ready - both motor-power plugs disconnected, encoders connected, servos
+> isolated, controller powered.
+
+Both original encoder harnesses included their normal logic supply/reference.
+Only motor **POWER** plugs were disconnected; this was not all-signal isolation
+or a deenergized board. The shared HY controller supply was powered. The parent
+instructed waiting for `BASELINE_READY`, gently turning the left wheel forward
+and back without forcing, and stopping at `COLLECTION_ENDED`. After the window,
+the operator reported:
+
+> Forward 360 degree rotation, reverse 360 degree rotation. Right wheel untouched.
+
+These are operator observations, not independently measured or time-synchronized
+turn angles. The parent separately reported an immediate shell
+`CAPTURE_EXIT_STATUS=0` and return to the idle shell.
+
+**Communication completed, but encoder feedback was not demonstrated.** Every
+one of the 20 samples, sequences **2560-2579**, had these actual retained words,
+independently re-decoded and checked directly at the authored payload offsets:
+
+| Authored field | Payload offset / width | Raw hex in every sample | Unsigned / signed |
+|---|---|---|---|
+| `motorPositionL` | 64 / 4 | `00000000` | uint32 0 / int32 0 |
+| `motorPositionR` | 68 / 4 | `00000000` | uint32 0 / int32 0 |
+| `motorVelocityL/R` | 72, 74 / 2 | `0000` | uint16 0 / int16 0 |
+| Four `motorPwm*` fields | 90, 92, 94, 96 / 2 | `0000` | uint16 0 / int16 0 |
+
+For **both** position channels, the complete sampled trajectory is 20 zeros;
+all 19 adjacent shortest signed modulo-32 differences are zero. Sampled minimum,
+maximum, range and net change are zero. This is not proof of no physical
+rotation, no unseen wrap, a broken encoder, or a particular wiring/firmware
+cause. Neither channel shows a sampled response corresponding to the reported
+left-wheel movement. Do not assign wheel mapping from the field names or infer
+functioning feedback from successful communication. Approximately 1 Hz sampling
+can miss turning points or intervening excursions; no counts/revolution,
+direction calibration or closed-loop safety is established.
+
+The raw `tick` field increased from **4056 to 5948**, with all 20 values distinct;
+other sensor fields also changed. The replies were not identical payloads.
+This does not establish tick units, freshness of each individual field, or
+encoder update behavior.
+
+Independent offline verification established:
+
+- Exactly 20 empty ReadRawData OUT frames, sequences 2560-2579, **200 bytes**,
+  and 20 matching CRC-valid command-00/status-80 replies, each 144 bytes with
+  134-byte payload and 82 fields. All **2880 RX bytes** match full binary USB-IN,
+  serial journal, poll evidence and decoded metadata; no other application TX.
+- One recorded raw-tty open and close, no input flush, no uncertain TX, no
+  rejected input, no collection/cleanup errors; a complete collector seal and
+  **26 manifest entries** verified across the two manifests. The manifests
+  establish stored consistency, not authenticity or physical application ACK.
+- Same approved port `1-1.1.3.3`, `045e:4444`, 71-byte descriptor hash
+  `7c0df726b51216f29f11f0d078f4673596f3c50c675c9a0419c1316d5446419b`;
+  capture generation **bus 1/device 24, sysfs device 25/inode 101027**,
+  `ttyACM0` rdev 42496. Saved identity and truthful consent agree at every layer.
+  Successful committed ownership guards and normal close are recorded; no
+  post-run owner/device scan was authorized or performed.
+- **160 target USB records / 80 paired transfers**, 40 full nonempty bulk-IN
+  completions, 20 completed bulk OUTs and 17 zero-byte cancellation completions.
+  No unmatched/pending/evicted transfers, other completion errors, incomplete
+  records or recorded loss; initial/final queued and dropped counters were zero.
+  Normalized text omits 1920 IN bytes, but full binary evidence retains them.
+- CDC line requests were again **3 then 0**, with 57600/8N1 line coding.
+  Requested low DTR/RTS does not mean glitch-free opening. Prewrite quiet was
+  **1.004456 s**, write spacing **1.011974-1.017810 s**, and post-correlation idle
+  at least **1.005137 s**. Independently reconstructed conservative USB ingress
+  bounds were after submission and before every 0.5 s reply deadline.
+- First-to-last reply spanned **19.269451 s**; approximate host UTC reply bounds
+  were 00:53:31.730569 through 00:53:51.000020. Close took **0.035305 s**.
+  Complete post-close USB tail was **18.492095 s**; normal coordinator stop
+  occurred **40.131911 s** after recorder ready, before its 45 s hard deadline.
+  The reserved nominal tail includes unused collection time; this was not a
+  40-second manual movement window or a measured supply-on duration.
+
+Terminal progress uses inherited stderr and is **not in the sealed capture**.
+The journal verifies sample persistence and its monotonic/UTC anchors, not
+independent `BASELINE_READY`/`COLLECTION_ENDED` emission timestamps or alignment
+of the operator's movements. The committed callback order and software tests
+must not be relabeled as captured terminal evidence. The parent's subsequently
+preserved terminal history starts mid-final-JSON and retains exit status 0 but
+none of the three marker types. Independent offline inspection confirmed that
+absence; it does **not** establish that the markers were never emitted.
+
+Private evidence ID: `encoder-feedback-2560-first`; offline audit:
+`encoder-feedback-2560-first-verification.json`, with a separate immutable
+`encoder-feedback-2560-terminal-addendum.json` for the later terminal evidence.
+Only derived facts are published, not private raw captures.
+
+| Artifact | SHA256 |
+|---|---|
+| Capture root manifest | `f2bbdb16d5cdbd1a60f4e4ada1f2a2f476959ce62ba59c409c04e532414c9b62` |
+| Full 2880-byte RX stream | `799438a45814e24afec513bf6664cf6811a1365abcca6f1ab1b36d47eef38f63` |
+| Binary USB | `1666eadecf9c2ca4a0f85955eab6c118566341d5cc5b51d5f809b20fcbcd66d2` |
+| Poll journal | `9e858eee6a1e9812fb97a0db8ed8c3ae56331b0299b37d7b818a4e9f177a3117` |
+| Offline audit | `598201e175eea26765b7ab99e39c80e0e6f6cfda5245048f0accb660c028cfe7` |
+| Parent retained terminal history | `863c8966fa6c7465842b7c46d31aaea206f32c3eeb761038249686173d70deea` |
+
+**Hold:** no automatic retry, additional query, zero, nonzero drive or powered
+motion trial follows this result. Parent retains hardware ownership and the next
+physical decision. Left-feedback function/mapping remains unresolved; no stop,
+calibration or commissioning gate is closed.
 
 ## Left-motor-powered read-only observation
 
