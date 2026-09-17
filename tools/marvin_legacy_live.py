@@ -45,6 +45,60 @@ def powered_observation_plan():
     return live_plan(max_requests=1, interval=1, duration=3, first_sequence=2304)
 
 
+def encoder_observation_plan():
+    return PollPlan(max_requests=20, interval=1, duration=35, first_sequence=2560,
+                    cleanup_timeout=5, max_rx_bytes=8192, max_reads=4096)
+
+
+class EncoderObservation:
+    """Preliminary terminal visibility; raw journal append precedes sample markers."""
+
+    def __init__(self, telemetry):
+        self.telemetry = telemetry
+        self.samples = 0
+        self.ended = False
+
+    def inspect(self, events):
+        failure = None
+        for event in events:
+            packet = event.stream.packet
+            if packet is None:
+                failure = "Unknown/partial response evidence."
+                continue
+            decoded = interpret_packet(packet, direction="received", evidence=event.evidence_kind)
+            self.telemetry.append(decoded)
+            if (event.labels != ("matched_candidate",) or decoded["status"] != "decoded"
+                    or packet.command != 0 or packet.response_field != 0x80
+                    or not 2560 <= packet.sequence <= 2579
+                    or len(packet.payload) != 134 or len(decoded.get("fields", {})) != 82):
+                failure = "Unknown/fault response shape or correlation."
+        if failure:
+            raise SessionError("encoder_observation_failed", failure)
+
+    def persisted(self, events, deadline, now):
+        if self.ended or self.samples >= 20:
+            raise SessionError("encoder_observation_failed", "Sample notification outside fixed window.")
+        packet = events[-1].stream.packet
+        fields = self.telemetry[-1]["fields"]
+        row = {"sequence": packet.sequence,
+               "remaining_operation_seconds": max(0, deadline - now),
+               "positions": {name: {"raw_hex": fields[name]["raw_hex"],
+                                     "uint32": fields[name]["unsigned"], "int32": fields[name]["signed"]}
+                             for name in ("motorPositionL", "motorPositionR")},
+               "velocities": {name: {"raw_hex": fields[name]["raw_hex"],
+                                      "uint16": fields[name]["unsigned"], "int16": fields[name]["signed"]}
+                              for name in ("motorVelocityL", "motorVelocityR")},
+               "meaning": "preliminary raw signed/unsigned views; no units/calibration/power permission"}
+        self.samples += 1
+        print(("BASELINE_READY " if self.samples == 1 else "SAMPLE_PROGRESS ") +
+              json.dumps(row, sort_keys=True), file=sys.stderr, flush=True)
+
+    def end(self, error=None):
+        if not self.ended:
+            self.ended = True
+            consent.notify_collection_ended(error or "Fixed collection complete; final USB tail/seal pending")
+
+
 def inspect_powered_evidence(events, telemetry):
     failure = None
     for event in events:
@@ -538,9 +592,14 @@ def live_plan(*, max_requests=5, interval=1.0, duration=15.0, first_sequence=512
 def run_live(output, *, expected_physical_port, actuators_isolated=False,
              unprivileged_usbmon=False, plan=None, run=False,
              left_motor_powered_observation=False, operator_at_external_cutoff=False,
+             encoder_feedback_observation=False, motor_power_plugs_disconnected=False,
+             servos_isolated=False, both_encoder_feedback_connected=False,
              motor_left_only_connected=False, motor_right_and_servos_isolated=False,
              motor_supply_off=False, authorize_unvalidated_zero_velocity=False, new_boot_declared=False):
     declarations = dict(
+        encoder_feedback_observation=encoder_feedback_observation,
+        motor_power_plugs_disconnected=motor_power_plugs_disconnected,
+        servos_isolated=servos_isolated, both_encoder_feedback_connected=both_encoder_feedback_connected,
         left_motor_powered_observation=left_motor_powered_observation,
         operator_at_external_cutoff=operator_at_external_cutoff,
         motor_left_only_connected=motor_left_only_connected,
@@ -550,29 +609,33 @@ def run_live(output, *, expected_physical_port, actuators_isolated=False,
     if any(type(value) is not bool for value in (run, actuators_isolated, *declarations.values())):
         raise ValueError("Live declarations must be literal booleans.")
     powered = left_motor_powered_observation
-    if powered:
-        if consent.classify(actuators_isolated=actuators_isolated, **declarations) != "left_motor_powered_observation":
-            raise ValueError("Select the complete powered observation scope.")
+    encoder = encoder_feedback_observation
+    if powered or encoder:
+        consent.classify(actuators_isolated=actuators_isolated, **declarations)
         if run is not True:
-            raise ValueError("Powered observation requires explicit run=True.")
-        if plan is not None and (type(plan) is not PollPlan or plan != powered_observation_plan()):
-            raise ValueError("Powered observation accepts only its immutable one-getter plan.")
-        plan = powered_observation_plan()
+            raise ValueError("Observation requires explicit run=True.")
+        fixed = encoder_observation_plan() if encoder else powered_observation_plan()
+        if plan is not None and (type(plan) is not PollPlan or plan != fixed):
+            raise ValueError("Observation accepts only its immutable getter plan.")
+        plan = fixed
     elif any(value for name, value in declarations.items() if name != "unprivileged_usbmon"):
-        raise ValueError("Separate declarations require the explicitly selected powered observation scope.")
+        raise ValueError("Separate declarations require an explicitly selected observation scope.")
     return _run_live(output, expected_physical_port=expected_physical_port,
                      actuators_isolated=actuators_isolated, unprivileged_usbmon=unprivileged_usbmon,
-                     plan=plan, powered=powered, declarations=declarations)
+                     plan=plan, powered=powered, encoder=encoder, declarations=declarations)
 
 
 def _run_live(output, *, expected_physical_port, actuators_isolated,
-              unprivileged_usbmon, plan, powered, declarations):
+              unprivileged_usbmon, plan, powered, encoder, declarations):
     plan = live_plan() if plan is None else plan
-    if not isinstance(plan, PollPlan) or plan != live_plan(
+    if encoder:
+        if type(plan) is not PollPlan or plan != encoder_observation_plan():
+            raise ValueError("Only the fixed encoder plan is supported.")
+    elif not isinstance(plan, PollPlan) or plan != live_plan(
             max_requests=plan.max_requests, interval=plan.interval,
             duration=plan.duration, first_sequence=plan.first_sequence):
         raise ValueError("Only the bounded live plan is supported.")
-    if (not powered and actuators_isolated is not True) or unprivileged_usbmon is not True:
+    if (not (powered or encoder) and actuators_isolated is not True) or unprivileged_usbmon is not True:
         raise ValueError("Explicit isolation and unprivileged USB recording acknowledgments are required.")
     if (not isinstance(expected_physical_port, str) or len(expected_physical_port) > 100 or
             not re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*(?:\.[1-9][0-9]*)*", expected_physical_port)):
@@ -599,14 +662,24 @@ def _run_live(output, *, expected_physical_port, actuators_isolated,
                         collector_deadline_scope="3s operations only; excludes preflight/recorder startup, "
                                                  "separate 5s cleanup and physical power dwell",
                         usb_nominal_seconds=8, usb_hard_seconds=13)
+    observation = EncoderObservation([]) if encoder else None
+    if encoder:
+        metadata.update(**consent.encoder_history(declarations), telemetry=observation.telemetry,
+                        immutable_application_transcript_hex=[
+                            read_raw_data_request(sequence).hex() for sequence in range(2560, 2580)],
+                        maximum_application_bytes=200,
+                        collector_deadline_scope="35s operations only; excludes preflight/recorder startup, "
+                                                 "separate 5s cleanup and physical power dwell",
+                        usb_nominal_seconds=40, usb_hard_seconds=45)
 
     def capture(port, directory, *, guard, **options):
         nonlocal outcome
-        if powered:
+        if powered or encoder:
             actual = {name: options.get(name, False) for name in declarations}
             if (consent.classify(actuators_isolated=options.get("actuators_isolated", False), **actual)
-                    != "left_motor_powered_observation" or actual != declarations
-                    or options.get("seconds") != 3 or options.get("baudrate") != 57600
+                    != ("encoder_feedback_observation" if encoder else "left_motor_powered_observation")
+                    or actual != declarations
+                    or options.get("seconds") != plan.duration or options.get("baudrate") != 57600
                     or options.get("probe_schedule") != schedule
                     or options.get("dtr") is not False or options.get("rts") is not False
                     or options.get("line_state_at_open") is not True
@@ -623,7 +696,7 @@ def _run_live(output, *, expected_physical_port, actuators_isolated,
                         "allow_telemetry_state_change", "probe_delay", "bytesize", "parity", "stopbits",
                         "probe_profile", "allow_unknown_command", "probe_schedule"}
                     or (options.get("bytesize"), options.get("parity"), options.get("stopbits")) != (8, "N", 1)):
-                raise ValueError("Capture boundary changed the fixed powered observation scope.")
+                raise ValueError("Capture boundary changed the fixed observation scope.")
         directory.mkdir(mode=0o700)
         ingress.open()
         transport = LiveTransport(port, baseline, directory, ingress, guard=guard, plan=plan)
@@ -632,7 +705,10 @@ def _run_live(output, *, expected_physical_port, actuators_isolated,
                               expected_identity=transport.token, plan=plan, evidence_kind="recorded",
                               wait=transport.wait,
                               **({"on_evidence": lambda events: inspect_powered_evidence(events, metadata["telemetry"]),
-                                  "on_failure": consent.notify_cut_power} if powered else {}))
+                                  "on_failure": consent.notify_cut_power} if powered else
+                                 {"on_evidence": observation.inspect, "on_failure": observation.end,
+                                  "on_sample_persisted": observation.persisted,
+                                  "on_collection_ended": observation.end} if encoder else {}))
         except CollectionError as error:
             outcome = error.result
             raise OSError(f"LIVE collection failed: {error.code}: {error}") from error
@@ -652,7 +728,7 @@ def _run_live(output, *, expected_physical_port, actuators_isolated,
             expected_usb_identity=baseline["usb"], ready_callback=lambda _: clock.check(),
             usb_tail_seconds=5, usb_close_grace_seconds=5,
             capture_runner=capture, binary_payload_limit=USB_PAYLOAD_LIMIT,
-            **(declarations if powered else {}),
+            **(declarations if powered or encoder else {}),
         )
         if result.get("status") != "completed":
             raise OSError("Coordinator did not complete successfully.")
@@ -664,6 +740,8 @@ def _run_live(output, *, expected_physical_port, actuators_isolated,
                         usb_in_bytes=ingress.rx_bytes, usb_out_completed_bytes=ingress.completed_tx,
                         observed_line_states=ingress.line_states)
     except BaseException as error:
+        if encoder:
+            observation.end(error)
         if powered:
             consent.notify_cut_power(error)
         metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
@@ -708,15 +786,18 @@ def main(argv=None):
     args = consent.parse_observation_arguments(parser, argv)
     try:
         powered = args.left_motor_powered_observation
+        encoder = args.encoder_feedback_observation
         declarations = {**consent.arguments(args), **consent.observation_arguments(args)}
-        if powered:
+        if powered or encoder:
             consent.classify(actuators_isolated=args.actuators_isolated, **declarations)
         elif any(value for name, value in declarations.items() if name != "unprivileged_usbmon"):
-            raise ValueError("Separate declarations require powered observation.")
-        defaults = powered_observation_plan() if powered else live_plan()
+            raise ValueError("Separate declarations require an explicitly selected observation scope.")
+        defaults = encoder_observation_plan() if encoder else powered_observation_plan() if powered else live_plan()
         knobs = {name: getattr(args, name) if getattr(args, name) is not None else getattr(defaults, name)
                  for name in ("max_requests", "interval", "duration", "first_sequence")}
-        plan = live_plan(**knobs)
+        if encoder and any(getattr(args, name) is not None for name in knobs):
+            raise ValueError("Encoder observation has no CLI plan overrides.")
+        plan = defaults if encoder else live_plan(**knobs)
         if powered and plan != defaults:
             raise ValueError("Conflicting CLI knobs: powered observation is fixed at one request, "
                              "interval 1, duration 3, sequence 2304; no overrides.")
@@ -736,6 +817,15 @@ def main(argv=None):
                               limitations="HARDWARE HOLD: fresh future operator confirmation and bounded power plan "
                                           "required. 3s collector operations exclude startup, separate 5s cleanup "
                                           "and power dwell. Host cannot remove energy or detect movement.")
+            if encoder:
+                result.update(**consent.encoder_history(declarations),
+                              immutable_application_transcript_hex=[
+                                  read_raw_data_request(sequence).hex() for sequence in range(2560, 2580)],
+                              required=["--run", "--output NEWDIR", "--expected-physical-port",
+                                        *("--" + name.replace("_", "-") for name in consent.ENCODER_FLAGS)],
+                              limitations="SOFTWARE ONLY approval; fresh physical confirmation required. "
+                                          "Wait for persisted BASELINE_READY; stop at COLLECTION_ENDED. "
+                                          "35s operation deadline may refuse before 20; not power dwell.")
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
@@ -745,6 +835,8 @@ def main(argv=None):
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         if args.left_motor_powered_observation:
             consent.notify_cut_power(error)
+        if args.encoder_feedback_observation:
+            consent.notify_collection_ended(error)
         print(json.dumps({"status": "failed", "error": str(error)}), file=sys.stderr)
         return 1
     print(json.dumps(result, indent=2, sort_keys=True))

@@ -246,6 +246,8 @@ def run_session(
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
     left_motor_powered_observation=False, operator_at_external_cutoff=False,
+    encoder_feedback_observation=False, motor_power_plugs_disconnected=False,
+    servos_isolated=False, both_encoder_feedback_connected=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -266,6 +268,9 @@ def run_session(
     if any(type(flag) is not bool for flag in (_isolated_zero_velocity, _motor_power_off_preparation)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     declarations = dict(
+        encoder_feedback_observation=encoder_feedback_observation,
+        motor_power_plugs_disconnected=motor_power_plugs_disconnected,
+        servos_isolated=servos_isolated, both_encoder_feedback_connected=both_encoder_feedback_connected,
         motor_supply_off=motor_supply_off, motor_left_only_connected=motor_left_only_connected,
         motor_right_and_servos_isolated=motor_right_and_servos_isolated,
         authorize_unvalidated_zero_velocity=authorize_unvalidated_zero_velocity,
@@ -278,20 +283,25 @@ def run_session(
     if preparation_consent != _motor_power_off_preparation or (
             _motor_power_off_preparation and _isolated_zero_velocity):
         raise ValueError("Preparation consent is only valid for the separate fixed preparation profile.")
-    if left_motor_powered_observation:
+    observation = left_motor_powered_observation or encoder_feedback_observation
+    if observation:
         from tools.marvin_legacy_protocol import read_raw_data_request
-        fixed_schedule = (marvin_probe.ScheduledWrite(0, read_raw_data_request(2304), "legacy-read-raw-data"),)
+        fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
+                                                         "legacy-read-raw-data")
+                               for index, sequence in enumerate(
+                                   range(2560, 2580) if encoder_feedback_observation else (2304,)))
         if (_isolated_zero_velocity or _motor_power_off_preparation
                 or capture_runner is None or allow_unknown_command is not True or sudo_usbmon is not False
                 or usbmon_backend != "binary" or binary_payload_limit != 4096
                 or probe_profile != "legacy" or baudrate != 57600
                 or (bytesize, parity, stopbits) != (8, "N", 1)
-                or seconds != 3 or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
+                or seconds != (35 if encoder_feedback_observation else 3)
+                or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
                 or dtr is not False or rts is not False
                 or any((probe_cr, probe_get_config, probe_get_unit_info, probe_get_sensor_info,
                         allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
                 or probe_schedule != fixed_schedule or probe_delay):
-            raise ValueError("Powered observation requires its fixed one-getter legacy plan.")
+            raise ValueError("Observation requires its scope's fixed legacy getter plan.")
     else:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
     if _motor_power_off_preparation:
@@ -331,7 +341,7 @@ def run_session(
         probe_cr=probe_cr, probe_get_config=probe_get_config,
         probe_get_unit_info=probe_get_unit_info, probe_get_sensor_info=probe_get_sensor_info,
     )
-    if actuators_isolated is not True and not (_motor_power_off_preparation or left_motor_powered_observation):
+    if actuators_isolated is not True and not (_motor_power_off_preparation or observation):
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
@@ -473,6 +483,11 @@ def run_session(
                         immutable_application_transcript_hex=["53000900000000bf0445"],
                         usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; observation uses an unflushed raw tty."
+    if encoder_feedback_observation:
+        metadata.update(**motor_consent.encoder_history(declarations),
+                        immutable_application_transcript_hex=[item.data.hex() for item in fixed_schedule],
+                        usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
+        metadata["limitations"][2] = "Kernel-open line transitions remain possible; observation uses an unflushed raw tty."
     if deadline is not None:
         metadata["shared_deadline_monotonic"] = deadline
     metadata_path = output / "metadata.json"
@@ -484,7 +499,9 @@ def run_session(
         "--seconds", str(usb_max_seconds),
         "--backend", usbmon_backend,
     ]
-    if left_motor_powered_observation:
+    if encoder_feedback_observation:
+        command.extend("--" + name.replace("_", "-") for name in motor_consent.ENCODER_FLAGS)
+    elif left_motor_powered_observation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.OBSERVATION_FLAGS)
     elif _motor_power_off_preparation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.PREPARATION_FLAGS)
@@ -508,7 +525,7 @@ def run_session(
             launched = time.monotonic()
             marvin_probe.remaining_time(deadline)
             process = subprocess.Popen(command, stdout=stdout,
-                                       stderr=None if left_motor_powered_observation else stderr)
+                                       stderr=None if observation else stderr)
             ready = wait_ready(process, usb_output, baseline, port, **deadline_options)
             if usb_close_grace_seconds:
                 nominal_deadline, hard_deadline = coordinated_deadlines(
@@ -556,13 +573,13 @@ def run_session(
                     probe_profile=probe_profile,
                     allow_telemetry_state_change=allow_telemetry_state_change,
                     **probe_options, **deadline_options,
-                    **(declarations if _motor_power_off_preparation or left_motor_powered_observation else {}),
+                    **(declarations if _motor_power_off_preparation or observation else {}),
                 )
             finally:
                 serial_returned = time.monotonic()
                 metadata["serial_returned_monotonic"] = serial_returned
-            if left_motor_powered_observation and serial_result.get("status") != "completed":
-                raise OSError("Powered serial observation did not report completion.")
+            if observation and serial_result.get("status") != "completed":
+                raise OSError("Serial observation did not report completion.")
             guard()
             metadata["serial"] = serial_result
             write_json(metadata_path, metadata)
@@ -599,6 +616,8 @@ def run_session(
             metadata["usb"] = usb_metadata
             metadata["status"] = "completed"
     except (OSError, ValueError, subprocess.SubprocessError, marvin_probe.serial.SerialException) as error:
+        if encoder_feedback_observation:
+            motor_consent.notify_collection_ended(error)
         if left_motor_powered_observation:
             motor_consent.notify_cut_power(error)
         metadata["status"] = "failed"
@@ -625,11 +644,16 @@ def run_session(
                 metadata["drain_error"] = str(drain_error)
         raise
     except KeyboardInterrupt:
+        if encoder_feedback_observation:
+            motor_consent.notify_collection_ended("Interrupted")
         if left_motor_powered_observation:
             motor_consent.notify_cut_power("Interrupted")
-        metadata["status"] = "failed" if left_motor_powered_observation else "interrupted"
+        metadata["status"] = "failed" if observation else "interrupted"
         raise
     except BaseException as error:
+        if encoder_feedback_observation:
+            motor_consent.notify_collection_ended(error)
+            metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
         if left_motor_powered_observation:
             motor_consent.notify_cut_power(error)
             metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])

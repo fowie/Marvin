@@ -115,16 +115,19 @@ def _utc(wall_clock):
 def collect(transport, output, *, ownership_key, expected_identity, plan=PollPlan(),
             evidence_kind="unspecified", clock=time.monotonic, wait=time.sleep,
             wall_clock=lambda: datetime.now(timezone.utc), recorder_factory=Recorder,
-            on_evidence=None, on_failure=None):
+            on_evidence=None, on_failure=None, on_sample_persisted=None, on_collection_ended=None):
     """Own one client on the calling thread; raise CollectionError on faults.
 
     All operational failures retain the primary cause and an in-memory client in
     error.result, including raw evidence unavailable after a persistence failure.
     Injected transport, clocks, wait and recorder must be bounded/cooperative.
+    on_sample_persisted receives all current evidence, the operation deadline and
+    checked completion time, only after successful sample journal appends.
+    on_collection_ended runs before close/finalization, not as a success verdict.
     """
     if not isinstance(plan, PollPlan):
         raise ValueError("plan must be a validated PollPlan.")
-    for callback in (on_evidence, on_failure):
+    for callback in (on_evidence, on_failure, on_sample_persisted, on_collection_ended):
         if callback is not None and not callable(callback):
             raise ValueError("Observation callbacks must be callable.")
     for name, callback in (("clock", clock), ("wait", wait), ("wall_clock", wall_clock),
@@ -277,6 +280,8 @@ def collect(transport, output, *, ownership_key, expected_identity, plan=PollPla
                     remember(error)
             check(deadline, "duration")
             finished = check(target)
+            if on_sample_persisted is not None:
+                on_sample_persisted(client.evidence, deadline, finished)
             target = finished + plan.interval
         completed = True
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -286,6 +291,11 @@ def collect(transport, output, *, ownership_key, expected_identity, plan=PollPla
         interrupted = sys.exc_info()[1]
         if interrupted is not None and primary is None:
             remember(interrupted)
+        if on_collection_ended is not None:
+            try:
+                on_collection_ended(primary)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                remember(error)
         finalization_deadline = (timer.last or 0) + plan.cleanup_timeout
         try:
             finalization_deadline = timer() + plan.cleanup_timeout

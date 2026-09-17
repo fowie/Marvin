@@ -12,18 +12,37 @@ OBSERVATION_FLAGS = (
     "left_motor_powered_observation", "operator_at_external_cutoff", "unprivileged_usbmon",
 )
 OBSERVATION_ONLY_FLAGS = ("left_motor_powered_observation", "operator_at_external_cutoff")
+ENCODER_ONLY_FLAGS = (
+    "encoder_feedback_observation", "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected",
+)
+ENCODER_FLAGS = (*ENCODER_ONLY_FLAGS, "unprivileged_usbmon")
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
-             operator_at_external_cutoff=False, **declarations):
+             operator_at_external_cutoff=False, encoder_feedback_observation=False,
+             motor_power_plugs_disconnected=False, servos_isolated=False,
+             both_encoder_feedback_connected=False, **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
                operator_at_external_cutoff=operator_at_external_cutoff)
+    encoder = dict(encoder_feedback_observation=encoder_feedback_observation,
+                   motor_power_plugs_disconnected=motor_power_plugs_disconnected,
+                   servos_isolated=servos_isolated,
+                   both_encoder_feedback_connected=both_encoder_feedback_connected)
     if any(type(value) is not bool for value in (actuators_isolated, *new.values(),
-                                                *declarations.values())):
+                                                *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
     if set(declarations) - set(PREPARATION_FLAGS):
         raise ValueError("Unknown operator declaration.")
+    if any(encoder.values()):
+        if (actuators_isolated or not all(encoder.values())
+                or declarations.get("unprivileged_usbmon") is not True or any(new.values())
+                or any(declarations.get(name, False) for name in PREPARATION_FLAGS
+                       if name != "unprivileged_usbmon")):
+            raise ValueError("Encoder observation requires both motor POWER plugs disconnected, servo "
+                             "isolation and both complete encoder harnesses connected; no mixed scopes.")
+        return "encoder_feedback_observation"
     if any(new.values()):
         flags = {**{name: declarations.get(name, False) for name in PREPARATION_FLAGS}, **new}
         if (actuators_isolated or not all(flags[name] for name in OBSERVATION_FLAGS)
@@ -40,6 +59,12 @@ def notify_cut_power(error):
           file=sys.stderr, flush=True)
 
 
+def notify_collection_ended(error):
+    print("COLLECTION_ENDED: no movement window remains; if startup failed, no movement window "
+          f"opened. Stop manual movement. {str(error)[:256]}. Preliminary evidence only; "
+          "not power permission or a power cut.", file=sys.stderr, flush=True)
+
+
 def powered_faults(operation):
     """Catch even validation/startup/sealing failures outside the inner cleanup scope."""
     @functools.wraps(operation)
@@ -49,17 +74,19 @@ def powered_faults(operation):
         except BaseException as error:
             if kwargs.get("left_motor_powered_observation") is True:
                 notify_cut_power(error)
+            if kwargs.get("encoder_feedback_observation") is True:
+                notify_collection_ended(error)
             raise
     return wrapped
 
 
 def add_observation_arguments(parser):
-    for name in OBSERVATION_ONLY_FLAGS:
+    for name in (*OBSERVATION_ONLY_FLAGS, *ENCODER_ONLY_FLAGS):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
 def observation_arguments(args):
-    return {name: getattr(args, name) for name in OBSERVATION_ONLY_FLAGS}
+    return {name: getattr(args, name) for name in (*OBSERVATION_ONLY_FLAGS, *ENCODER_ONLY_FLAGS)}
 
 
 def parse_observation_arguments(parser, argv):
@@ -69,6 +96,8 @@ def parse_observation_arguments(parser, argv):
     except SystemExit as error:
         if error.code and "--left-motor-powered-observation" in argv:
             notify_cut_power("Invalid powered observation CLI arguments; no run started.")
+        if error.code and "--encoder-feedback-observation" in argv:
+            notify_collection_ended("Invalid encoder observation CLI arguments; no run started.")
         raise
 
 
@@ -81,6 +110,21 @@ def observation_history(declarations):
         "outcome_meaning": "observation_only_not_stop_or_commissioning",
         "host_can_remove_energy": False,
         "physical_movement_detection": "operator_only_continuous_watch_including_boot_and_open",
+        "new_boot_basis": "not_claimed",
+    }
+
+
+def encoder_history(declarations):
+    return {
+        **history(declarations),
+        "actuator_power_and_signal_isolation_acknowledged": False,
+        "motor_supply_off_acknowledged": False,
+        "scope": "encoder_feedback_observation",
+        "load_scope": "MOTORLOAD-DISCONNECTED",
+        "both_encoder_harnesses": "operator_declared_fully_connected_including_logic_power_and_reference",
+        "controller_and_shared_hy_power": "operator_declared_powered",
+        "outcome_meaning": "raw_observation_only_not_calibration_or_power_permission",
+        "host_can_remove_energy": False,
         "new_boot_basis": "not_claimed",
     }
 

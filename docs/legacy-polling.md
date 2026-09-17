@@ -74,6 +74,16 @@ timezone-aware datetime `wall_clock`, and `recorder_factory` are injectable.
 Callbacks must be cooperative and bounded; `wait()` returns exactly `None`.
 Tests inject every transport/identity/time/output boundary.
 
+Optional `on_sample_persisted(evidence, deadline, finished)` runs only after a
+valid sample's request/evidence rows have been appended to the unbuffered journal
+and its completion time checked. It receives cumulative immutable evidence and
+monotonic operation deadline/completion times. This is not a terminal fsync,
+USB-tail or success guarantee. `on_collection_ended(error)` runs before close
+and finalization, on success or failure; it does not cover inert constructor
+errors, which the live caller handles. These bounded callbacks support the
+separate encoder scope's terminal visibility without changing default output or
+waiting for operator input. Callback failures stop collection and retain evidence.
+
 Operational faults raise `CollectionError`, preserving the original exception
 in `primary` and as the chained cause. `error.result.client` retains all
 available cumulative request/evidence snapshots, even if persistence failed.

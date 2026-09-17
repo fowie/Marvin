@@ -34,7 +34,8 @@ the expected five-reply shape.
 
 The following gates are the unchanged fully isolated default. The separately
 selected [left-motor-powered read-only scope](#left-motor-powered-read-only-observation)
-below is not full isolation and must never claim it.
+and [encoder-feedback scope](#encoder-feedback-observation-software-only) below
+are not full isolation and must never claim it.
 
 Do not run hardware commands in CI or unattended development. A separately
 authorized operator must confirm all four isolations (motor power, motor signals,
@@ -91,6 +92,81 @@ correlation. USB control-line requests are retained, not represented as physical
 measurements. Low requested/read-back lines do not imply glitch-free open/close.
 The adapter never reads/drains the tty during close. The same owner attempts
 descriptor close once even if recording fails, and records errors explicitly.
+
+## Encoder-feedback observation (software only)
+
+**No physical run is approved or claimed here.** At software approval the
+reported setup was HY OFF with MotorL attached; the following required setup
+was **not done**. A future operator must separately confirm both motor **POWER**
+plugs physically disconnected, servo **actuator power and control** isolated,
+and **both original encoder harnesses fully connected, including logic power
+and reference**, with controller/shared HY powered. This is the
+**MOTORLOAD-DISCONNECTED** scope, not full signal isolation, supply OFF,
+motor-powered observation, zero preparation, calibration or permission to power.
+
+The opt-in reuses the same client, collector, native transport and USB evidence
+path. Its separately constructed immutable `PollPlan` does not widen the old
+five-request/30-second live bounds or the fixed sequence-2304 powered scope:
+
+| Bound | Fixed encoder scope |
+|---|---|
+| Only application TX | 20 empty ReadRawData getters, sequences **2560–2579**, at most **200 bytes** |
+| Idle / timeout | At least 1 second **after completion**, 0.5-second request timeout |
+| Collector operations / separate cleanup | 35 / 5 seconds |
+| USB nominal / hard window from recorder ready | 40 / 45 seconds (existing tail 5 + grace 5) |
+| Full USB payload / serial RX | 4096 / 8192 bytes |
+| USB evidence | Existing combined 1 MiB / 10000 records |
+
+There are no CLI plan overrides, alternative frames, init/zero/setters,
+retry, catch-up, extension or reconnect. Deadlines, quiet checks and identity
+guards can refuse **before 20 samples**. These are not end-to-end wall-time or
+physical power-dwell guarantees; preflight, startup and finalization are separate.
+
+Future invocation **only after separate physical confirmation**, run directly
+in the parent's visible terminal from the committed CLI, not via a cross-session
+relay or watcher:
+
+```sh
+python3 -B -m tools.marvin_legacy_live \
+  --encoder-feedback-observation --motor-power-plugs-disconnected \
+  --servos-isolated --both-encoder-feedback-connected --unprivileged-usbmon \
+  --expected-physical-port 1-1.1.3.3 --output NEW-PRIVATE-ENCODER-CAPTURE --run
+```
+
+For offline plan inspection, omit `--run` and `--output`. Do not add
+`--actuators-isolated`, `--motor-supply-off`, left-motor-powered, preparation or
+zero declarations. All boundaries preserve the truthful declarations, including
+the USB subprocess; metadata is historical, never standing permission.
+
+Wait for the flushed stderr **`BASELINE_READY`**, emitted only after the first
+valid sample's raw journal rows have been successfully written through the
+existing **unbuffered** recorder. No per-sample fsync is claimed; terminal sealing
+retains its existing fsync contract. Then, only in the separately confirmed
+physical setup, gently turn the left wheel forward/back without forcing it.
+Stop manual movement at **`COLLECTION_ENDED`**, on success or any failure, before
+the lengthy USB tail. No human wait extends the fixed collection. Startup or
+constructor failure emits an ended/no-movement-window message and no ready.
+At most 20 sample markers report sequence, raw/uint32/int32 positions,
+raw/uint16/int16 velocities and remaining operation time. Stdout remains the
+original final JSON. These markers are preliminary, not an interlock, power cut
+or permission; later tail/drop/cleanup/sealing failure invalidates the result.
+
+Every matching CRC-valid status-`80`, exact 134-byte/82-field observation is
+accepted regardless of position, velocity or PWM values in this load-disconnected
+scope. The actual decoder reads retained bytes: `motorPositionL/R` at payload
+64/68 are little-endian 32-bit words; velocities at 72/74 are little-endian
+16-bit words. Raw bytes, all fields, both signed/unsigned views, identity and
+full USB timing/evidence remain retained. Unknown shape, late/unsolicited,
+corrupt/partial input, drops or uncertain writes fail closed and suppress the
+suffix. No units, counts/revolution, wheel mapping or calibration are inferred.
+
+Provenance: the parent supplied the **both encoders fully connected** declaration.
+Earlier raw position reports were L=72/R=-40 at 512–516, L=72/R=-55 at 768–772,
+and both 0 at 1280–1284, 2048 and 2304; reported raw velocities were all 0.
+Those facts do not identify which encoder changed or establish units/causality.
+No private captures/photos are copied here. Software tests exercise changing
+actual payloads and one native **host-created PTY**, with explicitly synthetic
+USB, identity and unsupported modem readbacks—not robot access or a live result.
 
 ## Left-motor-powered read-only observation
 
@@ -163,7 +239,7 @@ automatic power action.
 Detected failures issue a flushed **“OPERATOR: CUT EXTERNAL POWER NOW”**
 diagnostic before subsequent slow cleanup/drain work. Client evidence/failure
 callbacks expose faults before the client's own close; coordinator faults are
-reported before recorder drain. In this scope alone the USB subprocess inherits
+reported before recorder drain. In this scope and the encoder scope the USB subprocess inherits
 stderr to emit its urgent diagnostics without waiting for log/tail completion.
 Delivery or immediate operator visibility is not guaranteed by a flushed stream.
 The scoped `usbmon-stderr.log` is not used for those diagnostics, as recorded in

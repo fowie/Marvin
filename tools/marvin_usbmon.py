@@ -717,7 +717,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             motor_supply_off=False, motor_left_only_connected=False,
             motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
             unprivileged_usbmon=False, new_boot_declared=False,
-            left_motor_powered_observation=False, operator_at_external_cutoff=False):
+            left_motor_powered_observation=False, operator_at_external_cutoff=False,
+            encoder_feedback_observation=False, motor_power_plugs_disconnected=False,
+            servos_isolated=False, both_encoder_feedback_connected=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -731,6 +733,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     """
     from tools import marvin_motor_power_off_consent as motor_consent
     declarations = dict(
+        encoder_feedback_observation=encoder_feedback_observation,
+        motor_power_plugs_disconnected=motor_power_plugs_disconnected,
+        servos_isolated=servos_isolated, both_encoder_feedback_connected=both_encoder_feedback_connected,
         motor_supply_off=motor_supply_off, motor_left_only_connected=motor_left_only_connected,
         motor_right_and_servos_isolated=motor_right_and_servos_isolated,
         authorize_unvalidated_zero_velocity=authorize_unvalidated_zero_velocity,
@@ -743,14 +748,17 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     except ValueError as error:
         raise UsbmonError(str(error)) from error
     preparation = scope == "preparation"
-    if not left_motor_powered_observation:
+    observation = left_motor_powered_observation or encoder_feedback_observation
+    notify = motor_consent.notify_collection_ended if encoder_feedback_observation else motor_consent.notify_cut_power
+    if not observation:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
-    if left_motor_powered_observation and (
+    if observation and (
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
-            or binary_payload_limit != 4096 or seconds != 13 or coordinator_stop is not True
+            or binary_payload_limit != 4096 or seconds != (45 if encoder_feedback_observation else 13)
+            or coordinator_stop is not True
             or max_bytes != 1048576 or max_records != 10000 or max_line_bytes != 16384
             or max_pending != DEFAULT_MAX_PENDING):
-        raise UsbmonError("Powered observation recorder requires ordinary-user fixed full binary evidence budgets.")
+        raise UsbmonError("Observation recorder requires ordinary-user fixed full binary evidence budgets.")
     if preparation and (
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096 or seconds != 25 or coordinator_stop is not True
@@ -770,7 +778,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             or (isinstance(seconds, float) and not math.isfinite(seconds))
             or not 0 < seconds <= 120):
         raise UsbmonError("seconds must be finite, greater than zero and at most 120.")
-    if actuators_isolated is not True and not (preparation or left_motor_powered_observation):
+    if actuators_isolated is not True and not (preparation or observation):
         raise UsbmonError("Explicit --actuators-isolated confirmation is required.")
     _integer_limit(max_bytes, "max_bytes", 1, 64 * DEFAULT_MAX_BYTES)
     if backend == "binary" and max_bytes < len(binary.FILE_MAGIC):
@@ -827,6 +835,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             if left_motor_powered_observation:
                 metadata.update(**motor_consent.observation_history(declarations),
                                 consent_profile="left_motor_powered_observation")
+            if encoder_feedback_observation:
+                metadata.update(**motor_consent.encoder_history(declarations),
+                                consent_profile="encoder_feedback_observation")
             framer = _Framer(max_line_bytes, (identity["busnum"], identity["devnum"]))
             failure = None
             started = None
@@ -945,9 +956,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                                     raise _Stop("limit_reached", "max_bytes")
                     finally:
                         active_error = sys.exc_info()[1]
-                        if (left_motor_powered_observation and active_error is not None
+                        if (observation and active_error is not None
                                 and not (isinstance(active_error, _Stop) and active_error.status == "completed")):
-                            motor_consent.notify_cut_power(active_error)
+                            notify(active_error)
                         actual_bytes = evidence.tell()
                         metadata["unaccounted_retained_bytes"] = max(
                             0, actual_bytes - metadata["retained_bytes"])
@@ -959,12 +970,12 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             except _Stop as stopped:
                 metadata["status"], metadata["stop_reason"] = stopped.status, stopped.reason
                 metadata["stopped_monotonic"] = stopped.monotonic
-                if left_motor_powered_observation and stopped.status != "completed":
-                    motor_consent.notify_cut_power(stopped.reason)
-                    failure = UsbmonError("Powered observation recorder stopped: " + stopped.reason)
+                if observation and stopped.status != "completed":
+                    notify(stopped.reason)
+                    failure = UsbmonError("Observation recorder stopped: " + stopped.reason)
             except (OSError, UsbmonError, binary.BinaryError, RuntimeError) as exc:
-                if left_motor_powered_observation:
-                    motor_consent.notify_cut_power(exc)
+                if observation:
+                    notify(exc)
                 failure = exc
             # Finish framing only the already-read bounded batch, without more
             # monitor reads, evidence writes, or retaining unrelated payloads.
@@ -992,8 +1003,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 try:
                     validate_capture_completeness(metadata)
                 except UsbmonError as exc:
-                    if left_motor_powered_observation:
-                        motor_consent.notify_cut_power(exc)
+                    if observation:
+                        notify(exc)
                     failure = exc
             if backend == "binary":
                 try:
@@ -1005,8 +1016,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                     if dropped:
                         raise UsbmonError("USB monitor dropped events; capture is incomplete.")
                 except (OSError, UsbmonError, binary.BinaryError) as exc:
-                    if left_motor_powered_observation:
-                        motor_consent.notify_cut_power(exc)
+                    if observation:
+                        notify(exc)
                     metadata["monitor_final_stats_error"] = _safe_error(exc)
                     if failure is None:
                         failure = exc
@@ -1015,8 +1026,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             except (OSError, UsbmonError) as exc:
                 failure = exc
             if failure is not None:
-                if left_motor_powered_observation:
-                    motor_consent.notify_cut_power(failure)
+                if observation:
+                    notify(failure)
                 metadata.update(status="failed", stop_reason=(
                     "identity_unavailable_or_changed" if isinstance(failure, IdentityError)
                     else "capture_error"), error=_safe_error(failure))
@@ -1042,8 +1053,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 try:
                     os.close(fd)
                 except OSError as error:
-                    if left_motor_powered_observation:
-                        motor_consent.notify_cut_power(error)
+                    if observation:
+                        notify(error)
                         if "metadata" in locals():
                             metadata.update(status="failed", stop_reason="monitor_close_error",
                                             error=_safe_error(error))
@@ -1080,6 +1091,8 @@ def main(argv=None):
         if (args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated
                 or args.coordinator_stop or any(motor_consent.arguments(args).values())
                 or any(motor_consent.observation_arguments(args).values())):
+            if args.encoder_feedback_observation:
+                motor_consent.notify_collection_ended("Cannot mix offline analysis and capture arguments.")
             if args.left_motor_powered_observation:
                 motor_consent.notify_cut_power("Cannot mix offline analysis and powered capture arguments.")
             parser.error("--analyze cannot be combined with capture paths or privilege/isolation flags.")
@@ -1095,6 +1108,8 @@ def main(argv=None):
         print(json.dumps(result, indent=2, sort_keys=True), flush=True)
         return 0 if result["status"] == "completed" else 1
     if args.usb_path is None or args.output is None:
+        if args.encoder_feedback_observation:
+            motor_consent.notify_collection_ended("Missing capture paths; no capture started.")
         if args.left_motor_powered_observation:
             motor_consent.notify_cut_power("Missing required capture paths; no capture started.")
         parser.error("Capture requires --usb-path and --output.")
