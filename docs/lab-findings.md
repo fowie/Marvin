@@ -25,7 +25,10 @@ harnesses connected (including logic supply/reference), servos isolated and
 controller/shared HY powered. This was not all-signal isolation or supply OFF.
 
 The operator reported a left-wheel forward 360-degree rotation followed by a
-reverse 360-degree rotation, with the right wheel untouched. Communication
+reverse 360-degree rotation, with the right wheel untouched, and subsequently
+clarified **holding the left wheel away from its starting angle for several
+seconds**. The hold's angle, duration and alignment with sample times were not
+independently verified. Communication
 completed cleanly: 20 exact ReadRawData requests, sequences 2560-2579, 200 TX
 bytes and 2880 full matching serial/USB RX bytes; normal close and complete
 USB tail, all hashes verified. Parent reported shell exit 0.

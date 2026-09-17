@@ -192,6 +192,10 @@ the operator reported:
 These are operator observations, not independently measured or time-synchronized
 turn angles. The parent separately reported an immediate shell
 `CAPTURE_EXIT_STATUS=0` and return to the idle shell.
+The operator subsequently clarified that the left wheel was **held away from
+its starting angle for several seconds** during the capture. This strengthens
+the reported opportunity to observe a displacement, but angle, duration and
+overlap with actual sample/marker times were not independently verified.
 
 **Communication completed, but encoder feedback was not demonstrated.** Every
 one of the 20 samples, sequences **2560-2579**, had these actual retained words,
@@ -209,7 +213,7 @@ all 19 adjacent shortest signed modulo-32 differences are zero. Sampled minimum,
 maximum, range and net change are zero. This is not proof of no physical
 rotation, no unseen wrap, a broken encoder, or a particular wiring/firmware
 cause. Neither channel shows a sampled response corresponding to the reported
-left-wheel movement. Do not assign wheel mapping from the field names or infer
+left-wheel movement and hold. Do not assign wheel mapping from the field names or infer
 functioning feedback from successful communication. Approximately 1 Hz sampling
 can miss turning points or intervening excursions; no counts/revolution,
 direction calibration or closed-loop safety is established.
@@ -264,6 +268,8 @@ absence; it does **not** establish that the markers were never emitted.
 Private evidence ID: `encoder-feedback-2560-first`; offline audit:
 `encoder-feedback-2560-first-verification.json`, with a separate immutable
 `encoder-feedback-2560-terminal-addendum.json` for the later terminal evidence.
+The later operator hold clarification is preserved separately as
+`encoder-feedback-2560-operator-hold-addendum.json`.
 Only derived facts are published, not private raw captures.
 
 | Artifact | SHA256 |
