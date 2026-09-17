@@ -157,7 +157,7 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                  expected_identity: bytes, session_timeout: float,
                  limits: Limits = Limits(), first_sequence: int = 0,
                  cleanup_timeout: float = 1.0, clock: Callable[[], float] = time.monotonic,
-                 evidence_kind: str = "unspecified"):
+                 evidence_kind: str = "unspecified", on_failure=None, on_evidence=None):
         self._key = _identity("ownership_key", ownership_key)
         self._expected_identity = _identity("expected_identity", expected_identity)
         self._session_timeout = _number("session_timeout", session_timeout, 0.001, 600)
@@ -169,6 +169,12 @@ Evidence properties are immutable snapshots, not a polling/recording service.
             raise ValueError("Request budget would reuse/wrap uint16 sequences.")
         if not callable(clock):
             raise ValueError("clock must be callable.")
+        if on_failure is not None and not callable(on_failure):
+            raise ValueError("on_failure must be callable.")
+        self._on_failure = on_failure
+        if on_evidence is not None and not callable(on_evidence):
+            raise ValueError("on_evidence must be callable.")
+        self._on_evidence = on_evidence
         if evidence_kind not in protocol.EVIDENCE_KINDS:
             raise ValueError("Invalid caller-declared evidence_kind.")
         self._evidence_kind = evidence_kind
@@ -252,6 +258,11 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                     self._failure = Failure("operation_aborted", "Operation interrupted; no resume is permitted.")
                 if self._requests and self._requests[-1].status != "matched":
                     self._requests[-1] = replace(self._requests[-1], status="failed")
+                if self._on_failure is not None:
+                    try:
+                        self._on_failure(sys.exc_info()[1] or self._failure.message)
+                    except Exception as error:
+                        self._cleanup_errors.append(Failure("failure_notification", str(error)[:1024]))
                 self._finish_and_cleanup(primary_failure=True)
 
     def _now(self, *, record_failure=True):
@@ -347,6 +358,8 @@ Evidence properties are immutable snapshots, not a polling/recording service.
         self._last_rx_bounds = (start, end)
         for index in indices:
             self._classify(index, now)
+        if self._on_evidence is not None:
+            self._on_evidence()
         self._check_identity(deadline)
 
     def _classify(self, index, now):
@@ -463,6 +476,8 @@ Evidence properties are immutable snapshots, not a polling/recording service.
     def _finish(self):
         for index in self._append_events(self._decoder.finish()):
             self._classify(index, self._last_now)
+        if self._on_evidence is not None:
+            self._on_evidence()
 
     def _finish_and_cleanup(self, *, primary_failure):
         primary_error = sys.exc_info()[1] if primary_failure else None
@@ -477,6 +492,11 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                     primary_error = finish_error
                 elif finish_error is not None and finish_error is not primary_error:
                     self._cleanup_errors.append(Failure("finish_error", str(finish_error)[:1024]))
+                if finish_error is not None and self._on_failure is not None:
+                    try:
+                        self._on_failure(finish_error)
+                    except Exception as error:
+                        self._cleanup_errors.append(Failure("failure_notification", str(error)[:1024]))
                 self._cleanup(primary_failure=primary_failure or primary_error is not None)
         finally:
             cleanup_error = sys.exc_info()[1]

@@ -1,11 +1,21 @@
 # Persistent legacy getter client
 
 `tools.marvin_legacy_client.LegacyClient` is a synchronous, transport-independent
-implementation for #7 (Epic #1). It opens **no devices** and adds no serial
-adapter, actuator API or live authorization. The separate injection-only
+implementation for #7 (Epic #1). It opens **no devices** and adds no actuator
+API or live authorization. The separate injection-only
 [bounded polling/recording layer](legacy-polling.md) implements #8 on this API.
+The explicitly guarded [LIVE adapter](legacy-live.md) supplies Linux serial/USB
+integration separately; it does not authorize routine hardware use.
 The existing `marvin_legacy_probe` one-shot path and modern EFBE behavior are
 unchanged. Importing/invoking the client module does not perform I/O.
+
+Optional synchronous `on_evidence()` and `on_failure(error)` hooks support
+the separately guarded powered observation without adding commands or changing
+default behavior. The collector's `on_evidence(events)` receives newly retained
+classified evidence, including final partial events; its validator can refuse
+nonzero/unknown telemetry. Failure notification runs before client failure
+cleanup, not merely after collector finalization. Hooks must be bounded and
+cooperative; they are not physical interlocks or power-removal mechanisms.
 
 Run the complete in-memory example, using only synthetic replies and a fake
 clock:
@@ -197,9 +207,11 @@ than completed full request submission, its start offset is not in a prior
 read, and completion/processing is before the deadline. Equal, uncertain or
 during-write timing fails closed; even a legitimate fast reply can be rejected.
 Host timing and accepted writes still do not prove electrical transmission or
-physical origin. No current live adapter is claimed to meet this contract.
+physical origin. The [LIVE adapter](legacy-live.md) uses full USB-IN/tty
+correlation and a guarded clock conversion at the host USB completion boundary,
+not dequeue timestamps or a claim about physical byte-arrival time.
 
-Any future live adapter needs separate review and explicit operator
+Any live adapter needs separate review and explicit operator
 authorization, not reuse of the one-shot `--run` permission. It must enforce
 legacy S/E **57600/8N1/no flow control** and request DTR/RTS low after opening.
 `SETTINGS` describes those requirements; it is not proof they were applied.

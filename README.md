@@ -16,7 +16,9 @@ python -m unittest discover -s tests -v
 
 Tests use self-contained protocol facts, reviewed fixtures and mocked transport
 boundaries. No robot, USB/serial access, private archive or elevated privileges
-are needed. Installing dependencies may require network access; tests are offline.
+are needed. Native serial-adapter tests use host-created PTYs with synthetic USB
+evidence, not robot devices. Installing dependencies may require network access;
+tests are offline.
 
 ## Confirmed findings and limits
 
@@ -61,6 +63,14 @@ The damaged PEND TXCVR USB-A socket and reported hub port-4 over-current remain
 unresolved. Keep that branch unused; successful communication does not clear
 electrical faults.
 
+The explicitly selected [left-motor-powered read-only observation](docs/legacy-live.md#left-motor-powered-read-only-observation)
+has one separately authorized recorded result and remains **under HARDWARE HOLD**: exactly one fixed
+ReadRawData (sequence 2304), no zero/setter or power switch. It truthfully does
+not claim full isolation or supply-OFF. Its 3-second collector deadline is not
+a wall-time/power-dwell guarantee; separate cleanup and USB tail remain.
+Fresh future operator confirmation and a new bounded physical power plan are
+required. A clean observation is not a motor-stop or commissioning result.
+
 ## Contributing
 
 Follow [the development and safety rules](AGENTS.md): submit changes through
@@ -74,6 +84,9 @@ owner's approval.** Publication acceptance is tracked in
 - [Capability map and bring-up plan](docs/marvin-bringup-plan.md)
 - [Persistent legacy getter client and offline API example](docs/legacy-client.md)
 - [Bounded read-only polling, recording and offline inspection](docs/legacy-polling.md)
+- [Explicitly guarded LIVE serial/USB collection](docs/legacy-live.md)
+- [Isolated one-shot zero-velocity characterization](docs/legacy-zero.md)
+- [Motor-power-OFF preparation (offline default; no power-ON permission)](docs/legacy-motor-power-off-prep.md)
 - [Full historical/modern command catalogue](docs/marvin-command-map.json)
 - [Configuration export: 108 bytes, 27 words](docs/marvin-configuration.json)
 - [Raw telemetry snapshot: 134 bytes, 82 fields](docs/marvin-telemetry-snapshot.json)

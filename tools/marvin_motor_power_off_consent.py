@@ -1,0 +1,230 @@
+"""Literal, mutually exclusive operator declarations; never power permission."""
+
+import functools
+import sys
+
+PREPARATION_FLAGS = (
+    "motor_supply_off", "motor_left_only_connected", "motor_right_and_servos_isolated",
+    "authorize_unvalidated_zero_velocity", "unprivileged_usbmon", "new_boot_declared",
+)
+OBSERVATION_FLAGS = (
+    "motor_left_only_connected", "motor_right_and_servos_isolated",
+    "left_motor_powered_observation", "operator_at_external_cutoff", "unprivileged_usbmon",
+)
+OBSERVATION_ONLY_FLAGS = ("left_motor_powered_observation", "operator_at_external_cutoff")
+ENCODER_ONLY_FLAGS = (
+    "encoder_feedback_observation", "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected",
+)
+ENCODER_FLAGS = (*ENCODER_ONLY_FLAGS, "unprivileged_usbmon")
+POWERED_TRIAL_ONLY_FLAGS = (
+    "powered_left_stop_characterization", "motor_left_connected",
+    "motor_right_disconnected", "robot_secured_on_blocks",
+    "authorize_unvalidated_left_one_and_zero",
+)
+POWERED_TRIAL_FLAGS = (*POWERED_TRIAL_ONLY_FLAGS, "both_encoder_feedback_connected",
+                       "servos_isolated", "operator_at_external_cutoff",
+                       "unprivileged_usbmon")
+ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
+                                *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS)))
+
+
+def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
+             operator_at_external_cutoff=False, encoder_feedback_observation=False,
+             motor_power_plugs_disconnected=False, servos_isolated=False,
+             both_encoder_feedback_connected=False, powered_left_stop_characterization=False,
+             motor_left_connected=False, motor_right_disconnected=False,
+             robot_secured_on_blocks=False, authorize_unvalidated_left_one_and_zero=False,
+             **declarations):
+    """Keep validate's historical boolean contract; classify the new scope separately."""
+    new = dict(left_motor_powered_observation=left_motor_powered_observation,
+               operator_at_external_cutoff=operator_at_external_cutoff)
+    encoder = dict(encoder_feedback_observation=encoder_feedback_observation,
+                   motor_power_plugs_disconnected=motor_power_plugs_disconnected,
+                   servos_isolated=servos_isolated,
+                   both_encoder_feedback_connected=both_encoder_feedback_connected)
+    trial = dict(powered_left_stop_characterization=powered_left_stop_characterization,
+                 motor_left_connected=motor_left_connected,
+                 motor_right_disconnected=motor_right_disconnected,
+                 robot_secured_on_blocks=robot_secured_on_blocks,
+                 authorize_unvalidated_left_one_and_zero=authorize_unvalidated_left_one_and_zero)
+    if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
+                                                *encoder.values(), *declarations.values())):
+        raise ValueError("All operator declarations must be literal booleans.")
+    if set(declarations) - set(PREPARATION_FLAGS):
+        raise ValueError("Unknown operator declaration.")
+    if any(trial.values()):
+        flags = {**declarations, **new, **encoder, **trial}
+        if (actuators_isolated or not all(flags.get(name) is True for name in POWERED_TRIAL_FLAGS)
+                or any(flags.get(name, False) for name in set(ALL_FLAGS) - set(POWERED_TRIAL_FLAGS))):
+            raise ValueError("Powered left +1/zero requires its complete separate literal scope; no mixed scopes.")
+        return "powered_left_stop_characterization"
+    if any(encoder.values()):
+        if (actuators_isolated or not all(encoder.values())
+                or declarations.get("unprivileged_usbmon") is not True or any(new.values())
+                or any(declarations.get(name, False) for name in PREPARATION_FLAGS
+                       if name != "unprivileged_usbmon")):
+            raise ValueError("Encoder observation requires both motor POWER plugs disconnected, servo "
+                             "isolation and both complete encoder harnesses connected; no mixed scopes.")
+        return "encoder_feedback_observation"
+    if any(new.values()):
+        flags = {**{name: declarations.get(name, False) for name in PREPARATION_FLAGS}, **new}
+        if (actuators_isolated or not all(flags[name] for name in OBSERVATION_FLAGS)
+                or any(flags[name] for name in set(PREPARATION_FLAGS) - set(OBSERVATION_FLAGS))):
+            raise ValueError("Powered observation requires all current separate declarations; full isolation, "
+                             "motor-supply-OFF and preparation/zero declarations are forbidden.")
+        return "left_motor_powered_observation"
+    return "preparation" if validate(actuators_isolated=actuators_isolated, **declarations) else "isolated"
+
+
+def notify_cut_power(error):
+    print("OPERATOR: CUT EXTERNAL POWER NOW - powered observation failed/unknown: "
+          f"{str(error)[:256]}. Host cannot remove energy; closing the tty does not stop a motor.",
+          file=sys.stderr, flush=True)
+
+
+def notify_powered_trial_fault(error):
+    try:
+        print("CUT_POWER_REQUIRED: OPERATOR CUT HY1803D POWER independently NOW. "
+              "Motor output or stop state is UNVERIFIED. "
+              "Host cannot remove energy; closing the tty is NOT stopping. "
+              f"Fault: {str(error)[:512]}. Do not retain power for logging.",
+              file=sys.stderr, flush=True)
+    except (OSError, ValueError) as delivery_error:
+        if isinstance(error, BaseException):
+            error.add_note(f"External-cutoff diagnostic delivery failed: {delivery_error}")
+
+
+def notify_collection_ended(error):
+    print("COLLECTION_ENDED: no movement window remains; if startup failed, no movement window "
+          f"opened. Stop manual movement. {str(error)[:256]}. Preliminary evidence only; "
+          "not power permission or a power cut.", file=sys.stderr, flush=True)
+
+
+def powered_faults(operation):
+    """Catch even validation/startup/sealing failures outside the inner cleanup scope."""
+    @functools.wraps(operation)
+    def wrapped(*args, **kwargs):
+        try:
+            return operation(*args, **kwargs)
+        except BaseException as error:
+            if kwargs.get("powered_left_stop_characterization") is True:
+                notify_powered_trial_fault(error)
+            if kwargs.get("left_motor_powered_observation") is True:
+                notify_cut_power(error)
+            if kwargs.get("encoder_feedback_observation") is True:
+                notify_collection_ended(error)
+            raise
+    return wrapped
+
+
+def add_observation_arguments(parser):
+    for name in (*OBSERVATION_ONLY_FLAGS, *ENCODER_ONLY_FLAGS):
+        parser.add_argument("--" + name.replace("_", "-"), action="store_true")
+
+
+def add_powered_trial_arguments(parser):
+    for name in POWERED_TRIAL_ONLY_FLAGS:
+        parser.add_argument("--" + name.replace("_", "-"), action="store_true")
+
+
+def powered_trial_arguments(args):
+    return {name: getattr(args, name) for name in POWERED_TRIAL_ONLY_FLAGS}
+
+
+def observation_arguments(args):
+    return {name: getattr(args, name) for name in (*OBSERVATION_ONLY_FLAGS, *ENCODER_ONLY_FLAGS)}
+
+
+def parse_observation_arguments(parser, argv):
+    argv = sys.argv[1:] if argv is None else argv
+    try:
+        return parser.parse_args(argv)
+    except SystemExit as error:
+        if error.code and "--powered-left-stop-characterization" in argv:
+            notify_powered_trial_fault("Invalid powered-trial CLI arguments; no run started.")
+        if error.code and "--left-motor-powered-observation" in argv:
+            notify_cut_power("Invalid powered observation CLI arguments; no run started.")
+        if error.code and "--encoder-feedback-observation" in argv:
+            notify_collection_ended("Invalid encoder observation CLI arguments; no run started.")
+        raise
+
+
+def observation_history(declarations):
+    return {
+        **history(declarations),
+        "actuator_power_and_signal_isolation_acknowledged": False,
+        "motor_supply_off_acknowledged": False,
+        "scope": "left_motor_powered_observation",
+        "outcome_meaning": "observation_only_not_stop_or_commissioning",
+        "host_can_remove_energy": False,
+        "physical_movement_detection": "operator_only_continuous_watch_including_boot_and_open",
+        "new_boot_basis": "not_claimed",
+    }
+
+
+def encoder_history(declarations):
+    return {
+        **history(declarations),
+        "actuator_power_and_signal_isolation_acknowledged": False,
+        "motor_supply_off_acknowledged": False,
+        "scope": "encoder_feedback_observation",
+        "load_scope": "MOTORLOAD-DISCONNECTED",
+        "both_encoder_harnesses": "operator_declared_fully_connected_including_logic_power_and_reference",
+        "controller_and_shared_hy_power": "operator_declared_powered",
+        "outcome_meaning": "raw_observation_only_not_calibration_or_power_permission",
+        "host_can_remove_energy": False,
+        "new_boot_basis": "not_claimed",
+    }
+
+
+def powered_trial_history(declarations):
+    return {
+        **encoder_history(declarations),
+        "scope": "powered_left_stop_characterization",
+        "load_scope": "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED",
+        "outcome_meaning": "operator_motion_and_stop_observations_required_not_protocol_inferred",
+        "unvalidated_left_one_and_zero_authorized": True,
+        "raw_one_units": "unvalidated_raw_word_not_physical_speed",
+        "planned_zero_policy": "attempt_once_after_fully_accepted_start_on_same_owned_fd",
+        "planned_zero_guaranteed": False,
+        "physical_output_duration_bound": "not_established",
+        "operator_observed_motion": "not_recorded_by_software",
+        "operator_observed_stop_after_zero": "not_recorded_by_software",
+        "operator_cutoff_stop_observation": "separate_later_trial_not_part_of_this_run",
+    }
+
+
+def validate(*, actuators_isolated=False, **declarations):
+    if set(declarations) - set(PREPARATION_FLAGS):
+        raise ValueError("Unknown motor-power-OFF declaration.")
+    flags = {name: declarations.get(name, False) for name in PREPARATION_FLAGS}
+    if any(type(value) is not bool for value in (actuators_isolated, *flags.values())):
+        raise ValueError("Isolation and preparation declarations must be literal booleans.")
+    preparation = any(flags.values())
+    if preparation:
+        if actuators_isolated or not all(flags.values()):
+            raise ValueError("Motor-power-OFF preparation requires all separate declarations and forbids full isolation.")
+    elif not actuators_isolated:
+        raise ValueError("Explicit --actuators-isolated isolation confirmation is required.")
+    return preparation
+
+
+def add_arguments(parser):
+    for name in PREPARATION_FLAGS:
+        parser.add_argument("--" + name.replace("_", "-"), action="store_true")
+
+
+def arguments(args):
+    return {name: getattr(args, name) for name in PREPARATION_FLAGS}
+
+
+def history(declarations):
+    return {
+        "historical_operator_declarations": dict(declarations),
+        "declarations_are_current_permission": False,
+        "motor_supply_on_permission": "not_granted",
+        "physical_stop": "not_established",
+        "application_acknowledgment": "not_established",
+        "new_boot_basis": "operator_declaration_not_enumeration_proof",
+    }

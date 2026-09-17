@@ -1,9 +1,10 @@
 # Bounded legacy polling and evidence
 
 `tools.marvin_legacy_poll` implements #8 under Epic #1 using one
-[persistent legacy client](legacy-client.md). This is **injection-only software**:
-there is no live adapter, device-opening path, background reader or automatic
-startup hook. The existing four-getter one-shot probe policy and modern EFBE
+[persistent legacy client](legacy-client.md). This module remains **injection-only**:
+there is no device-opening path, background reader or automatic startup hook.
+The separate [guarded LIVE CLI](legacy-live.md) provides the production adapter
+under independent operator authorization. The existing four-getter one-shot probe policy and modern EFBE
 behavior are unchanged. No config, UnitInfo, enabling/heartbeat or actuator
 commands are sent; every request is empty legacy ReadRawData (`00`).
 
@@ -72,6 +73,16 @@ limits before output creation or transport access. `clock`, `wait(seconds)`,
 timezone-aware datetime `wall_clock`, and `recorder_factory` are injectable.
 Callbacks must be cooperative and bounded; `wait()` returns exactly `None`.
 Tests inject every transport/identity/time/output boundary.
+
+Optional `on_sample_persisted(evidence, deadline, finished)` runs only after a
+valid sample's request/evidence rows have been appended to the unbuffered journal
+and its completion time checked. It receives cumulative immutable evidence and
+monotonic operation deadline/completion times. This is not a terminal fsync,
+USB-tail or success guarantee. `on_collection_ended(error)` runs before close
+and finalization, on success or failure; it does not cover inert constructor
+errors, which the live caller handles. These bounded callbacks support the
+separate encoder scope's terminal visibility without changing default output or
+waiting for operator input. Callback failures stop collection and retain evidence.
 
 Operational faults raise `CollectionError`, preserving the original exception
 in `primary` and as the chained cause. `error.result.client` retains all
@@ -218,7 +229,7 @@ reports and are never fetched by polling.
 
 Legacy S/E 57600/8N1/no-flow-control and DTR/RTS low-after-open are **declared
 requirements**, not applied hardware facts or a guarantee against line glitches.
-A future live adapter needs separate review, approved-port checks, explicit
+The separate LIVE adapter requires review, approved-port checks, explicit
 operator authorization, and operator-confirmed motor/servo power **and signal**
 isolation. One-shot probe consent cannot authorize polling. No implementation or
 merged PR is physical safety sign-off. The damaged PEND TXCVR and hub port-4

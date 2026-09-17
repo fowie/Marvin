@@ -15,6 +15,186 @@ Original successor-drive software explicitly supports this legacy USB identity.
 Legacy `S`/`E` framing and six read operations are now live-confirmed on this controller.
 No motor/servo command library exists yet.
 
+## Load-disconnected manual encoder observation
+
+On September 17, 2026 at 00:53-00:54 UTC, the parent ran the fixed
+[20-sample feedback observation](legacy-live.md#first-load-disconnected-encoder-result)
+once at `4c0e25ae47798074e28e8eb1b751e9ce3b2cb63a`. The operator confirmed
+both motor **POWER** plugs disconnected, both complete original encoder
+harnesses connected (including logic supply/reference), servos isolated and
+controller/shared HY powered. This was not all-signal isolation or supply OFF.
+
+The operator reported a left-wheel forward 360-degree rotation followed by a
+reverse 360-degree rotation, with the right wheel untouched, and subsequently
+clarified **holding the left wheel away from its starting angle for several
+seconds**. The hold's angle, duration and alignment with sample times were not
+independently verified. Communication
+completed cleanly: 20 exact ReadRawData requests, sequences 2560-2579, 200 TX
+bytes and 2880 full matching serial/USB RX bytes; normal close and complete
+USB tail, all hashes verified. Parent reported shell exit 0.
+
+**Neither authored position channel changed in any sample:** `motorPositionL`
+and `motorPositionR` remained raw `00000000`, uint32/int32 0; both raw velocity
+and all four PWM words were also zero. Both sampled position ranges/net changes
+and all 19 adjacent wrap-aware differences were zero. Other sensor fields and
+the raw tick changed, but this does not establish individual encoder-field
+freshness. The operator's turns were not time-synchronized or independently
+measured; 1 Hz observations can miss intervening movement/turning points.
+No counts/revolution, wheel mapping, functioning left feedback, or fault cause
+can be inferred. Clean communication is not successful feedback acceptance.
+
+No further device check or command was performed during offline verification.
+Parent retains the hardware hold; do not proceed to a velocity trial while
+feedback remains unestablished, or treat these reported zeros as a physical stop.
+This describes the first run's conclusion; the separately authorized later
+observations below add response evidence without explaining the first result.
+
+### Subsequent body-coordinate feedback response
+
+The parent ran two further fixed getter-only captures at
+`2bb12e9b5c7029d231072004faa3c5dc23eb20f9`, with the same isolated motor-power
+plugs and connected encoder harnesses, board powered. The operator clarified
+"The wheel on my left when facing the robot's front": their earlier viewer-left
+term means **robot-right**. Source R responded in the second run; this is not
+evidence of crosswiring. Do not reinterpret the previously selected physical
+**MotorL connector** or rename source fields using viewer-relative terminology.
+The operator also reported 5 V at the "left encoder" supply relative to its own
+return; retain that DMM report without an unverified terminal/channel assignment.
+
+At 01:01-01:02 UTC on September 17, the reported robot-right quarter-turn and
+hold corresponded to source R position **90, 161, 238, 272, 293**, with final
+plateau 293 and sampled net change **+203**; source L stayed 0. At 02:45-02:46 UTC,
+following explicit robot-LEFT (front-facing user's right) forward-quarter-and-hold
+instructions, the operator reported **"Left wheel turned1/4rotation,rightwheeluntouched"**.
+Source L position changed **0, 33, 114, 189, 220**, plateauing at 220, net **+220**;
+source R stayed 293. Angle/direction/hold timing were not independently measured.
+These observations support separate body-coordinate channel response, not
+counts/revolution calibration or validated closed-loop safety.
+
+**Reported PWM changed without any host motor command.** In the second capture,
+R reverse PWM started at 32; R forward PWM reached 2368 and settled to 68.
+In the third, L forward PWM reached 3332 and settled to 32, while R forward
+PWM remained 68. Final velocities were zero despite those nonzero PWM words.
+These are raw controller-reported states, possibly feedback-related, not
+electrical PWM measurements, duty-cycle units or proof of an applied output.
+Keep **all motor loads disconnected**; no command magnitude or effective stop
+can be justified from this evidence.
+
+Each capture independently verified 20 exact requests/200 TX bytes and 20
+full matching replies/2880 RX bytes; CRC, poll seal, all manifest hashes and
+normal close/tail passed, with zero recorded drops or uncertain writes.
+Each durable auxiliary progress log contains one baseline, 19 sample records
+and one ended marker, values matched to raw replies; auxiliary logs are
+separately hashed and remaining-budget values are not wall timestamps.
+See [complete trajectories, PWM words and capture audit](legacy-live.md#subsequent-robot-right-and-robot-left-feedback-observations).
+No device scan or additional hardware command occurred during verification.
+Parent retains the hold; no zero/nonzero command, powered trial or commissioning
+approval follows these results.
+
+## Operator-reported physical-only left-motor startup
+
+On September 16, 2026 UTC (September 15 operator-local evening), the parent
+relayed the actual operator result after one separately accepted **physical-only**
+startup/stationary-intent plan, with an intended powered interval **no more than
+one second**:
+
+> “no twitch, no motion, HY1803D is off”
+
+The declared setup was MotorL only; MotorR and servos disconnected; supports
+secured and clearance established; full power OFF before connection. The shared
+HY1803D supplies controller electronics **and** motors. This is an
+**operator-observed** outcome, without independent timing or current trace.
+The intended interval is not a measured duration. It did **not** test stopping
+from motion and does not establish an effective software stop.
+
+Earlier DMM readings of 0 V before/after, and Phase A raw PWM/velocity words
+already equal to zero, do not establish causality or exclude PWM/boot
+transients. Stillness observed in one startup is not proof of future startup
+behavior, absent torque, calibration, current limits or electrical readiness.
+No private path, photo or unreviewed raw capture is published with this derived
+finding.
+
+The current operator statement is **HY1803D OFF**. Hardware access remains on
+hold. The unchanged supply-OFF preparation profile remains physically
+inapplicable in this shared-supply wiring; its gates must not be bypassed.
+The [fixed powered read-only scope](legacy-live.md#left-motor-powered-read-only-observation)
+was initially verified with software mocks and a host PTY; the later separately
+authorized real observation is recorded below. Any new invocation requires
+fresh operator confirmation and a **new bounded physical power plan**;
+neither this past physical trial nor historical metadata grants access,
+energization, another trial, an automatic power switch or a motor-stop action.
+
+## Powered read-only result and earlier isolated observations
+
+**Subsequent powered read-only observation, September 16 at 23:57 UTC:**
+the separately released [single sequence-2304 getter](legacy-live.md#first-authorized-powered-read-only-result)
+completed with 10 exact OUT bytes and one fully correlated 144-byte reply,
+reporting both raw velocity and all four raw PWM words zero. MotorL-only
+powered/cutoff consent was recorded without claiming full isolation or supply
+OFF during capture. The operator afterward reported no twitch or motion and
+supply OFF. The independent 30-second manual limit was accepted, not measured
+by the software; CLI runtime is not power duration. No motor command was sent,
+and stopping from motion, transient exclusion and commissioning remain
+unestablished. This later result supersedes the preceding implementation-only
+status, not its safety limitations. Hardware remains on hold. The parent is
+checking left encoder feedback before considering any velocity trial;
+unknown closed-loop feedback can make even a small raw command inappropriate.
+No nonzero command or additional hardware activity is authorized.
+
+**Explicit operator reconnect and fresh session, September 15 at 23:44-45 UTC:**
+after clean close, the operator unplugged/replugged only the reviewed same-port
+J10 host USB cable and reconfirmed all four isolations with nothing unexpected.
+A bounded cached-only observer (no device opens) recorded disappearance and
+return at 23:44:43.091825 and 23:44:50.099639 UTC. The approved physical port
+and descriptor hash were unchanged; bus 1/device 7 became device 10, sysfs
+inode 44386 became 65032, and fresh cached preflight passed.
+
+One separately authorized fresh session at
+`8a6de50a92d92f3972261262e3f07afd473aaa5b` then completed sequences 768-772:
+five 144-byte correlated ReadRawData replies, full 720-byte serial/binary-IN
+equality, five completed ten-byte OUTs, zero uncertain TX. Minimum observed
+write spacing was 1.027977 seconds. One persistent open and same-owner close
+completed; the 70-record USB trace stopped normally with queued/dropped zero.
+Post-capture identity matched and no tty owner remained. All private hashes
+verified; raw 720-byte RX SHA256:
+`68e4e56f6a835d16d26c18f72a1bd8e4599cafbb0f6986e55c9af03374514969`.
+
+CDC requests remained `3` then `0`; both reverse-PWM fields remained raw `100`,
+forward PWM and velocities zero in all five samples. This is **not physical
+stop, electrical readiness or units evidence**. This was operator reconnect
+after clean close, not an in-flight loss/failure injection or automatic resume.
+All further hardware work is stopped. See the
+[reviewed reconnect result and remaining gates](legacy-live.md#reviewed-operator-reconnect-and-fresh-session-result).
+
+**Persistent isolated snapshots, September 15 at 23:41 UTC:** after a separately
+authorized initial attempt failed before application TX on a host termios
+readback comparison, the reviewed fix at
+`1e8378a5c287b023c7d22c38a7d8b661c388db2f` completed five ReadRawData
+requests (sequences 512-516) on one persistent raw tty open. The same operator
+confirmed exclusive ownership, all four motor/servo power/signal isolations and
+the unchanged J10 connection. Fresh pre/post cached identity remained
+`045e:4444`, port `1-1.1.3.3`, bus 1/device 7, ttyACM0; these are observations,
+not pins for future reconnections.
+
+All five 144-byte replies matched command, sequence, status `80`, CRC and the
+134-byte/82-field profile. Full binary USB-IN, raw adapter journal and collector
+bytes matched exactly: 720 incoming bytes and five successful ten-byte OUTs,
+zero uncertain TX. Write spacing exceeded 1.022 seconds. One same-owner close
+completed; the 68-record USB capture stopped normally with zero queued/dropped
+events, and all private artifact hashes verified. Control-line requests were
+again `3` then `0`; requested low does not prevent transient assertions.
+
+**No physical stop claim:** both reverse-PWM fields remained raw `100`, both
+forward-PWM fields and velocities zero. Raw tick increments 102/101/102/101 and
+changing fields are not calibrated timing, units or electrical safety evidence.
+No cable removal, in-flight USB-loss experiment or operator reconnect was done
+within this baseline; the later separately authorized reconnect is recorded above.
+The [LIVE acceptance record](legacy-live.md#reviewed-persistent-snapshot-result)
+preserves the failed first attempt, successful bounded result and remaining
+operator gate. Private evidence ID: `live-readraw-512-readback-fix`; complete
+720-byte RX SHA256:
+`45872f5ba302360d333528ca69c4d0277e931eb57d9fba84e92aefc43dd8165f`.
+
 **Unprivileged isolated read, September 15 at 23:04 UTC:** the present operator
 confirmed motor/servo power AND signal isolation and approved one bounded
 ReadRawData request, including possible serial-open/close line effects. Both
