@@ -165,6 +165,21 @@ full USB timing/evidence remain retained. Unknown shape, late/unsolicited,
 corrupt/partial input, drops or uncertain writes fail closed and suppress the
 suffix. No units, counts/revolution, wheel mapping or calibration are inferred.
 
+For a **stationary controller-state snapshot**, reuse this exact encoder scope
+and invocation without manually moving either wheel. `BASELINE_READY` does not
+authorize movement. All 82 fields are retained, including raw flags, cliffs,
+battery/rail reports, currents, velocities and PWM; terminal progress is only
+a subset. No GetPowerState, setter, heartbeat, power-enable or reset is added.
+Record the robot-secured-on-blocks and operator-at-HY1803D-cutoff conditions in
+the separate operator plan; this CLI does not acknowledge them. Do not add
+`--operator-at-external-cutoff`, which belongs to the mutually exclusive
+powered-observation/trial scopes. The shared controller supply must be handled
+under that separate plan, not falsely declared OFF.
+
+The coordinator validates the complete scope before omitting inactive
+powered-trial-only flags from the getter capture handoff. This preserves the
+existing getter's exact option allowlist rather than relaxing its boundary.
+
 Provenance: the parent supplied the **both encoders fully connected** declaration.
 Earlier raw position reports were L=72/R=-40 at 512–516, L=72/R=-55 at 768–772,
 and both 0 at 1280–1284, 2048 and 2304; reported raw velocities were all 0.

@@ -1,4 +1,4 @@
-"""One fixed powered Motor-L +1, planned zero, then readback characterization.
+"""One fixed left-command +1, planned zero, then readback characterization.
 
 Offline by default. This is not a drive API, watchdog, or physical-stop proof.
 See docs/legacy-powered-left-stop.md before a separately authorized live run.
@@ -37,7 +37,8 @@ CLEANUP_SECONDS = 5
 SUCCESS = "powered_left_stop_observation_complete_unverified"
 
 
-def prepare():
+def prepare(*, scope="powered_left_stop_characterization"):
+    required = consent.POWERED_TRIAL_SCOPES[scope]
     expected = (
         (3072, 0x11, b"\x01\x00\x00\x00"),
         (3073, 0x11, b"\x00\x00\x00\x00"),
@@ -50,7 +51,7 @@ def prepare():
             raise ValueError("Fixed powered-left transcript disagrees with the legacy frame decoder.")
     return {
         "status": "dry_run",
-        "name": "powered_left_stop_characterization",
+        "name": scope,
         "profile": "marvin-legacy-se",
         "immutable_application_transcript_hex": [raw.hex() for raw in TRANSCRIPT],
         "maximum_application_bytes": 38,
@@ -69,7 +70,7 @@ def prepare():
         "operator_observed_stop_after_zero": "not_recorded_by_software",
         "operator_cutoff_stop_observation": "separate_later_trial_not_part_of_this_run",
         "required": ["--run", "--expected-physical-port", "--output NEWDIR",
-                     *("--" + name.replace("_", "-") for name in consent.POWERED_TRIAL_FLAGS)],
+                     *("--" + name.replace("_", "-") for name in required)],
     }
 
 
@@ -111,7 +112,7 @@ class _PoweredLeftTransport(LiveTransport):
                    planned_zero_hex=PLANNED_ZERO.hex(),
                    nominal_dwell_seconds=NOMINAL_DWELL_SECONDS)
         os.fsync(self.journal.fileno())
-        _marker("START", "about to submit fixed Motor-L raw +1; operator owns HY1803D cutoff")
+        _marker("START", "about to submit fixed left command raw +1; operator owns HY1803D cutoff")
 
         scheduled_at = clock()
         zero_due = scheduled_at + NOMINAL_DWELL_SECONDS
@@ -294,24 +295,23 @@ def _observe(transport, report, *, clock=time.monotonic, sleep=time.sleep):
                 primary.add_note(f"Additional finalization error: {error}")
 
 
-def _validate_capture(options):
+def _validate_capture(options, *, scope="powered_left_stop_characterization"):
     if options.get("_isolated_zero_velocity") or options.get("_motor_power_off_preparation"):
         raise ValueError("Powered-left capture forbids other diagnostic profiles.")
     declarations = {name: options.get(name, False) for name in consent.ALL_FLAGS}
     if consent.classify(actuators_isolated=options.get("actuators_isolated", False),
-                        **declarations) != "powered_left_stop_characterization":
+                        **declarations) != scope or scope not in consent.POWERED_TRIAL_SCOPES:
         raise ValueError("Powered-left capture requires its complete literal scope.")
 
 
 def run_characterization(output, *, expected_physical_port, run=False,
                          actuators_isolated=False, **declarations):
     try:
-        if run is not True or consent.classify(
-                actuators_isolated=actuators_isolated,
-                **declarations) != "powered_left_stop_characterization":
+        scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
+        if run is not True or scope not in consent.POWERED_TRIAL_SCOPES:
             raise ValueError("Literal --run and the powered-left scope are required.")
         return zero._run_diagnostic(
-            output, expected_physical_port=expected_physical_port, review=prepare(),
+            output, expected_physical_port=expected_physical_port, review=prepare(scope=scope),
             transport_type=_PoweredLeftTransport, observe=_observe,
             limits=zero._Limits(first_sequence=3072, max_requests=3, interval=0),
             session_options={"actuators_isolated": False, **declarations},
@@ -319,7 +319,7 @@ def run_characterization(output, *, expected_physical_port, run=False,
             expected_tx=38, success_status=SUCCESS,
             report_key="powered_left_stop_observation",
             authorizations={"unvalidated_left_one_and_zero_authorized": True},
-            capture_validator=_validate_capture,
+            capture_validator=lambda options: _validate_capture(options, scope=scope),
             on_failure=consent.notify_powered_trial_fault,
             serial_seconds=SERIAL_SECONDS,
         )
@@ -341,11 +341,13 @@ def main(argv=None):
     declarations = {**consent.arguments(args), **consent.observation_arguments(args),
                     **consent.powered_trial_arguments(args)}
     try:
+        scope = "powered_left_stop_characterization"
         if args.actuators_isolated or any(declarations.values()):
-            _validate_capture({"actuators_isolated": args.actuators_isolated, **declarations})
+            scope = consent.classify(actuators_isolated=args.actuators_isolated, **declarations)
+            _validate_capture({"actuators_isolated": args.actuators_isolated, **declarations}, scope=scope)
         if args.run and args.output is None:
             raise ValueError("--output NEWDIR is required.")
-        result = prepare() if not args.run else run_characterization(
+        result = prepare(scope=scope) if not args.run else run_characterization(
             args.output, expected_physical_port=args.expected_physical_port,
             run=args.run, actuators_isolated=args.actuators_isolated, **declarations)
     except (Exception, KeyboardInterrupt) as error:

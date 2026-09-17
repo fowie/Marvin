@@ -136,6 +136,8 @@ class EncoderObservationTests(unittest.TestCase):
         self.assertIsNone(harness.popen.call_args.kwargs["stderr"])
         for name in consent.ENCODER_FLAGS:
             self.assertIs(runner.call_args.kwargs[name], True)
+        self.assertTrue(set(runner.call_args.kwargs).isdisjoint(
+            (*consent.POWERED_TRIAL_ONLY_FLAGS, *consent.MAPPING_TRIAL_ONLY_FLAGS)))
         for name in ("actuators_isolated", "motor_supply_off", "left_motor_powered_observation"):
             self.assertIs(runner.call_args.kwargs[name], False)
         self.assertEqual(result["requested_application_bytes"], 200)

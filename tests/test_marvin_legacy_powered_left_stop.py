@@ -115,6 +115,87 @@ class PoweredLeftStopTests(unittest.TestCase):
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     actuators_isolated=True, **DECLARATIONS)
 
+    def test_right_connected_scope_keeps_left_frames_and_rejects_false_or_mixed_consent(self):
+        scope = consent.MAPPING_TRIAL_SCOPE
+        declarations = dict.fromkeys(consent.MAPPING_TRIAL_FLAGS, True)
+        flags = ["--" + name.replace("_", "-") for name in declarations]
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout, redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(powered.main(flags), 0)
+            plan = json.loads(stdout.getvalue())
+            self.assertEqual(plan["name"], scope)
+            self.assertEqual(plan["immutable_application_transcript_hex"], [
+                "53000c11000400010000009bfd45",
+                "53010c1100040000000000cbc445",
+                "53020c0000000072e645",
+            ])
+            self.assertEqual(plan["required"][3:], flags)
+            self.assertEqual(plan["nominal_start_to_zero_seconds"], .250)
+            self.assertFalse(plan["automatic_retries"])
+            self.assertFalse(plan["automatic_reconnect"])
+            with patch.object(powered.zero, "_run_diagnostic", return_value={}) as runner:
+                powered.run_characterization(
+                    self.root / "unused", expected_physical_port="1-3", run=True, **declarations)
+                options = runner.call_args.kwargs
+                self.assertIs(options["transport_type"], powered._PoweredLeftTransport)
+                self.assertIs(options["observe"], powered._observe)
+                self.assertEqual(options["review"], plan)
+                self.assertEqual(options["declarations"]["scope"], scope)
+                self.assertEqual(options["declarations"]["load_scope"],
+                                 "MOTOR_L_DISCONNECTED_MOTOR_R_CONNECTED")
+                self.assertEqual(options["authorizations"],
+                                 {"unvalidated_left_one_and_zero_authorized": True})
+                options["capture_validator"](declarations)
+                with self.assertRaises(ValueError):
+                    options["capture_validator"](DECLARATIONS)
+                runner.reset_mock()
+                invalid = [
+                    declarations | {name: value}
+                    for name in declarations for value in (False, 0, 1, None, "true")
+                ] + [
+                    declarations | {name: True}
+                    for name in (*set(consent.ALL_FLAGS).difference(declarations), "actuators_isolated")
+                ]
+                for wrong in invalid:
+                    with self.subTest(wrong=wrong), self.assertRaises(ValueError):
+                        powered.run_characterization(
+                            self.root / "unused", expected_physical_port="1-3", run=True, **wrong)
+                runner.assert_not_called()
+            self.assertIn("CUT_POWER_REQUIRED", stderr.getvalue())
+
+    def test_mapping_scope_coordinator_and_recorder_forward_truthful_consent_offline(self):
+        declarations = dict.fromkeys(consent.MAPPING_TRIAL_FLAGS, True)
+        harness = session_tests.SessionTests()
+        harness.setUp()
+        self.addCleanup(harness.doCleanups)
+        runner = Mock(side_effect=harness.capture)
+        result = harness.run_capture(
+            seconds=5, baudrate=57600, allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=runner, binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False, **declarations)
+        command = harness.popen.call_args.args[0]
+        self.assertEqual(result["scope"], consent.MAPPING_TRIAL_SCOPE)
+        self.assertEqual(result["load_scope"], "MOTOR_L_DISCONNECTED_MOTOR_R_CONNECTED")
+        self.assertEqual(result["immutable_application_transcript_hex"],
+                         [raw.hex() for raw in powered.TRANSCRIPT])
+        self.assertEqual(result["requested_application_bytes"], 38)
+        self.assertEqual((result["usb_nominal_duration_seconds"], result["usb_duration_seconds"]), (10, 15))
+        for name in consent.POWERED_TRIAL_SCOPES["powered_left_stop_characterization"][:3]:
+            self.assertNotIn("--" + name.replace("_", "-"), command)
+        powered._validate_capture(runner.call_args.kwargs, scope=consent.MAPPING_TRIAL_SCOPE)
+        with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(usbmon.main(command[2:]), 0)
+        powered._validate_capture(capture.call_args.kwargs, scope=consent.MAPPING_TRIAL_SCOPE)
+        with patch.object(usbmon, "validate_privilege_drop",
+                          side_effect=AssertionError("no recorder startup")), redirect_stderr(io.StringIO()):
+            for name in ("powered_left_stop_characterization", "motor_left_connected",
+                         "motor_right_disconnected", "motor_supply_off"):
+                wrong = declarations | {name: True}
+                with self.subTest(name=name), self.assertRaises(usbmon.UsbmonError):
+                    usbmon.capture("unused", self.root / "unused", seconds=15, **wrong)
+
     def test_full_start_always_attempts_zero_before_journal_and_marks_timing(self):
         for fault in (None, OSError("post-zero journal fault")):
             writes = []
