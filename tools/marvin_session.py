@@ -253,6 +253,8 @@ def run_session(
     authorize_unvalidated_left_one_and_zero=False,
     powered_left_command_right_connected=False,
     motor_left_disconnected=False, motor_right_connected=False,
+    disconnected_load_zero_one_order_diagnostic=False,
+    authorize_unvalidated_zero_one_order_diagnostic=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -276,6 +278,8 @@ def run_session(
         powered_left_command_right_connected=powered_left_command_right_connected,
         motor_left_disconnected=motor_left_disconnected,
         motor_right_connected=motor_right_connected,
+        disconnected_load_zero_one_order_diagnostic=disconnected_load_zero_one_order_diagnostic,
+        authorize_unvalidated_zero_one_order_diagnostic=authorize_unvalidated_zero_one_order_diagnostic,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -303,7 +307,8 @@ def run_session(
     if observation:
         declarations = {name: value for name, value in declarations.items()
                         if name not in (*motor_consent.POWERED_TRIAL_ONLY_FLAGS,
-                                        *motor_consent.MAPPING_TRIAL_ONLY_FLAGS)}
+                                        *motor_consent.MAPPING_TRIAL_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_ORDER_ONLY_FLAGS)}
         from tools.marvin_legacy_protocol import read_raw_data_request
         fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
                                                          "legacy-read-raw-data")
@@ -325,7 +330,10 @@ def run_session(
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
     if _motor_power_off_preparation or powered_trial:
         if powered_trial:
-            from tools.marvin_legacy_powered_left_stop import TRANSCRIPT
+            if scope == motor_consent.DISCONNECTED_ORDER_SCOPE:
+                from tools.marvin_legacy_disconnected_order import TRANSCRIPT
+            else:
+                from tools.marvin_legacy_powered_left_stop import TRANSCRIPT
         else:
             from tools.marvin_legacy_motor_power_off_prep import TRANSCRIPT
         if (capture_runner is None or allow_unknown_command is not True or sudo_usbmon is not False
@@ -513,8 +521,12 @@ def run_session(
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; observation uses an unflushed raw tty."
     if powered_trial:
         metadata.update(**motor_consent.powered_trial_history(declarations),
-                        probe_name=("PoweredLeftCommandRightConnected" if scope == motor_consent.MAPPING_TRIAL_SCOPE
-                                    else "PoweredLeftStopCharacterization"),
+                        probe_name=(
+                            "DisconnectedLoadZeroOneOrderDiagnostic"
+                            if scope == motor_consent.DISCONNECTED_ORDER_SCOPE
+                            else "PoweredLeftCommandRightConnected"
+                            if scope == motor_consent.MAPPING_TRIAL_SCOPE
+                            else "PoweredLeftStopCharacterization"),
                         immutable_application_transcript_hex=[raw.hex() for raw in TRANSCRIPT],
                         requested_probe_hex=b"".join(TRANSCRIPT).hex(),
                         unknown_command_authorized=True,

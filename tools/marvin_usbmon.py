@@ -724,7 +724,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             motor_right_disconnected=False, robot_secured_on_blocks=False,
             authorize_unvalidated_left_one_and_zero=False,
             powered_left_command_right_connected=False,
-            motor_left_disconnected=False, motor_right_connected=False):
+            motor_left_disconnected=False, motor_right_connected=False,
+            disconnected_load_zero_one_order_diagnostic=False,
+            authorize_unvalidated_zero_one_order_diagnostic=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -741,6 +743,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         powered_left_command_right_connected=powered_left_command_right_connected,
         motor_left_disconnected=motor_left_disconnected,
         motor_right_connected=motor_right_connected,
+        disconnected_load_zero_one_order_diagnostic=disconnected_load_zero_one_order_diagnostic,
+        authorize_unvalidated_zero_one_order_diagnostic=authorize_unvalidated_zero_one_order_diagnostic,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,

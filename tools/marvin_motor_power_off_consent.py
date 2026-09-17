@@ -34,13 +34,23 @@ MAPPING_TRIAL_FLAGS = (
     "authorize_unvalidated_left_one_and_zero", "both_encoder_feedback_connected",
     "servos_isolated", "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+DISCONNECTED_ORDER_SCOPE = "disconnected_load_zero_one_order_diagnostic"
+DISCONNECTED_ORDER_ONLY_FLAGS = (
+    DISCONNECTED_ORDER_SCOPE, "authorize_unvalidated_zero_one_order_diagnostic",
+)
+DISCONNECTED_ORDER_FLAGS = (
+    *DISCONNECTED_ORDER_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 POWERED_TRIAL_SCOPES = {
     "powered_left_stop_characterization": POWERED_TRIAL_FLAGS,
     MAPPING_TRIAL_SCOPE: MAPPING_TRIAL_FLAGS,
+    DISCONNECTED_ORDER_SCOPE: DISCONNECTED_ORDER_FLAGS,
 }
 ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS,
-                                *MAPPING_TRIAL_ONLY_FLAGS)))
+                                *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS)))
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
@@ -51,6 +61,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              robot_secured_on_blocks=False, authorize_unvalidated_left_one_and_zero=False,
              powered_left_command_right_connected=False,
              motor_left_disconnected=False, motor_right_connected=False,
+             disconnected_load_zero_one_order_diagnostic=False,
+             authorize_unvalidated_zero_one_order_diagnostic=False,
              **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
@@ -66,7 +78,9 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                  authorize_unvalidated_left_one_and_zero=authorize_unvalidated_left_one_and_zero,
                  powered_left_command_right_connected=powered_left_command_right_connected,
                  motor_left_disconnected=motor_left_disconnected,
-                 motor_right_connected=motor_right_connected)
+                 motor_right_connected=motor_right_connected,
+                 disconnected_load_zero_one_order_diagnostic=disconnected_load_zero_one_order_diagnostic,
+                 authorize_unvalidated_zero_one_order_diagnostic=authorize_unvalidated_zero_one_order_diagnostic)
     if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
                                                 *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
@@ -144,12 +158,14 @@ def add_observation_arguments(parser):
 
 
 def add_powered_trial_arguments(parser):
-    for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS):
+    for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS,
+                 *DISCONNECTED_ORDER_ONLY_FLAGS):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
 def powered_trial_arguments(args):
-    return {name: getattr(args, name) for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS)}
+    return {name: getattr(args, name) for name in (
+        *POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS)}
 
 
 def observation_arguments(args):
@@ -205,12 +221,20 @@ def powered_trial_history(declarations):
     return {
         **encoder_history(declarations),
         "scope": scope,
-        "load_scope": ("MOTOR_L_DISCONNECTED_MOTOR_R_CONNECTED" if scope == MAPPING_TRIAL_SCOPE
-                       else "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED"),
-        "outcome_meaning": "operator_motion_and_stop_observations_required_not_protocol_inferred",
-        "unvalidated_left_one_and_zero_authorized": True,
+        "load_scope": (
+            "MOTOR_POWER_PLUGS_DISCONNECTED" if scope == DISCONNECTED_ORDER_SCOPE
+            else "MOTOR_L_DISCONNECTED_MOTOR_R_CONNECTED" if scope == MAPPING_TRIAL_SCOPE
+            else "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED"),
+        "outcome_meaning": (
+            "raw_order_status_observation_only_not_protocol_inferred"
+            if scope == DISCONNECTED_ORDER_SCOPE
+            else "operator_motion_and_stop_observations_required_not_protocol_inferred"),
+        **({"unvalidated_zero_one_order_diagnostic_authorized": True,
+            "planned_zero_policy": "one_immediate_cleanup_attempt_after_fully_accepted_plus_one"}
+           if scope == DISCONNECTED_ORDER_SCOPE else
+           {"unvalidated_left_one_and_zero_authorized": True,
+            "planned_zero_policy": "attempt_once_after_fully_accepted_start_on_same_owned_fd"}),
         "raw_one_units": "unvalidated_raw_word_not_physical_speed",
-        "planned_zero_policy": "attempt_once_after_fully_accepted_start_on_same_owned_fd",
         "planned_zero_guaranteed": False,
         "physical_output_duration_bound": "not_established",
         "operator_observed_motion": "not_recorded_by_software",
