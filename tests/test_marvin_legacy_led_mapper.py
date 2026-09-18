@@ -99,6 +99,58 @@ class LegacyLedMapperTests(unittest.TestCase):
             with self.subTest(knob=knob), self.assertRaises(SystemExit):
                 mapper.main(["--phase", "set", "--index", "0", *FLAGS, "--" + knob, "1"])
 
+    def test_fixed_left_attention_group_preserves_baseline_and_uses_next_sequences(self):
+        baseline = bytes.fromhex("000000000000000000000000ff0000ff0000")
+        expected = bytes.fromhex("00ffffffffff000000000000ff0000ff0000")
+        self.assertEqual(mapper.test_vector(mapper.LEFT_ATTENTION_PHOTO, baseline), expected)
+        self.assertEqual([raw.hex() for raw in mapper.transcript_for(
+                "set", mapper.LEFT_ATTENTION_PHOTO, baseline)], [
+            "53c80c1700000066f845",
+            "53c90c1800120000ffffffffff000000000000ff0000ff000024cc45",
+        ])
+        self.assertEqual([raw.hex() for raw in mapper.transcript_for(
+                "restore", mapper.LEFT_ATTENTION_PHOTO, baseline)], [
+            "53ca0c18001200000000000000000000000000ff0000ff0000a40245",
+            "53cb0c1700000066cb45",
+        ])
+        plan = mapper.prepare_set(mapper.LEFT_ATTENTION_PHOTO)
+        self.assertEqual(plan["immutable_application_transcript_hex"],
+                         ["53c80c1700000066f845"])
+        self.assertEqual(
+            plan["runtime_derived_setter_policy"],
+            "captured_baseline_with_only_indices_1_2_3_4_5_forced_to_ff")
+        self.assertEqual((plan["maximum_writes"], plan["maximum_application_bytes"]), (2, 38))
+
+        transport = _Transport(mapper.transcript_for("set", mapper.LEFT_ATTENTION_PHOTO))
+        report = {}
+        with patch.object(
+                mapper.zero, "_observe_response",
+                side_effect=self.respond((0x80, 0x82), baseline)):
+            mapper._set_observer(
+                transport.transcript, mapper.LEFT_ATTENTION_PHOTO, lambda _: None)(
+                transport, report, clock=lambda: 0)
+        self.assertEqual(transport.writes, 2)
+        self.assertEqual(report["derived_setter_payload_hex"], expected.hex())
+        self.assertEqual(report["preserved_baseline_indices"], [0, *range(6, 18)])
+        self.assertEqual(report["operator_action"], "RESTORE_REQUIRED")
+
+        harness = session_tests.SessionTests()
+        harness.setUp()
+        self.addCleanup(harness.doCleanups)
+        result = harness.run_capture(
+            seconds=5, baudrate=57600, allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=Mock(side_effect=harness.capture), binary_payload_limit=4096,
+            usb_tail_seconds=5, usb_close_grace_seconds=5, actuators_isolated=False,
+            _led_mapping_phase="set",
+            _led_mapping_index=mapper.LEFT_ATTENTION_PHOTO,
+            _led_mapping_baseline=None, **DECLARATIONS)
+        self.assertEqual(result["requested_application_bytes"], 38)
+        self.assertEqual(
+            result["runtime_derived_setter_policy"],
+            "captured_baseline_with_only_indices_1_2_3_4_5_forced_to_ff")
+        self.assertEqual(result["immutable_application_transcript_hex"],
+                         ["53c80c1700000066f845"])
+
     def test_set_raw82_exits_restore_required_and_faults_never_retry(self):
         baseline = bytes.fromhex("000000000000000000000000ff0000ff0000")
         transcript = mapper.transcript_for("set", 0)
@@ -194,7 +246,7 @@ class LegacyLedMapperTests(unittest.TestCase):
 
         with patch.object(mapper, "_run_live", side_effect=sealed_set):
             mapper.run_set(
-                set_output, index=0, expected_physical_port="1-3", run=True,
+                set_output, target=0, expected_physical_port="1-3", run=True,
                 **DECLARATIONS)
         state = mapper._load_state(self.root)
         self.assertEqual(state["status"], "restore_required")
@@ -207,7 +259,7 @@ class LegacyLedMapperTests(unittest.TestCase):
         with patch.object(mapper, "_run_live", side_effect=AssertionError("blocked")), \
                 self.assertRaisesRegex(ValueError, "RESTORE_REQUIRED"):
             mapper.run_set(
-                self.root / "set-index-1", index=1,
+                self.root / "set-index-1", target=1,
                 expected_physical_port="1-3", run=True, **DECLARATIONS)
 
         restore_output = self.root / "restore-index-0"

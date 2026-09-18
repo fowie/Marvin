@@ -30,6 +30,8 @@ CLEANUP_SECONDS = 5
 SET_COMPLETE = "led_mapping_set_phase_complete_restore_required"
 RESTORED = "led_mapping_restore_verified"
 RESTORE_REJECTED = "led_mapping_restore_rejected_power_cycle_required"
+LEFT_ATTENTION_PHOTO = "left-attention-photo"
+LEFT_ATTENTION_INDICES = (1, 2, 3, 4, 5)
 
 
 def _index(value):
@@ -43,24 +45,38 @@ def _frame(sequence, command, payload=b""):
     return body + struct.pack("<H", crc16(body)) + b"\x45"
 
 
-def sequences(index):
-    first = 3200 + 4 * _index(index)
+def _target(value):
+    return LEFT_ATTENTION_PHOTO if value == LEFT_ATTENTION_PHOTO else _index(value)
+
+
+def sequences(target):
+    target = _target(target)
+    first = 3272 if target == LEFT_ATTENTION_PHOTO else 3200 + 4 * target
     return first, first + 1, first + 2, first + 3
 
 
-def test_vector(index):
+def test_vector(target, baseline=None):
+    target = _target(target)
+    if target == LEFT_ATTENTION_PHOTO:
+        if type(baseline) is not bytes or len(baseline) != 18:
+            raise ValueError("Left-attention photo pattern requires the captured 18-byte baseline.")
+        payload = bytearray(baseline)
+        for index in LEFT_ATTENTION_INDICES:
+            payload[index] = 255
+        return bytes(payload)
     payload = bytearray(18)
-    payload[_index(index)] = 255
+    payload[target] = 255
     return bytes(payload)
 
 
-def transcript_for(phase, index, baseline=None):
-    baseline_sequence, set_sequence, restore_sequence, verify_sequence = sequences(index)
+def transcript_for(phase, target, baseline=None):
+    target = _target(target)
+    baseline_sequence, set_sequence, restore_sequence, verify_sequence = sequences(target)
     if phase == "set":
-        return (
-            _frame(baseline_sequence, 0x17),
-            _frame(set_sequence, 0x18, test_vector(index)),
-        )
+        getter = _frame(baseline_sequence, 0x17)
+        if target == LEFT_ATTENTION_PHOTO and baseline is None:
+            return (getter,)
+        return (getter, _frame(set_sequence, 0x18, test_vector(target, baseline)))
     if phase == "restore":
         if type(baseline) is not bytes or len(baseline) != 18:
             raise ValueError("Restore requires the exact captured 18-byte baseline.")
@@ -71,18 +87,24 @@ def transcript_for(phase, index, baseline=None):
     raise ValueError("LED mapping phase must be set or restore.")
 
 
-def prepare_set(index):
-    transcript = transcript_for("set", index)
+def prepare_set(target):
+    target = _target(target)
+    transcript = transcript_for("set", target)
     return {
         "status": "dry_run",
         "name": consent.LED_MAPPING_SCOPE,
         "phase": "set",
-        "index": _index(index),
+        "target": target,
         "fixed_value": 255,
         "profile": "marvin-legacy-se",
-        "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
-        "transcript_sha256": hashlib.sha256(b"".join(transcript)).hexdigest(),
-        "maximum_application_bytes": sum(map(len, transcript)),
+        "immutable_application_transcript_hex": (
+            [raw.hex() for raw in transcript] if len(transcript) == 2 else [transcript[0].hex()]),
+        "transcript_sha256": (
+            hashlib.sha256(b"".join(transcript)).hexdigest() if len(transcript) == 2 else None),
+        "runtime_derived_setter_policy": (
+            "captured_baseline_with_only_indices_1_2_3_4_5_forced_to_ff"
+            if target == LEFT_ATTENTION_PHOTO else None),
+        "maximum_application_bytes": 38,
         "maximum_writes": 2,
         "max_serial_rx_bytes": 8192,
         "response_fields_recorded": [0x80, 0x82],
@@ -94,13 +116,14 @@ def prepare_set(index):
     }
 
 
-def prepare_restore(index, baseline):
-    transcript = transcript_for("restore", index, baseline)
+def prepare_restore(target, baseline):
+    target = _target(target)
+    transcript = transcript_for("restore", target, baseline)
     return {
         "status": "dry_run",
         "name": consent.LED_MAPPING_SCOPE,
         "phase": "restore",
-        "index": _index(index),
+        "target": target,
         "fixed_value": 255,
         "baseline_payload_hex": baseline.hex(),
         "profile": "marvin-legacy-se",
@@ -131,6 +154,8 @@ def _load_state(root):
     value = json.loads(path.read_text(encoding="utf-8"))
     if type(value) is not dict or type(value.get("status")) is not str:
         raise ValueError("LED mapping state is malformed.")
+    if "target" not in value and "index" in value:
+        value["target"] = _index(value["index"])
     return value
 
 
@@ -279,12 +304,13 @@ def _finalize(transport, report, primary, *, clock):
             primary.add_note(f"Additional finalization error: {error}")
 
 
-def _set_observer(transcript, index, baseline_callback):
+def _set_observer(transcript, target, baseline_callback):
     def observe(transport, report, *, clock=time.monotonic):
+        current_transcript = transcript
         deadline = clock() + SERIAL_SECONDS
         report.update(
             status="not_started", accepted_tx_bytes=0, uncertain_tx_bytes=0,
-            responses=[], index=index, fixed_value=255, baseline_payload_hex=None,
+            responses=[], target=target, fixed_value=255, baseline_payload_hex=None,
             setter_may_have_been_submitted=False, restore_required=False,
             operator_led_observation="pending_external_observation",
             physical_led_effect="not_established", physical_stop="not_established",
@@ -293,19 +319,24 @@ def _set_observer(transcript, index, baseline_callback):
         try:
             if transport.revalidate(deadline=deadline) != transport.token:
                 raise OSError("Fresh transport identity differs from the pinned connection.")
-            _write(transport, report, transcript[0], deadline=deadline)
+            _write(transport, report, current_transcript[0], deadline=deadline)
             baseline = _response(
-                transport, report, transcript[0], deadline=deadline,
+                transport, report, current_transcript[0], deadline=deadline,
                 accepted_response_fields=(0x80,),
                 clock=clock).payload
             if len(baseline) != 18:
                 raise OSError("GetLedState baseline must be exactly 18 bytes.")
             report["baseline_payload_hex"] = baseline.hex()
             baseline_callback(baseline)
+            if target == LEFT_ATTENTION_PHOTO:
+                current_transcript = transcript_for("set", target, baseline)
+                transport.transcript = current_transcript
+                report["derived_setter_payload_hex"] = test_vector(target, baseline).hex()
+                report["preserved_baseline_indices"] = [0, *range(6, 18)]
             report["setter_may_have_been_submitted"] = True
-            _write(transport, report, transcript[1], deadline=deadline)
+            _write(transport, report, current_transcript[1], deadline=deadline)
             setter = _response(
-                transport, report, transcript[1], deadline=deadline,
+                transport, report, current_transcript[1], deadline=deadline,
                 accepted_response_fields=(0x80, 0x82), clock=clock)
             report.update(
                 setter_raw_response_field=setter.response_field,
@@ -327,12 +358,12 @@ def _set_observer(transcript, index, baseline_callback):
     return observe
 
 
-def _restore_observer(transcript, index, baseline, operator_observation):
+def _restore_observer(transcript, target, baseline, operator_observation):
     def observe(transport, report, *, clock=time.monotonic):
         deadline = clock() + SERIAL_SECONDS
         report.update(
             status="not_started", accepted_tx_bytes=0, uncertain_tx_bytes=0,
-            responses=[], index=index, baseline_payload_hex=baseline.hex(),
+            responses=[], target=target, baseline_payload_hex=baseline.hex(),
             operator_led_observation=operator_observation,
             restore_attempted=False, restore_response_verified=False,
             baseline_reverified=False, restoration="not_established",
@@ -384,18 +415,18 @@ def _validate_capture(options):
         raise ValueError("LED mapping requires its complete literal disconnected-load scope.")
 
 
-def _run_live(output, *, phase, index, baseline, observe, declarations,
+def _run_live(output, *, phase, target, baseline, observe, declarations,
               expected_physical_port):
-    transcript = transcript_for(phase, index, baseline)
+    transcript = transcript_for(phase, target, baseline)
     return zero._run_diagnostic(
         output, expected_physical_port=expected_physical_port,
-        review=prepare_set(index) if phase == "set" else prepare_restore(index, baseline),
+        review=prepare_set(target) if phase == "set" else prepare_restore(target, baseline),
         transport_type=_transport_type(transcript), observe=observe,
-        limits=zero._Limits(first_sequence=sequences(index)[0], max_requests=2, interval=0),
+        limits=zero._Limits(first_sequence=sequences(target)[0], max_requests=2, interval=0),
         session_options={
             "actuators_isolated": False,
             "_led_mapping_phase": phase,
-            "_led_mapping_index": index,
+            "_led_mapping_index": target,
             "_led_mapping_baseline": baseline,
             **declarations,
         },
@@ -411,7 +442,7 @@ def _run_live(output, *, phase, index, baseline, observe, declarations,
     )
 
 
-def run_set(output, *, index, expected_physical_port, run=False,
+def run_set(output, *, target, expected_physical_port, run=False,
             actuators_isolated=False, **declarations):
     scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
     if run is not True or scope != consent.LED_MAPPING_SCOPE:
@@ -424,7 +455,7 @@ def run_set(output, *, index, expected_physical_port, run=False,
         raise ValueError("RESTORE_REQUIRED: finish or power-cycle-confirm the prior LED round.")
     state = {
         "status": "set_started",
-        "index": _index(index),
+        "target": _target(target),
         "set_evidence": str(output),
         "created_at": time.time(),
     }
@@ -436,8 +467,8 @@ def run_set(output, *, index, expected_physical_port, run=False,
 
     try:
         result = _run_live(
-            output, phase="set", index=index, baseline=None,
-            observe=_set_observer(transcript_for("set", index), index, baseline_callback),
+            output, phase="set", target=target, baseline=None,
+            observe=_set_observer(transcript_for("set", target), target, baseline_callback),
             declarations=declarations, expected_physical_port=expected_physical_port)
     except BaseException:
         metadata = output / "metadata.json"
@@ -490,9 +521,10 @@ def _bound_set_state(set_evidence):
     metadata = json.loads((evidence / "metadata.json").read_text(encoding="utf-8"))
     review = metadata.get("review", {})
     observation = metadata.get("observation", {})
+    review_target = review.get("target", review.get("index"))
     if (review.get("name") != consent.LED_MAPPING_SCOPE
             or review.get("phase") != "set"
-            or review.get("index") != state.get("index")
+            or review_target != state.get("target")
             or observation.get("baseline_payload_hex") != baseline.hex()
             or observation.get("restore_required") is not True):
         raise ValueError("Set-phase metadata does not match the active mapping state.")
@@ -510,15 +542,15 @@ def run_restore(set_evidence, output, *, expected_physical_port, run=False,
     output = new_output_path(output)
     if output.parent != root:
         raise ValueError("Restore evidence must be a new sibling of its set-phase evidence.")
-    index = state["index"]
+    target = state["target"]
     state.update(status="restore_started", restore_evidence=str(output),
                  operator_led_observation=operator_observation)
     _write_state(root, state)
     try:
         result = _run_live(
-            output, phase="restore", index=index, baseline=baseline,
+            output, phase="restore", target=target, baseline=baseline,
             observe=_restore_observer(
-                transcript_for("restore", index, baseline), index, baseline,
+                transcript_for("restore", target, baseline), target, baseline,
                 operator_observation),
             declarations=declarations, expected_physical_port=expected_physical_port)
     except BaseException:
@@ -565,7 +597,7 @@ def acknowledge_power_cycle(set_evidence, *, operator_observation, confirmed=Fal
     _write_state(root, state)
     return {
         "status": "power_cycle_reset_confirmed",
-        "index": state["index"],
+        "target": state["target"],
         "hardware_access": False,
         "restoration": "operator_declaration_not_software_verification",
     }
@@ -576,6 +608,7 @@ def main(argv=None):
     parser.add_argument("--phase", choices=("set", "restore", "acknowledge-power-cycle"),
                         required=True)
     parser.add_argument("--index", type=int)
+    parser.add_argument("--pattern", choices=(LEFT_ATTENTION_PHOTO,))
     parser.add_argument("--set-evidence", type=Path)
     parser.add_argument("--confirm-power-cycle-reset", action="store_true")
     parser.add_argument("--led-observation", choices=("changed", "no_change", "uncertain"))
@@ -591,7 +624,8 @@ def main(argv=None):
                     **consent.powered_trial_arguments(args)}
     try:
         if args.phase == "acknowledge-power-cycle":
-            if (args.run or args.output or args.index is not None or args.actuators_isolated
+            if (args.run or args.output or args.index is not None or args.pattern is not None
+                    or args.actuators_isolated
                     or any(declarations.values())):
                 raise ValueError("Power-cycle acknowledgment is offline state bookkeeping only.")
             result = acknowledge_power_cycle(
@@ -603,19 +637,24 @@ def main(argv=None):
             if args.actuators_isolated or any(declarations.values()):
                 _validate_capture({"actuators_isolated": args.actuators_isolated, **declarations})
             if args.phase == "set":
-                if (args.index is None or args.set_evidence is not None
+                if ((args.index is None) == (args.pattern is None)
+                        or args.set_evidence is not None
                         or args.led_observation is not None):
-                    raise ValueError("Set phase requires --index 0..17 and forbids --set-evidence.")
-                result = prepare_set(args.index) if not args.run else run_set(
-                    args.output, index=args.index,
+                    raise ValueError(
+                        "Set phase requires exactly one --index 0..17 or fixed --pattern.")
+                target = args.pattern if args.pattern is not None else args.index
+                result = prepare_set(target) if not args.run else run_set(
+                    args.output, target=target,
                     expected_physical_port=args.expected_physical_port, run=True,
                     actuators_isolated=args.actuators_isolated, **declarations)
             else:
-                if (args.index is not None or args.set_evidence is None
+                if (args.index is not None or args.pattern is not None
+                        or args.set_evidence is None
                         or args.led_observation is None):
-                    raise ValueError("Restore phase requires --set-evidence and forbids --index.")
+                    raise ValueError(
+                        "Restore requires --set-evidence and forbids index/pattern selection.")
                 evidence, _, state, baseline = _bound_set_state(args.set_evidence)
-                result = prepare_restore(state["index"], baseline) if not args.run else run_restore(
+                result = prepare_restore(state["target"], baseline) if not args.run else run_restore(
                     evidence, args.output, expected_physical_port=args.expected_physical_port,
                     operator_observation=args.led_observation,
                     run=True, actuators_isolated=args.actuators_isolated, **declarations)

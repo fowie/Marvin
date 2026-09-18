@@ -660,6 +660,65 @@ change maps only the observed connected LED under that round's setup; it does
 not establish command acceptance semantics, complete channel identity, or
 physical safety.
 
+#### Fixed left-attention photo pattern
+
+Individual operator-controlled rounds established these visible effects under
+the disconnected-load setup:
+
+| Index at `FF` | Operator observation |
+|---:|---|
+| 0 | red wheel LEDs OFF |
+| 1 | left blue attention 1 ON and wheel red OFF |
+| 2 | left red attention 1 ON |
+| 3 | left blue attention 2 ON and wheel red OFF |
+| 4 | left red attention 2 ON and wheel red OFF |
+| 5 | left blue attention 3 ON and wheel red OFF |
+
+The named `left-attention-photo` pattern is the only group pattern. It uses the
+next fixed sequence block, 3272 through 3275. Its set phase first reads the
+current 18-byte baseline at sequence 3272, then derives one command-`18` payload
+by setting only indices 1, 2, 3, 4, and 5 to `FF`. Index 0 and all indices 6
+through 17 remain byte-for-byte equal to that captured baseline. There is no
+arbitrary mask or value.
+
+Offline review and separately authorized set:
+
+```sh
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase set --pattern left-attention-photo \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase set --pattern left-attention-photo \
+  --output "$MAPPING_ROOT/set-left-attention-photo" --run \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+The fixed baseline getter frame is `53c80c1700000066f845`. The setter frame is
+intentionally generated only after that getter; precomputing it from an older
+baseline would violate the preservation rule. For the last documented baseline
+`000000000000000000000000ff0000ff0000`, the derived payload would be
+`00ffffffffff000000000000ff0000ff0000` and the sequence-3273 frame would be
+`53c90c1800120000ffffffffff000000000000ff0000ff000024cc45`. This example is
+not a baseline expectation.
+
+After the operator takes the photo and records `changed`, `no_change`, or
+`uncertain`, restoration uses the same `--phase restore --set-evidence ...`
+workflow above. The bound sequence-3274 restore sends the exact captured
+baseline once; only raw `80` permits the sequence-3275 getter verification.
+Raw `82` requires the existing power-cycle fallback. Each phase retains the
+same 2-write / 38-TX / 8192-RX bounds, full sealing, and no-retry/no-reconnect
+rules as an individual mapping round.
+
 ### Conditional fixed reads after source recovery
 
 These frames are offline-generated review references, not authorization. At
