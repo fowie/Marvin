@@ -319,12 +319,17 @@ def run_session(
     scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
     led_mapping_runtime_policy = None
+    wheel_led_blink_pilot = False
     if scope == motor_consent.LED_MAPPING_SCOPE:
-        from tools.marvin_legacy_led_mapper import LEFT_ATTENTION_PHOTO, transcript_for
+        from tools.marvin_legacy_led_mapper import (
+            LEFT_ATTENTION_PHOTO, WHEEL_LED_BLINK_PILOT, transcript_for)
         transcript_for(_led_mapping_phase, _led_mapping_index, _led_mapping_baseline)
+        wheel_led_blink_pilot = _led_mapping_index == WHEEL_LED_BLINK_PILOT
         if (_led_mapping_phase == "set"
-                and _led_mapping_index == LEFT_ATTENTION_PHOTO):
+                and _led_mapping_index in (LEFT_ATTENTION_PHOTO, WHEEL_LED_BLINK_PILOT)):
             led_mapping_runtime_policy = (
+                "captured_blink_baseline_with_only_index_12_changed_to_2a"
+                if _led_mapping_index == WHEEL_LED_BLINK_PILOT else
                 "captured_baseline_with_only_indices_1_2_3_4_5_forced_to_ff")
     elif any(value is not None for value in (
             _led_mapping_phase, _led_mapping_index, _led_mapping_baseline)):
@@ -507,7 +512,9 @@ def run_session(
         "started_at": marvin_probe.utc_now(),
         "baseline": baseline,
         "requested_application_bytes": (
-            38 if led_mapping_runtime_policy else
+            (48 if led_mapping_runtime_policy
+             == "captured_blink_baseline_with_only_index_12_changed_to_2a" else 38)
+            if led_mapping_runtime_policy else
             sum(map(len, TRANSCRIPT)) if _motor_power_off_preparation or powered_trial else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
@@ -581,6 +588,8 @@ def run_session(
                             if scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE
                             else "DisconnectedLoadLedStateRoundTrip"
                             if scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE
+                            else                             "DisconnectedLoadWheelLedBlinkPilot"
+                            if wheel_led_blink_pilot
                             else "DisconnectedLoadLedMappingPhase"
                             if scope == motor_consent.LED_MAPPING_SCOPE
                             else "DisconnectedLoadZeroPlus1000OrderDiagnostic"
@@ -604,6 +613,8 @@ def run_session(
                             scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE),
                         fixed_led_mapping_phase_authorized=(
                             scope == motor_consent.LED_MAPPING_SCOPE),
+                        fixed_wheel_led_blink_pilot_authorized=(
+                            wheel_led_blink_pilot),
                         runtime_derived_setter_policy=led_mapping_runtime_policy,
                         usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; diagnostic uses an unflushed raw tty."

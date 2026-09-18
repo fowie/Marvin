@@ -151,6 +151,137 @@ class LegacyLedMapperTests(unittest.TestCase):
         self.assertEqual(result["immutable_application_transcript_hex"],
                          ["53c80c1700000066f845"])
 
+    def test_fixed_wheel_led_blink_pilot_gates_state_and_restores_exact_baseline(self):
+        state = bytes.fromhex("000000000000000000000000ff0000ff0000")
+        baseline = bytes.fromhex("0000000000000000000000000000002a0000")
+        changed = bytes.fromhex("0000000000000000000000002a00002a0000")
+        target = mapper.WHEEL_LED_BLINK_PILOT
+        self.assertEqual(mapper.test_vector(target, baseline), changed)
+        self.assertEqual([raw.hex() for raw in mapper.transcript_for("set", target)], [
+            "53cc0c17000000677c45",
+            "53cd0c19000000644545",
+        ])
+        self.assertEqual(
+            [raw.hex() for raw in mapper.transcript_for("set", target, baseline)], [
+                "53cc0c17000000677c45",
+                "53cd0c19000000644545",
+                "53ce0c1a0012000000000000000000000000002a00002a0000773345",
+            ])
+        self.assertEqual(
+            [raw.hex() for raw in mapper.transcript_for("restore", target, baseline)], [
+                "53cf0c1a0012000000000000000000000000000000002a00002d6c45",
+                "53d00c1900000067c845",
+            ])
+        plan = mapper.prepare_set(target)
+        self.assertEqual(
+            (plan["fixed_value"], plan["maximum_writes"],
+             plan["maximum_application_bytes"], plan["max_serial_rx_bytes"]),
+            (42, 3, 48, 8192))
+        self.assertEqual(
+            plan["runtime_derived_setter_policy"],
+            "captured_blink_baseline_with_only_index_12_changed_to_2a")
+
+        transport = _Transport(mapper.transcript_for("set", target))
+        payloads = iter((state, baseline, b""))
+
+        def response(_, evidence, **kwargs):
+            payload = next(payloads)
+            status = 0x82 if evidence.command == 0x1A else 0x80
+            evidence.feed(Mock(
+                data=frame(payload, command=evidence.command, status=status,
+                           sequence=evidence.sequence),
+                started_at=.1, ended_at=.2), .2)
+            evidence.finish(.2)
+
+        report = {}
+        with patch.object(mapper.zero, "_observe_response", side_effect=response):
+            mapper._set_observer(
+                transport.transcript, target, lambda value: self.assertEqual(value, baseline))(
+                transport, report, clock=lambda: 0)
+        self.assertEqual(transport.writes, 3)
+        self.assertEqual(report["led_state_baseline_payload_hex"], state.hex())
+        self.assertEqual(report["derived_setter_payload_hex"], changed.hex())
+        self.assertEqual(report["preserved_baseline_indices"],
+                         [index for index in range(18) if index != 12])
+        self.assertEqual(report["setter_raw_response_field"], 0x82)
+        self.assertEqual(report["operator_action"], "RESTORE_REQUIRED")
+
+        restore = mapper.transcript_for("restore", target, baseline)
+        restored = _Transport(restore)
+        restore_payloads = iter((b"", baseline))
+
+        def restore_response(_, evidence, **kwargs):
+            payload = next(restore_payloads)
+            evidence.feed(Mock(
+                data=frame(payload, command=evidence.command, status=0x80,
+                           sequence=evidence.sequence),
+                started_at=.1, ended_at=.2), .2)
+            evidence.finish(.2)
+
+        restore_report = {}
+        with patch.object(mapper.zero, "_observe_response", side_effect=restore_response):
+            mapper._restore_observer(restore, target, baseline, "changed")(
+                restored, restore_report, clock=lambda: 0)
+        self.assertEqual(restored.writes, 2)
+        self.assertTrue(restore_report["baseline_reverified"])
+
+        rejected_restore = _Transport(restore)
+        with patch.object(
+                mapper.zero, "_observe_response",
+                side_effect=self.respond((0x82,), baseline)):
+            mapper._restore_observer(restore, target, baseline, "uncertain")(
+                rejected_restore, {}, clock=lambda: 0)
+        self.assertEqual(rejected_restore.writes, 1)
+
+        partial = _Transport(mapper.transcript_for("set", target), (2, "partial"))
+        payloads = iter((state, baseline))
+        with patch.object(mapper.zero, "_observe_response", side_effect=response), \
+                self.assertRaisesRegex(OSError, "Partial"):
+            mapper._set_observer(partial.transcript, target, lambda _: None)(
+                partial, {}, clock=lambda: 0)
+        self.assertEqual(partial.writes, 3)
+
+        for state_payload, blink_payload, writes in (
+                (bytes(18), baseline, 1),
+                (state, changed, 2)):
+            failing = _Transport(mapper.transcript_for("set", target))
+            payloads = iter((state_payload, blink_payload))
+
+            def rejected(_, evidence, **kwargs):
+                payload = next(payloads)
+                evidence.feed(Mock(
+                    data=frame(payload, command=evidence.command, status=0x80,
+                               sequence=evidence.sequence),
+                    started_at=.1, ended_at=.2), .2)
+                evidence.finish(.2)
+
+            with self.subTest(writes=writes), patch.object(
+                    mapper.zero, "_observe_response", side_effect=rejected), \
+                    self.assertRaises(OSError):
+                mapper._set_observer(failing.transcript, target, lambda _: None)(
+                    failing, {}, clock=lambda: 0)
+            self.assertEqual(failing.writes, writes)
+
+        harness = session_tests.SessionTests()
+        harness.setUp()
+        self.addCleanup(harness.doCleanups)
+        result = harness.run_capture(
+            seconds=5, baudrate=57600, allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=Mock(side_effect=harness.capture), binary_payload_limit=4096,
+            usb_tail_seconds=5, usb_close_grace_seconds=5, actuators_isolated=False,
+            _led_mapping_phase="set", _led_mapping_index=target,
+            _led_mapping_baseline=None, **DECLARATIONS)
+        self.assertEqual(result["requested_application_bytes"], 48)
+        self.assertEqual(
+            result["runtime_derived_setter_policy"],
+            "captured_blink_baseline_with_only_index_12_changed_to_2a")
+        self.assertEqual(result["probe_name"], "DisconnectedLoadWheelLedBlinkPilot")
+        self.assertTrue(result["fixed_wheel_led_blink_pilot_authorized"])
+        self.assertEqual(result["immutable_application_transcript_hex"], [
+            "53cc0c17000000677c45",
+            "53cd0c19000000644545",
+        ])
+
     def test_set_raw82_exits_restore_required_and_faults_never_retry(self):
         baseline = bytes.fromhex("000000000000000000000000ff0000ff0000")
         transcript = mapper.transcript_for("set", 0)

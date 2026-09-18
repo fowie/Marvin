@@ -702,7 +702,7 @@
       "sample_name": "SetLedBlink",
       "request_layout": "18 uint8 blink values; timing semantics unconfirmed",
       "sample_effect": "output_setting",
-      "live_probe_policy": "excluded",
+      "live_probe_policy": "prepared_fixed_reversible_wheel_led_pilot_unexecuted",
       "sample_calls": [
         {
           "method": "setLedBlink_btn_Click",

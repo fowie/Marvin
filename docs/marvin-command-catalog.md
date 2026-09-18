@@ -55,7 +55,7 @@ units remain unknown unless stated.
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the earlier value-1 set/restore and every completed index-at-`FF` set/restore through index 17 | **Proven status and physical-effect behavior, not application semantics.** The earlier index-0 value-1 round had no observed change. In the later interactive rounds, each fully transmitted setter returned raw `82`; all but index 15 produced a visible effect. Each exact-baseline restore also returned raw `82` while visibly restoring state. Raw `82` remains opaque and the physical observations do not establish electrical topology. | **Completed interactive mapping, separately authorized.** The two-phase index-at-255 mechanism preserved the exact live baseline and blocked each next index until an operator-confirmed power-cycle acknowledgment after raw `82`. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
+| `1A` `SetLedBlink` | Output setter; 18 `uint8` values. `Form1.cs:781-812` zeroes all bytes, parses index `0..17` and byte value `0..255`, then sets only that index; `Form1.cs:815-844` also supports all-equal and random vectors. Timing semantics remain unknown. | Unknown legacy response shape | **Source-only; no live test.** A fixed unexecuted pilot would preserve the full live `19` baseline and change only wheel-LED index 12 from its captured value to installed-proven blink byte `42`. | **Prepared fixed reversible pilot only.** No arbitrary index/value interface and no additional LED-state setter. |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
 | `1C` `SetUnitInfo` | Identity write; 12 bytes; sample uses alternating `AA`/`55`. `Form1.cs:628` | Unknown legacy response shape | **Source-only; no live test.** Persistence is unknown. | **Catalog-only: identity/configuration write.** |
 | `1D` `GetServoPosition` | Read; empty. `Form1.cs:778` | **Proven:** `80`, 4 bytes / 14-byte frame | **Proven exchange.** Returned raw values 2500 and 2730; not measured angles. This legacy meaning conflicts with newer `GetSensorInfo`. | **Catalog-only for motor rejection:** unrelated returned state; generation-sensitive despite the proved legacy exchange. |
@@ -726,6 +726,110 @@ no verification getter was sent.
 | 15 | `53bc0c170000006c4c45`<br>`53bd0c18001200000000000000000000000000000000ff0000400e45`<br>`e04ec25c081867a2e3a9c6578259490ab33a01c67ee441c28cd0fd433fe81196` | `53bc0c17801200000000000000000000000000000000ff00003d1345`<br>`53bd0c18820000cea145` | restore `53be0c18001200000000000000000000000000000000ff0000a4f145`<br>gated getter not sent `53bf0c170000006c7f45`<br>`5b2bee088e1fa790ac72c7d8cf14d991f0e0fefb97cbd00bb70d1457805c35ec` | `53be0c18820000ce9245` |
 | 16 | `53c00c1700000067b045`<br>`53c10c1800120000000000000000000000000000000000ff00c2d845`<br>`77146992279c7bdc5843b903ee171746d7b06eb5a46144228cd62bd538a02777` | `53c00c17801200000000000000000000000000000000ff0000ce0545`<br>`53c10c18820000c55d45` | restore `53c20c18001200000000000000000000000000000000ff000057e745`<br>gated getter not sent `53c30c17000000678345`<br>`42e13b82cf4c71493910a69ab51249108d2803caa919dd29e38dc4916fac3af0` | `53c20c18820000c56e45` |
 | 17 | `53c40c17000000663445`<br>`53c50c180012000000000000000000000000000000000000ffb1bd45`<br>`aeec02a1bdec220eb8f2885bf8797d48fd23516b450323bfbcbf92d6bc04817b` | `53c40c17801200000000000000000000000000000000ff0000bcd045`<br>`53c50c18820000c4d945` | restore `53c60c18001200000000000000000000000000000000ff0000253245`<br>gated getter not sent `53c70c17000000660745`<br>`f934ca86887d65df3f9e7bec21dddd33c7a035efdbff6b8c6d6f3f4c0be19912` | `53c60c18820000c4ea45` |
+
+#### Fixed wheel-LED blink pilot (offline preparation only)
+
+Legacy `PCTestApp/Form1.cs:781-850` establishes command `1A` as an indexed
+18-byte `SetLedBlink` vector and command `19` as its empty-payload getter. The
+setter accepts UI-parsed byte values `0..255`, but the source does not define
+timing units or visible behavior. Installed evidence supplies the conservative
+fixed value `42`: the proved command-`19` baseline was
+`0000000000000000000000000000002a0000`. The completed state map identifies
+index 12 as the wheel LEDs, and the proved command-`17` baseline has index 12
+at `FF`.
+
+The only prepared blink target is `wheel-led-blink-pilot`. Its set phase uses
+three strictly serial requests:
+
+1. Sequence 3276 command `17` reads the current LED-state vector and stops
+   before any setter unless it is 18 bytes with index 12 exactly `FF`.
+2. Sequence 3277 command `19` captures the exact 18-byte blink baseline and
+   stops before any setter if index 12 already equals `42`.
+3. Sequence 3278 command `1A` derives a payload from that captured blink
+   baseline, changing only index 12 to `42`.
+
+For the last proved state and blink baselines, the exact requests are:
+
+```text
+53cc0c17000000677c45
+53cd0c19000000644545
+53ce0c1a0012000000000000000000000000002a00002a0000773345
+```
+
+The third frame is an example derived from the live blink baseline, not a
+precondition on the other 17 bytes. No command-`18` LED-state write is included.
+The set phase permits raw `80` or `82` from command `1A` and reports
+`RESTORE_REQUIRED` after any possible setter submission. Its bounds are 3
+writes, 48 application TX bytes, and 8192 RX bytes. The operator records whether
+the wheel LEDs became blinking, steady, off, unchanged, or uncertain; no
+particular effect is assumed.
+
+Offline review and a separately authorized future set use:
+
+```sh
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase set --pattern wheel-led-blink-pilot \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase set --pattern wheel-led-blink-pilot \
+  --output "$MAPPING_ROOT/set-wheel-led-blink-pilot" --run \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+Restore is a separately sealed phase bound to the exact set artifact. It sends
+the exact captured 18-byte blink baseline once at sequence 3279. Only a
+matching CRC-valid raw-`80` response permits the sequence-3280 command-`19`
+getter, which must exactly reproduce that baseline. Raw `82` or any timeout,
+partial/uncertain TX, framing, CRC, correlation, extra-frame, identity,
+accounting, or sealing fault stops without retry/reconnect and requires the
+existing operator-confirmed power-cycle acknowledgment before another round.
+For the last proved blink baseline, the restore transcript is:
+
+```text
+53cf0c1a0012000000000000000000000000000000002a00002d6c45
+53d00c1900000067c845
+```
+
+After recording `changed`, `no_change`, or `uncertain` plus the specific wheel
+appearance in the operator notes, review and run restore with:
+
+```sh
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase restore \
+  --set-evidence "$MAPPING_ROOT/set-wheel-led-blink-pilot" \
+  --led-observation changed \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase restore \
+  --set-evidence "$MAPPING_ROOT/set-wheel-led-blink-pilot" \
+  --led-observation changed \
+  --output "$MAPPING_ROOT/restore-wheel-led-blink-pilot" --run \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+The restore phase is bounded to 2 writes, 38 application TX bytes, and 8192 RX
+bytes. This is software readiness, not live authorization. Command `1A` has not
+been executed on the installed controller.
 
 #### Fixed left-attention photo pattern
 
