@@ -164,3 +164,32 @@ acknowledgment, or establish physical stop; `physical_stop` remains
 
 No larger setter, power-state write, heartbeat, reset, or other live command is
 justified by this evidence.
+
+## Proven fixed legacy getter survey
+
+A separately authorized read-only survey used the same disconnected-load
+physical setup and sent the six fixed requests documented in
+[marvin-command-catalog.md](marvin-command-catalog.md). All six replies were
+complete and CRC-valid, matched the requested sequence and command, and
+returned raw status `80`:
+
+| Sequence | Command | Raw payload |
+|---:|---|---|
+| 3083 | `0A GetRawMotorPWM` | 8 bytes: `0000000000000000` |
+| 3084 | `10 GetMotorVelocity` | 16 zero bytes |
+| 3085 | `17 GetLedState` | 18 bytes: `000000000000000000000000ff0000ff0000` |
+| 3086 | `19 GetLedBlink` | 18 bytes: `0000000000000000000000000000002a0000` |
+| 3087 | `1F GetSensorInfo` | 128 bytes: exact ascending `00..7f` |
+| 3088 | `28 GetBatteryInfo` | 8 bytes: `fdff6f3f7c02ae00` |
+
+Accounting recorded 6 writes, 60 TX bytes, 256 RX bytes, and zero uncertain TX
+bytes. All 13 `SHA256SUMS` entries verified. No private artifact path is
+published.
+
+The legacy PCTestApp sends these named requests and prints their responses but
+does not parse the reply payloads. The newer `DB9Cmds.xlsx` layouts do not apply
+to the installed S/E generation. The `GetRawMotorPWM` bytes can be grouped as
+four zero LE `uint16` words consistently with its request name, but even that
+does not prove individual field semantics. All other payloads remain raw; in
+particular, the ascending `GetSensorInfo` bytes must not inherit meaning from
+the incompatible successor firmware.
