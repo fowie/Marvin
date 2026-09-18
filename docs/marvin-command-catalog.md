@@ -301,6 +301,57 @@ legacy firmware image, or matching legacy source/map output containing its
 S/E dispatcher, response enum, and command-`11` handler. Without that artifact,
 no existing read-only command is source-proved to expose the rejection cause.
 
+### Repository object-history search
+
+The complete local Git object database was also searched offline, including
+all branch, remote-tracking, Copilot checkpoint/preserved, and dangling
+objects. At the time of review it contained 1,544 objects: 660 commits, 522
+blobs, and 362 trees. All 1,225 objects reachable from the 352 refs were
+covered, as were the 319 unreachable objects (264 commits, 27 blobs, and 28
+trees). The refs comprised 12 local heads, 10 `origin` remote-tracking refs,
+329 checkpoint refs, and one preserved ref; there were no tags.
+
+The 111 paths ever named by reachable history contain this repository's
+Python tools/tests, JSON evidence, and Markdown documentation. None is vendor
+C/C# implementation source, a firmware/archive image, a linker map, or a
+symbol file. Object-content and path-history checks found:
+
+- no Git LFS pointer, `.gitmodules` object, gitlink, release tag, or
+  release/changelog/version artifact;
+- no ZIP/ELF/Intel-HEX magic, large hidden payload, or historical path ending
+  in `.bin`, `.hex`, `.zip`, `.axf`, `.elf`, or `.map`;
+- no blob containing the installed 12 identity bytes; textual hex instances
+  are reviewed fixtures and documentation;
+- `SetMototrVelocity` occurs only in derived catalogue versions, including
+  object `f31b40502c06d0d9e84539a44425626af0ba706e`;
+- the exact log text, VID:PID, command names, and S/E framing occur only in
+  authored evidence or tooling. Representative current blobs are
+  `docs/lab-findings.md`
+  (`c3a19ea26d7d33be0659fe0a1db639e25fec3feb`),
+  `docs/marvin-command-map.json`
+  (`9ae284eb83f1b7c0813587028d08faaa364a4638`), and
+  `tools/marvin_legacy_protocol.py`
+  (`2152debd0065e65544504db7dfb24f3d114ce810`).
+
+All 27 unreachable blobs are text variants of already named repository
+documentation, JSON, Python tools, or tests. Reachable refs contain one
+deleted-path commit,
+`270bc6fda4d4e6d5c6bfb6bbafb514634ca4f6b0`, retained solely by
+`refs/copilot/checkpoints/6fc4e9d7-0166-4282-9565-83ce22c9e98b/00000000000000000007/f448f3fa-a890-4a29-a166-ef747c66c5f1`.
+One dangling commit, `f70860fe4da7842cda06f3ef3dc0dee58f7f33c5`,
+records the same three deletions. Their shared parent
+`b4f0060c4c924f887c3773f449ad090866880f40` retains only the superseded no-load
+velocity runner, test, and documentation; it contains no firmware or vendor
+implementation.
+
+Nothing recoverable in local repository history can identify or trace the
+installed command-`11` implementation. The next realistic acquisition is an
+owner/vendor backup of the PCTestApp-era S/E controller build output
+(firmware plus map/listing or matching source), keyed to the installed
+UnitInfo words and command shapes. A separately authorized remote-release/API
+search could check hosting metadata that Git does not store. Neither route
+justifies hardware readback or transferring semantics from successor images.
+
 ## Next powered-session matrix
 
 ### Planned live trials
