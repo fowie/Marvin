@@ -255,6 +255,8 @@ def run_session(
     motor_left_disconnected=False, motor_right_connected=False,
     disconnected_load_zero_one_order_diagnostic=False,
     authorize_unvalidated_zero_one_order_diagnostic=False,
+    disconnected_load_zero_plus_1000_order_diagnostic=False,
+    authorize_unvalidated_left_plus_1000_order_diagnostic=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -280,6 +282,10 @@ def run_session(
         motor_right_connected=motor_right_connected,
         disconnected_load_zero_one_order_diagnostic=disconnected_load_zero_one_order_diagnostic,
         authorize_unvalidated_zero_one_order_diagnostic=authorize_unvalidated_zero_one_order_diagnostic,
+        disconnected_load_zero_plus_1000_order_diagnostic=(
+            disconnected_load_zero_plus_1000_order_diagnostic),
+        authorize_unvalidated_left_plus_1000_order_diagnostic=(
+            authorize_unvalidated_left_plus_1000_order_diagnostic),
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -308,7 +314,8 @@ def run_session(
         declarations = {name: value for name, value in declarations.items()
                         if name not in (*motor_consent.POWERED_TRIAL_ONLY_FLAGS,
                                         *motor_consent.MAPPING_TRIAL_ONLY_FLAGS,
-                                        *motor_consent.DISCONNECTED_ORDER_ONLY_FLAGS)}
+                                        *motor_consent.DISCONNECTED_ORDER_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_PLUS_1000_ONLY_FLAGS)}
         from tools.marvin_legacy_protocol import read_raw_data_request
         fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
                                                          "legacy-read-raw-data")
@@ -330,8 +337,9 @@ def run_session(
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
     if _motor_power_off_preparation or powered_trial:
         if powered_trial:
-            if scope == motor_consent.DISCONNECTED_ORDER_SCOPE:
-                from tools.marvin_legacy_disconnected_order import TRANSCRIPT
+            if scope in motor_consent.DISCONNECTED_ORDER_SCOPES:
+                from tools.marvin_legacy_disconnected_order import transcript_for_scope
+                TRANSCRIPT = transcript_for_scope(scope)
             else:
                 from tools.marvin_legacy_powered_left_stop import TRANSCRIPT
         else:
@@ -522,7 +530,9 @@ def run_session(
     if powered_trial:
         metadata.update(**motor_consent.powered_trial_history(declarations),
                         probe_name=(
-                            "DisconnectedLoadZeroOneOrderDiagnostic"
+                            "DisconnectedLoadZeroPlus1000OrderDiagnostic"
+                            if scope == motor_consent.DISCONNECTED_PLUS_1000_SCOPE
+                            else "DisconnectedLoadZeroOneOrderDiagnostic"
                             if scope == motor_consent.DISCONNECTED_ORDER_SCOPE
                             else "PoweredLeftCommandRightConnected"
                             if scope == motor_consent.MAPPING_TRIAL_SCOPE
