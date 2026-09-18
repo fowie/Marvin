@@ -259,6 +259,8 @@ def run_session(
     authorize_unvalidated_left_plus_1000_order_diagnostic=False,
     disconnected_load_get_log=False,
     disconnected_load_legacy_getter_survey=False,
+    disconnected_load_led_state_round_trip=False,
+    authorize_unvalidated_led_state_round_trip=False,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -290,6 +292,8 @@ def run_session(
             authorize_unvalidated_left_plus_1000_order_diagnostic),
         disconnected_load_get_log=disconnected_load_get_log,
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
+        disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
+        authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -321,7 +325,8 @@ def run_session(
                                         *motor_consent.DISCONNECTED_ORDER_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GET_LOG_ONLY_FLAGS,
-                                        *motor_consent.DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS)}
+                                        *motor_consent.DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_LED_STATE_ONLY_FLAGS)}
         from tools.marvin_legacy_protocol import read_raw_data_request
         fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
                                                          "legacy-read-raw-data")
@@ -347,6 +352,8 @@ def run_session(
                 from tools.marvin_legacy_disconnected_get_log import TRANSCRIPT
             elif scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE:
                 from tools.marvin_legacy_disconnected_getter_survey import TRANSCRIPT
+            elif scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE:
+                from tools.marvin_legacy_disconnected_led_state import TRANSCRIPT
             elif scope in motor_consent.DISCONNECTED_ORDER_SCOPES:
                 from tools.marvin_legacy_disconnected_order import transcript_for_scope
                 TRANSCRIPT = transcript_for_scope(scope)
@@ -359,7 +366,9 @@ def run_session(
                 or probe_profile != "legacy" or baudrate != 57600
                 or (bytesize, parity, stopbits) != (8, "N", 1)
                 or seconds != (
-                    10 if scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE
+                    10 if scope in (
+                        motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
+                        motor_consent.DISCONNECTED_LED_STATE_SCOPE)
                     else 5 if powered_trial else 15)
                 or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
                 or dtr is not False or rts is not False
@@ -546,6 +555,8 @@ def run_session(
                             if scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE
                             else "DisconnectedLoadLegacyGetterSurvey"
                             if scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE
+                            else "DisconnectedLoadLedStateRoundTrip"
+                            if scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE
                             else "DisconnectedLoadZeroPlus1000OrderDiagnostic"
                             if scope == motor_consent.DISCONNECTED_PLUS_1000_SCOPE
                             else "DisconnectedLoadZeroOneOrderDiagnostic"
@@ -557,10 +568,13 @@ def run_session(
                         requested_probe_hex=b"".join(TRANSCRIPT).hex(),
                         unknown_command_authorized=scope not in (
                             motor_consent.DISCONNECTED_GET_LOG_SCOPE,
-                            motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE),
+                            motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
+                            motor_consent.DISCONNECTED_LED_STATE_SCOPE),
                         fixed_get_log_authorized=scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE,
                         fixed_legacy_getter_survey_authorized=(
                             scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE),
+                        fixed_led_state_round_trip_authorized=(
+                            scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE),
                         usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; diagnostic uses an unflushed raw tty."
     if deadline is not None:

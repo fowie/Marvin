@@ -53,7 +53,7 @@ units remain unknown unless stated.
 | `11` `SetMotorVelocity` | Actuator setter; left/right LE signed `int16` / 4 bytes (`-32768..32767`; physical units unknown). Button/random/fixed-timer sites `Form1.cs:897,992,1019`; the random source uses `Next(-1000,1000)`. | **Observed:** zero `80`/0 bytes; positive nonzero `82`/0 bytes | **Proven status behavior.** Fixed sequence 3072 zero `53000c11000400000000009a0145` -> `80`; sequence 3073 left `+1` `53010c1100040001000000ca3845` -> `82`; sequence 3073 left `+1000` `53010c11000400e80300000e6445` -> `82`; sequence 3074 cleanup zero `53020c11000400000000003bcb45` -> `80`. Both runs completed final `00`; the `+1000` run reported DMM 0.00 V/no change across the disconnected left output. | **Catalog-only: no larger value or repeat.** Value-dependent rejection is established for `+1` and `+1000`; `82` meaning and physical stop remain unknown. |
 | `15` `ResetPC` | Reset; empty. `Form1.cs:955` | Unknown legacy response shape | **Source-only; no live test.** Reset target/effects are not established. | **Catalog-only: reset/destructive lifecycle change.** |
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
+| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | Unknown legacy response shape | **Source-only; no live test.** A fixed index-0 value-1 round trip is prepared with exact baseline restoration. | **Bounded reversible trial prepared, not authorized here.** Paired `17` reads can verify byte storage; only operator observation can establish a visible LED effect. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
@@ -480,6 +480,55 @@ replies as raw bytes; it does not parse their layouts. `DB9Cmds.xlsx` describes
 newer firmware and must not be used to label the installed S/E payloads. Except
 for the explicitly qualified four-zero-word grouping in `GetRawMotorPWM`, the
 payloads above remain opaque.
+
+### Planned reversible LED-state round trip
+
+**This is software readiness, not live authorization.** The fixed runner has a
+distinct literal setter scope and retains the disconnected-load requirements:
+both motor POWER plugs disconnected, servos isolated, both encoder feedback
+harnesses connected, robot secured on blocks, operator at the external cutoff,
+and unprivileged usbmon.
+
+Exact offline dry-run review, without `--run`:
+
+```sh
+python3 -B -m tools.marvin_legacy_disconnected_led_state \
+  --disconnected-load-led-state-round-trip \
+  --authorize-unvalidated-led-state-round-trip \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+| Step | Sequence / command | Exact fixed request |
+|---:|---|---|
+| 1 | 3089 / `17 GetLedState` baseline | `53110c1700000075f145` |
+| 2 | 3090 / `18 SetLedState` index 0 from `0` to `1` | `53120c18001200010000000000000000000000ff0000ff00008ab845` |
+| 3 | 3091 / `17 GetLedState` test verification | `53130c17000000741345` |
+| 4 | 3092 / `18 SetLedState` exact baseline restore | `53140c18001200000000000000000000000000ff0000ff000010fb45` |
+| 5 | 3093 / `17 GetLedState` restore verification | `53150c17000000747545` |
+
+The baseline gate requires raw status `80` and exact 18-byte payload
+`000000000000000000000000ff0000ff0000` before any setter. The test vector is
+`010000000000000000000000ff0000ff0000`; all bytes except index 0 are retained.
+The verification getter must return that exact vector. The restore setter then
+uses the exact baseline, and the final getter is admitted only after one clean,
+CRC-valid, matching command-`18` raw-`80` restore response. Setter response
+payloads remain opaque because PCTestApp does not define their shape.
+
+Once any test-setter byte may have been submitted, the runner makes exactly one
+fixed restore attempt on the pinned identity within a separate bounded cleanup,
+including after partial/uncertain TX, timeout, non-`80`, malformed or mismatched
+response, extra frame, or interruption. It never retries or reconnects. The
+maximum successful transcript is 5 writes and 86 application TX bytes; serial
+RX is capped at 8192 bytes. Full usbmon, serial/USB accounting, and evidence
+sealing remain mandatory.
+
+Software reports baseline, test-setter response, test-vector getter, restore
+response, and restored-baseline getter verification separately. It does not
+infer a physical LED effect. The operator must separately record visible LED
+state before, during, and after the trial; no visible change does not invalidate
+the raw protocol evidence or establish channel meaning.
 
 ### Conditional fixed reads after source recovery
 

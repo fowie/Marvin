@@ -730,7 +730,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             disconnected_load_zero_plus_1000_order_diagnostic=False,
             authorize_unvalidated_left_plus_1000_order_diagnostic=False,
             disconnected_load_get_log=False,
-            disconnected_load_legacy_getter_survey=False):
+            disconnected_load_legacy_getter_survey=False,
+            disconnected_load_led_state_round_trip=False,
+            authorize_unvalidated_led_state_round_trip=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -755,6 +757,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             authorize_unvalidated_left_plus_1000_order_diagnostic),
         disconnected_load_get_log=disconnected_load_get_log,
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
+        disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
+        authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -785,7 +789,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096
             or seconds != (
-                20 if scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE
+                20 if scope in (
+                    motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
+                    motor_consent.DISCONNECTED_LED_STATE_SCOPE)
                 else 15 if powered_trial else 45 if encoder_feedback_observation else 13)
             or coordinator_stop is not True
             or max_bytes != 1048576 or max_records != 10000 or max_line_bytes != 16384

@@ -67,6 +67,15 @@ DISCONNECTED_GETTER_SURVEY_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+DISCONNECTED_LED_STATE_SCOPE = "disconnected_load_led_state_round_trip"
+DISCONNECTED_LED_STATE_ONLY_FLAGS = (
+    DISCONNECTED_LED_STATE_SCOPE, "authorize_unvalidated_led_state_round_trip",
+)
+DISCONNECTED_LED_STATE_FLAGS = (
+    *DISCONNECTED_LED_STATE_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 POWERED_TRIAL_SCOPES = {
     "powered_left_stop_characterization": POWERED_TRIAL_FLAGS,
     MAPPING_TRIAL_SCOPE: MAPPING_TRIAL_FLAGS,
@@ -74,13 +83,15 @@ POWERED_TRIAL_SCOPES = {
     DISCONNECTED_PLUS_1000_SCOPE: DISCONNECTED_PLUS_1000_FLAGS,
     DISCONNECTED_GET_LOG_SCOPE: DISCONNECTED_GET_LOG_FLAGS,
     DISCONNECTED_GETTER_SURVEY_SCOPE: DISCONNECTED_GETTER_SURVEY_FLAGS,
+    DISCONNECTED_LED_STATE_SCOPE: DISCONNECTED_LED_STATE_FLAGS,
 }
 ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS,
                                 *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS,
                                 *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
-                                *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS)))
+                                *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
+                                *DISCONNECTED_LED_STATE_ONLY_FLAGS)))
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
@@ -97,6 +108,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_left_plus_1000_order_diagnostic=False,
              disconnected_load_get_log=False,
              disconnected_load_legacy_getter_survey=False,
+             disconnected_load_led_state_round_trip=False,
+             authorize_unvalidated_led_state_round_trip=False,
              **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
@@ -120,7 +133,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                  authorize_unvalidated_left_plus_1000_order_diagnostic=(
                      authorize_unvalidated_left_plus_1000_order_diagnostic),
                  disconnected_load_get_log=disconnected_load_get_log,
-                 disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey)
+                 disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
+                 disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
+                 authorize_unvalidated_led_state_round_trip=(
+                     authorize_unvalidated_led_state_round_trip))
     if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
                                                 *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
@@ -200,7 +216,8 @@ def add_observation_arguments(parser):
 def add_powered_trial_arguments(parser):
     for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS,
                  *DISCONNECTED_ORDER_ONLY_FLAGS, *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
-                 *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS):
+                 *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
+                 *DISCONNECTED_LED_STATE_ONLY_FLAGS):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
@@ -208,7 +225,7 @@ def powered_trial_arguments(args):
     return {name: getattr(args, name) for name in (
         *POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS,
         *DISCONNECTED_PLUS_1000_ONLY_FLAGS, *DISCONNECTED_GET_LOG_ONLY_FLAGS,
-        *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS)}
+        *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS)}
 
 
 def observation_arguments(args):
@@ -270,6 +287,20 @@ def powered_trial_history(declarations):
                 "raw_legacy_getter_survey_only_not_application_acknowledgment"
                 if scope == DISCONNECTED_GETTER_SURVEY_SCOPE
                 else "raw_get_log_observation_only_not_application_acknowledgment"),
+            "host_can_remove_energy": False,
+            "physical_stop": "not_established",
+        }
+    if scope == DISCONNECTED_LED_STATE_SCOPE:
+        return {
+            **encoder_history(declarations),
+            "scope": scope,
+            "load_scope": "MOTOR_POWER_PLUGS_DISCONNECTED",
+            "outcome_meaning": (
+                "protocol_and_getter_vector_verification_separate_from_operator_led_observation"),
+            "unvalidated_led_state_round_trip_authorized": True,
+            "planned_restore_policy": (
+                "one_fixed_baseline_restore_attempt_after_any_possible_test_setter_submission"),
+            "operator_led_observation": "not_recorded_by_software",
             "host_can_remove_energy": False,
             "physical_stop": "not_established",
         }
