@@ -261,6 +261,11 @@ def run_session(
     disconnected_load_legacy_getter_survey=False,
     disconnected_load_led_state_round_trip=False,
     authorize_unvalidated_led_state_round_trip=False,
+    disconnected_load_led_mapping_phase=False,
+    authorize_unvalidated_led_mapping_phase=False,
+    _led_mapping_phase=None,
+    _led_mapping_index=None,
+    _led_mapping_baseline=None,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -294,6 +299,8 @@ def run_session(
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
         disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
         authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
+        disconnected_load_led_mapping_phase=disconnected_load_led_mapping_phase,
+        authorize_unvalidated_led_mapping_phase=authorize_unvalidated_led_mapping_phase,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -311,6 +318,12 @@ def run_session(
     )
     scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
+    if scope == motor_consent.LED_MAPPING_SCOPE:
+        from tools.marvin_legacy_led_mapper import transcript_for
+        transcript_for(_led_mapping_phase, _led_mapping_index, _led_mapping_baseline)
+    elif any(value is not None for value in (
+            _led_mapping_phase, _led_mapping_index, _led_mapping_baseline)):
+        raise ValueError("Internal LED mapping fields require the literal LED mapping scope.")
     if powered_trial and (_motor_power_off_preparation or _isolated_zero_velocity):
         raise ValueError("Powered stop characterization forbids other diagnostic profiles.")
     preparation_consent = scope == "preparation"
@@ -326,7 +339,8 @@ def run_session(
                                         *motor_consent.DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GET_LOG_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
-                                        *motor_consent.DISCONNECTED_LED_STATE_ONLY_FLAGS)}
+                                        *motor_consent.DISCONNECTED_LED_STATE_ONLY_FLAGS,
+                                        *motor_consent.LED_MAPPING_ONLY_FLAGS)}
         from tools.marvin_legacy_protocol import read_raw_data_request
         fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
                                                          "legacy-read-raw-data")
@@ -354,6 +368,10 @@ def run_session(
                 from tools.marvin_legacy_disconnected_getter_survey import TRANSCRIPT
             elif scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE:
                 from tools.marvin_legacy_disconnected_led_state import TRANSCRIPT
+            elif scope == motor_consent.LED_MAPPING_SCOPE:
+                from tools.marvin_legacy_led_mapper import transcript_for
+                TRANSCRIPT = transcript_for(
+                    _led_mapping_phase, _led_mapping_index, _led_mapping_baseline)
             elif scope in motor_consent.DISCONNECTED_ORDER_SCOPES:
                 from tools.marvin_legacy_disconnected_order import transcript_for_scope
                 TRANSCRIPT = transcript_for_scope(scope)
@@ -557,6 +575,8 @@ def run_session(
                             if scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE
                             else "DisconnectedLoadLedStateRoundTrip"
                             if scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE
+                            else "DisconnectedLoadLedMappingPhase"
+                            if scope == motor_consent.LED_MAPPING_SCOPE
                             else "DisconnectedLoadZeroPlus1000OrderDiagnostic"
                             if scope == motor_consent.DISCONNECTED_PLUS_1000_SCOPE
                             else "DisconnectedLoadZeroOneOrderDiagnostic"
@@ -569,12 +589,15 @@ def run_session(
                         unknown_command_authorized=scope not in (
                             motor_consent.DISCONNECTED_GET_LOG_SCOPE,
                             motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
-                            motor_consent.DISCONNECTED_LED_STATE_SCOPE),
+                            motor_consent.DISCONNECTED_LED_STATE_SCOPE,
+                            motor_consent.LED_MAPPING_SCOPE),
                         fixed_get_log_authorized=scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE,
                         fixed_legacy_getter_survey_authorized=(
                             scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE),
                         fixed_led_state_round_trip_authorized=(
                             scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE),
+                        fixed_led_mapping_phase_authorized=(
+                            scope == motor_consent.LED_MAPPING_SCOPE),
                         usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; diagnostic uses an unflushed raw tty."
     if deadline is not None:

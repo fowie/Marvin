@@ -53,7 +53,7 @@ units remain unknown unless stated.
 | `11` `SetMotorVelocity` | Actuator setter; left/right LE signed `int16` / 4 bytes (`-32768..32767`; physical units unknown). Button/random/fixed-timer sites `Form1.cs:897,992,1019`; the random source uses `Next(-1000,1000)`. | **Observed:** zero `80`/0 bytes; positive nonzero `82`/0 bytes | **Proven status behavior.** Fixed sequence 3072 zero `53000c11000400000000009a0145` -> `80`; sequence 3073 left `+1` `53010c1100040001000000ca3845` -> `82`; sequence 3073 left `+1000` `53010c11000400e80300000e6445` -> `82`; sequence 3074 cleanup zero `53020c11000400000000003bcb45` -> `80`. Both runs completed final `00`; the `+1000` run reported DMM 0.00 V/no change across the disconnected left output. | **Catalog-only: no larger value or repeat.** Value-dependent rejection is established for `+1` and `+1000`; `82` meaning and physical stop remain unknown. |
 | `15` `ResetPC` | Reset; empty. `Form1.cs:955` | Unknown legacy response shape | **Source-only; no live test.** Reset target/effects are not established. | **Catalog-only: reset/destructive lifecycle change.** |
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for both attempted values | **Proven status behavior.** Sequence 3090 fully submitted the fixed index-0 value-1 vector and returned `82`; mandatory sequence 3092 exact-baseline restore also returned `82`. No verification getter followed, no visible LED change was observed, and state change is not established. | **Catalog-only: do not repeat.** Both setter and unchanged-baseline restore were rejected; raw `82` remains opaque. |
+| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for both attempted values | **Proven status behavior.** Sequence 3090 fully submitted the fixed index-0 value-1 vector and returned `82`; mandatory sequence 3092 exact-baseline restore also returned `82`. No verification getter followed, no visible LED change was observed, and state change is not established. | **Interactive mapping only, separately authorized.** A two-phase index-at-255 mechanism preserves the exact live baseline and blocks another index until verified restore or operator-confirmed power cycle. Raw `82` remains opaque. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
@@ -548,6 +548,117 @@ did not include a `SHA256SUMS` verification result, and no capture manifest is
 available in this workspace, so the usual 13-entry evidence-seal claim cannot
 be made. The shared lifecycle attempts to seal failed captures, but successful
 failure-capture sealing remains unverified here.
+
+### Interactive one-index LED mapping
+
+**This is software readiness, not live authorization.** Value `1` was not a
+useful physical mapping stimulus: it may be invisible, observation timing was
+not fixed, and the connected LED index is unknown. The replacement mechanism
+uses one script and exactly one operator-selected index `0..17` per round.
+Value `255` is fixed; payload, sequence, retry, duration, and count are not
+configurable.
+
+All round artifacts must be new sibling directories under one existing
+`MAPPING_ROOT`. A root-local control record blocks another set phase until the
+current round has either a getter-verified restore or an explicit
+operator-confirmed power-cycle reset. The control record names the exact set
+evidence path and SHA-256 of its complete `SHA256SUMS`; restore rehashes every
+sealed file and rejects missing, added, changed, duplicate, unsafe, or symlinked
+entries.
+
+For index `N`, fixed sequences are `3200 + 4*N` through `3203 + 4*N`. The set
+phase sends only:
+
+1. `17 GetLedState` at the first sequence, requiring raw `80` and exactly 18
+   baseline bytes.
+2. `18 SetLedState` at the second sequence with an 18-byte one-hot vector:
+   index `N` is `FF`, every other byte is zero.
+
+For example, index 0 uses:
+
+```text
+53800c17000000697045
+53810c18001200ff0000000000000000000000000000000000b1db45
+```
+
+Offline review, then separately authorized set:
+
+```sh
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase set --index 0 \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase set --index 0 --output "$MAPPING_ROOT/set-index-0" --run \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+The setter response is retained if its raw field is either `80` or `82`; no
+meaning is assigned to either. After any possible setter submission the set
+phase exits and reports **`RESTORE_REQUIRED` regardless of response**. It does
+not send a verification getter or automatic restore, leaving a bounded
+operator-controlled observation interval. The operator records one of
+`changed`, `no_change`, or `uncertain`, then immediately runs the tied restore
+phase.
+
+Restore review and execution use no index or payload argument. The script
+verifies the exact sealed set artifact, reads its captured baseline, constructs
+one command-`18` baseline restore at the third fixed sequence, and records the
+operator observation in the restore evidence:
+
+```sh
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase restore --set-evidence "$MAPPING_ROOT/set-index-0" \
+  --led-observation changed \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase restore --set-evidence "$MAPPING_ROOT/set-index-0" \
+  --led-observation changed \
+  --output "$MAPPING_ROOT/restore-index-0" --run \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --disconnected-load-led-mapping-phase \
+  --authorize-unvalidated-led-mapping-phase \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+Only a CRC-valid matching raw-`80` restore response permits the fourth-sequence
+`17` getter; that getter must equal the exact captured baseline before the round
+is marked restored. Raw `82`, timeout, partial/uncertain TX, malformed framing,
+CRC/correlation fault, extra frame, identity change, accounting fault, or
+sealing fault ends the phase without retry or reconnect and blocks another
+restore attempt. If restoration is not getter-verified, the operator may
+power-cycle and then record that external action without hardware access:
+
+```sh
+python3 -B -m tools.marvin_legacy_led_mapper \
+  --phase acknowledge-power-cycle \
+  --set-evidence "$MAPPING_ROOT/set-index-0" \
+  --led-observation no_change --confirm-power-cycle-reset
+```
+
+The acknowledgment is an operator declaration, not software verification. Set
+and restore phases each allow at most 2 writes and 38 application TX bytes,
+with 8192-byte serial RX bounds and independently sealed evidence. Both motor
+POWER plugs and servos remain disconnected; no DMM is requested. A visible
+change maps only the observed connected LED under that round's setup; it does
+not establish command acceptance semantics, complete channel identity, or
+physical safety.
 
 ### Conditional fixed reads after source recovery
 

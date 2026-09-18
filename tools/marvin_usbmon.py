@@ -732,7 +732,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             disconnected_load_get_log=False,
             disconnected_load_legacy_getter_survey=False,
             disconnected_load_led_state_round_trip=False,
-            authorize_unvalidated_led_state_round_trip=False):
+            authorize_unvalidated_led_state_round_trip=False,
+            disconnected_load_led_mapping_phase=False,
+            authorize_unvalidated_led_mapping_phase=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -759,6 +761,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
         disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
         authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
+        disconnected_load_led_mapping_phase=disconnected_load_led_mapping_phase,
+        authorize_unvalidated_led_mapping_phase=authorize_unvalidated_led_mapping_phase,
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,

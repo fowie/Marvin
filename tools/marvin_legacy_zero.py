@@ -49,7 +49,8 @@ class _ZeroTransport(LiveTransport):
 
 
 class _ResponseEvidence:
-    def __init__(self, record, *, sequence=SEQUENCE, command=COMMAND, validate_packet=None):
+    def __init__(self, record, *, sequence=SEQUENCE, command=COMMAND, validate_packet=None,
+                 accepted_response_fields=(0x80,)):
         self.decoder = LegacyStreamDecoder(max_input_bytes=8192)
         self.spans = deque()
         self.events = []
@@ -59,6 +60,7 @@ class _ResponseEvidence:
         self.last_bounds = None
         self.sequence, self.command = sequence, command
         self.validate_packet = validate_packet
+        self.accepted_response_fields = accepted_response_fields
 
     def feed(self, received, now):
         start = self.decoder.input_bytes
@@ -91,7 +93,7 @@ class _ResponseEvidence:
                 packet = event.packet
                 if packet.command != self.command or packet.sequence != self.sequence:
                     labels.append("unexpected_command_or_sequence")
-                if packet.response_field != 0x80:
+                if packet.response_field not in self.accepted_response_fields:
                     labels.append("uninterpreted_non80_status")
                 if self.candidates:
                     labels.append("additional_frame")
@@ -289,7 +291,7 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
             ready_callback=lambda _: clock.check(), usb_tail_seconds=5, usb_close_grace_seconds=5,
             capture_runner=capture, binary_payload_limit=USB_PAYLOAD_LIMIT, **session_options,
         )
-        ingress.finish(expected_tx)
+        ingress.finish(expected_tx(report) if callable(expected_tx) else expected_tx)
         clock.check()
         if ingress.rx_consumed != report["serial_rx_bytes"]:
             raise OSError("Serial/USB evidence byte accounting differs.")
