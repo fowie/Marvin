@@ -70,12 +70,13 @@ not new captures or recovered implementation code:
 |---|---|---|---|
 | `read-raw-data` | `00` | 134 bytes | `80` |
 | `get-config` | `04` | 108 bytes | `80` |
+| `get-log` | `0C` | 32 bytes | `80` |
 | `get-power-state` | `0E` | 2 bytes | `80` |
 | `get-unit-info` | `1B` | 12 bytes | `80` |
 
 `get-unit-info` additionally requires the literal boolean
 `allow_telemetry_state_change=True` **on that request** because it can change
-handshake/telemetry state. Other observed getters, arbitrary opcodes/payloads and
+handshake/telemetry state. Other getters, arbitrary opcodes/payloads and
 setters are excluded. `validate_getter_reply()` generalizes the existing
 GetConfig validator; `validate_get_config_reply()` remains available.
 

@@ -73,16 +73,18 @@ class LegacyProtocolTests(unittest.TestCase):
                 protocol.validate_get_config_reply(protocol.decode_packet(OBSERVED_REPLY), value)
         self.assertFalse(hasattr(protocol, "get_sensor_info_request"))
 
-    def test_four_proved_empty_query_encoders_and_no_other_opcodes(self):
+    def test_five_proved_empty_query_encoders_and_no_other_opcodes(self):
         encoders = {
             4: protocol.get_config_request, 0x1B: protocol.get_unit_info_request,
-            0x0E: protocol.get_power_state_request, 0: protocol.read_raw_data_request,
+            0x0E: protocol.get_power_state_request, 0x0C: protocol.get_log_request,
+            0: protocol.read_raw_data_request,
         }
         observed = (
             (4, 0, "53000004000000623545"),
             (0x1B, 1, "5301001b000000643045"),
             (0x0E, 2, "5302000e000000600f45"),
             (0, 3, "53030000000000633645"),
+            (0x0C, 3076, "53040c0c00000071d045"),
         )
         for command, sequence, expected in observed:
             self.assertEqual(encoders[command](sequence).hex(), expected)
@@ -105,6 +107,7 @@ class LegacyProtocolTests(unittest.TestCase):
     def test_named_cli_queries_only_and_default_is_unchanged(self):
         for name, command in (
             ("get-config", 4), ("get-unit-info", 0x1B), ("get-power-state", 0x0E), ("read-raw-data", 0),
+            ("get-log", 0x0C),
         ):
             output = io.StringIO()
             with redirect_stdout(output):
@@ -189,7 +192,7 @@ class LegacyProtocolTests(unittest.TestCase):
             ):
                 with self.subTest(query=query), self.assertRaises(ValueError):
                     protocol.validate_getter_reply(bad, query, 1)
-        for query in ("get-log", "get-sensor-info", "reset", 4, True, None):
+        for query in ("get-sensor-info", "reset", 4, True, None):
             with self.assertRaises(ValueError):
                 protocol.validate_getter_reply(valid, query, 1)
 

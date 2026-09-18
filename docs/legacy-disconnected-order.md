@@ -92,3 +92,54 @@ This profile has the same fixed immediate zero/nonzero/cleanup-zero submission,
 raw response gating, getter shape, no-retry, no-reconnect, and evidence limits.
 It has no arbitrary value, timing, sequence, count, or retry options. The
 printed plan remains software readiness only, not live authorization.
+
+### Proven +1000 outcome and setter hold
+
+A separately authorized disconnected-load run recorded sequence 3072 zero as
+raw status `80`, sequence 3073 left `+1000` as raw status `82`, and sequence
+3074 cleanup zero as raw status `80`; the getter completed. Accounting recorded
+52 TX bytes, 174 RX bytes, and zero uncertain TX bytes. All 13 `SHA256SUMS`
+entries verified. The operator reported the DMM remained at 0.00 V on the
+disconnected left output before the run and showed no change during it. This is
+an operator observation, not synchronized electrical instrumentation or proof
+of physical stop.
+
+The repeated raw `82` establishes value-dependent nonzero rejection for both
+tested positive values under this fixed disconnected-load setup; it does not
+decode `82`, establish an acceptance threshold, or justify a larger setter.
+No larger setter is authorized by these results.
+
+## One-shot disconnected-load GetLog
+
+The read-only follow-up sends only the live-confirmed empty GetLog command at
+new fixed sequence 3076:
+
+```text
+53040c0c00000071d045
+```
+
+Request SHA-256:
+`e617b3bc6fd672b38f4c8f963b4c03d7726ac953f48eaee1209cf26b57e41182`.
+The request is admitted only once, with no retry, reconnect, follow-up,
+setter, power-state, heartbeat, reset, or arbitrary command path. A successful
+observation requires exactly command `0C`, status `80`, sequence 3076, a
+32-byte payload, valid framing/CRC, and full serial/USB evidence accounting.
+This is read-only with respect to actuator/power commands, but the existing
+command map conservatively notes that reading a diagnostic log may consume or
+advance internal log state. The payload remains raw evidence; prior identical
+`taskSystem: after software setup` observations do not guarantee this result or
+prove application state.
+
+Exact offline dry-run review, without `--run`:
+
+```sh
+python3 -B -m tools.marvin_legacy_disconnected_get_log \
+  --disconnected-load-get-log \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+This scope is literal and mutually exclusive with all setter and getter-only
+encoder scopes. The printed plan is software readiness only, not live
+authorization, physical isolation proof, or a physical-stop claim.

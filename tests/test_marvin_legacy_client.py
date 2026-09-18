@@ -114,7 +114,7 @@ class LegacyClientTests(unittest.TestCase):
             self.assertEqual(item.stream.offset, offset)
             offset = item.stream.end_offset
 
-    def test_persistent_four_getters_exact_shapes_and_opaque_confidence(self):
+    def test_persistent_five_getters_exact_shapes_and_opaque_confidence(self):
         session, transport, clock = self.make_client()
         with session:
             for sequence, (query, spec) in enumerate(protocol.GETTERS.items()):
@@ -129,7 +129,7 @@ class LegacyClientTests(unittest.TestCase):
                 self.assertEqual(session.requests[-1].status, "matched")
                 self.assertEqual(transport.writes[-1], spec.encode(sequence))
         self.assertEqual(session.state, "closed")
-        self.assertEqual((session.accepted_bytes, session.uncertain_bytes), (40, 0))
+        self.assertEqual((session.accepted_bytes, session.uncertain_bytes), (50, 0))
         self.assertEqual(sum(name == "revalidate" for name, _ in transport.calls), 1)
         self.assertEqual(sum(name == "close" for name, _ in transport.calls), 1)
         self.assertEqual(dict(client.SETTINGS), {
@@ -781,7 +781,7 @@ class LegacyClientTests(unittest.TestCase):
         session, transport, _ = self.make_client()
         with session:
             calls = len(transport.calls)
-            for query in ("reset", "get-sensor-info", "get-log", 4, True, None):
+            for query in ("reset", "get-sensor-info", 4, True, None):
                 with self.assertRaises(ValueError):
                     session.request(query, timeout=1)
             for bad in (True, False, float("nan"), float("inf"), 10**1000, -1, 0, "1", None):
