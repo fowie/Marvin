@@ -143,3 +143,24 @@ python3 -B -m tools.marvin_legacy_disconnected_get_log \
 This scope is literal and mutually exclusive with all setter and getter-only
 encoder scopes. The printed plan is software readiness only, not live
 authorization, physical isolation proof, or a physical-stop claim.
+
+### Proven one-shot GetLog outcome and consolidated hold
+
+The separately authorized one-shot used exact sequence 3076 request
+`53040c0c00000071d045`. Its single reply matched command `0C`, raw status `80`,
+and the required 32-byte payload; the payload decoded as ASCII
+`taskSystem: after software setup`. Accounting recorded 10 TX bytes, 42 RX
+bytes, and zero uncertain TX bytes. All 13 `SHA256SUMS` entries verified. The
+message was identical to the prior reviewed logs and provided no reason for the
+nonzero setter rejection.
+
+Consolidating the bounded observations: left raw `+1` and `+1000` each returned
+opaque status `82` at sequence 3073 when bracketed by sequence 3072 and 3074
+zeros that each returned `80`. The DMM across the disconnected left output
+remained at 0.00 V with no observed change during the `+1000` run. Both final
+getters succeeded. These observations do not decode `82`, prove application
+acknowledgment, or establish physical stop; `physical_stop` remains
+`not_established`.
+
+No larger setter, power-state write, heartbeat, reset, or other live command is
+justified by this evidence.
