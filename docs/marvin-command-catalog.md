@@ -352,6 +352,67 @@ UnitInfo words and command shapes. A separately authorized remote-release/API
 search could check hosting metadata that Git does not store. Neither route
 justifies hardware readback or transferring semantics from successor images.
 
+### Public-source search
+
+A public-source review completed on 2026-09-17 found no exact public match for
+the installed S/E framing and command tuple, the GetLog text,
+`SetMototrVelocity`, or the 12-byte UnitInfo payload. This is time-bounded
+negative search evidence, not proof that the artifact was never published.
+The verified searches were:
+
+- GitHub code search for
+  [`SetMototrVelocity`](https://github.com/search?q=%22SetMototrVelocity%22&type=code),
+  the exact
+  [GetLog phrase](https://github.com/search?q=%22taskSystem%3A+after+software+setup%22&type=code),
+  and
+  [`045e` + `4444` + Marvin](https://github.com/search?q=%22045e%22+%224444%22+Marvin&type=code);
+- Sourcegraph global search including forks and archives for
+  [`SetMototrVelocity`](https://sourcegraph.com/search?q=context%3Aglobal+fork%3Ayes+archived%3Ayes+%22SetMototrVelocity%22)
+  and the exact
+  [GetLog phrase](https://sourcegraph.com/search?q=context%3Aglobal+fork%3Ayes+archived%3Ayes+%22taskSystem%3A+after+software+setup%22);
+- Internet Archive's
+  [`SetMototrVelocity` metadata search](https://archive.org/advancedsearch.php?q=SetMototrVelocity&fl%5B%5D=identifier&fl%5B%5D=title&output=json).
+
+[DeviceHunt](https://devicehunt.com/view/type/usb/vendor/045E/device/4444)
+lists `045e:4444` without a product identity. The strongest retained provenance
+is instead the reviewed 2007 Microsoft INF:
+`reference/successor-robot/drivers/active/Windows/inf/oem6.inf:1-23,29-50`.
+It is dated 2007-03-26, binds `USB\Vid_045E&Pid_4444` through `usbser.sys`,
+names Microsoft as manufacturer, and names `Marvin Drive USB serial port` and
+`Marvin USB CDC serial port`. This retained file is not claimed to have a
+public GitHub URL.
+
+Public archive context confirms that Microsoft distributed Robotics Developer
+Studio and published robot-support/release pages: the archived
+[RDS 2008 R2 Express download](https://web.archive.org/web/20090701093538/http://www.microsoft.com/downloads/details.aspx?displaylang=en&FamilyID=f9d8ddca-ab60-4c62-9770-2aaa87dfd01e),
+[supported-robots page](https://web.archive.org/web/20110524012700/http://www.microsoft.com/robotics/Content.aspx?pg=Robots),
+[CodePlex front page](https://web.archive.org/web/20110404030622/http://robotics.codeplex.com/),
+and [CodePlex releases](https://web.archive.org/web/20120508201829/http://robotics.codeplex.com/releases).
+Those pages do not establish that an installed-controller image or source is
+present.
+
+The later reviewed Mars lineage retains the VID/PID and UnitInfo concepts but
+is not protocol-compatible. Its setup searches
+`USB\VID_045E&PID_4444\12345678` and opens 115200/8N1 with DTR/RTS
+(`reference/successor-robot/docs/protocol-and-safety.md:7-13`); its command IDs
+are documented at
+`reference/successor-robot/decompiled-reference/mars-contracts/Microsoft.Robotics.Firmware.Protocol/CommandID.cs:6-34`;
+and its packets use `EFBE`/`ADDE` framing with different response shapes
+(`reference/successor-robot/decompiled-reference/controller-service/Microsoft.Robotics.Firmware.ControlBoardIO/Packet.cs:20-56,66-83,120-130`).
+The collection's provenance limits are recorded at
+`reference/successor-robot/README.md:18-40`. These facts must not be
+transferred to the installed S/E controller.
+
+A public
+[RDS 2008 Academic installer item](https://archive.org/details/microsoft-robotics-developer-studio-2008-academic-edition_202201)
+and its
+[installer executable](https://archive.org/download/microsoft-robotics-developer-studio-2008-academic-edition_202201/Microsoft_Robotics_Developer_Studio_2008_Academic_Edition.exe)
+have been identified. Full installer extraction is **in progress and not yet
+concluded**. Remaining acquisition routes are to complete that extraction and
+inspect its nested installer payloads, recover historical CodePlex release
+artifacts, or obtain an owner/vendor PCTestApp-era S/E build with firmware plus
+map/listing or matching source. No current result justifies a new live command.
+
 ## Next powered-session matrix
 
 ### Planned live trials
