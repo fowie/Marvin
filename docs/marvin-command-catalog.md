@@ -53,7 +53,7 @@ units remain unknown unless stated.
 | `11` `SetMotorVelocity` | Actuator setter; left/right LE signed `int16` / 4 bytes (`-32768..32767`; physical units unknown). Button/random/fixed-timer sites `Form1.cs:897,992,1019`; the random source uses `Next(-1000,1000)`. | **Observed:** zero `80`/0 bytes; positive nonzero `82`/0 bytes | **Proven status behavior.** Fixed sequence 3072 zero `53000c11000400000000009a0145` -> `80`; sequence 3073 left `+1` `53010c1100040001000000ca3845` -> `82`; sequence 3073 left `+1000` `53010c11000400e80300000e6445` -> `82`; sequence 3074 cleanup zero `53020c11000400000000003bcb45` -> `80`. Both runs completed final `00`; the `+1000` run reported DMM 0.00 V/no change across the disconnected left output. | **Catalog-only: no larger value or repeat.** Value-dependent rejection is established for `+1` and `+1000`; `82` meaning and physical stop remain unknown. |
 | `15` `ResetPC` | Reset; empty. `Form1.cs:955` | Unknown legacy response shape | **Source-only; no live test.** Reset target/effects are not established. | **Catalog-only: reset/destructive lifecycle change.** |
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for both attempted values | **Proven status behavior.** Sequence 3090 fully submitted the fixed index-0 value-1 vector and returned `82`; mandatory sequence 3092 exact-baseline restore also returned `82`. No verification getter followed, no visible LED change was observed, and state change is not established. | **Interactive mapping only, separately authorized.** A two-phase index-at-255 mechanism preserves the exact live baseline and blocks another index until verified restore or operator-confirmed power cycle. Raw `82` remains opaque. |
+| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the earlier value-1 set/restore and every completed index-at-`FF` set/restore through index 8 | **Proven status and physical-effect behavior, not application semantics.** The earlier index-0 value-1 round had no observed change. In the later interactive rounds, each fully transmitted setter returned raw `82` while producing the recorded visible effect; each exact-baseline restore also returned raw `82` while visibly restoring state. Raw `82` remains opaque and the physical observations do not establish electrical topology. | **Interactive mapping only, separately authorized.** The two-phase index-at-255 mechanism preserves the exact live baseline and blocks another index until an operator-confirmed power-cycle acknowledgment after raw `82`. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
@@ -660,24 +660,49 @@ change maps only the observed connected LED under that round's setup; it does
 not establish command acceptance semantics, complete channel identity, or
 physical safety.
 
-#### Fixed left-attention photo pattern
+#### Interim live interactive LED mapping
+
+Every completed individual round through index 8 followed the same observed
+protocol pattern: the baseline getter returned matching CRC-valid raw `80`;
+the command-`18` set was fully transmitted and returned matching CRC-valid raw
+`82`; the requested visible effect nevertheless occurred; the exact captured
+baseline restore was fully transmitted and returned matching CRC-valid raw
+`82`; and the visible baseline state returned. Because raw `82` prevents getter
+verification, an operator-confirmed power-cycle acknowledgment was recorded
+before the next round. These observations do not decode `82`, prove application
+acknowledgment, or establish electrical topology.
 
 Individual operator-controlled rounds established these visible effects under
 the disconnected-load setup:
 
-| Index at `FF` | Operator observation |
-|---:|---|
-| 0 | red wheel LEDs OFF |
-| 1 | left blue attention 1 ON and wheel red OFF |
-| 2 | left red attention 1 ON |
-| 3 | left blue attention 2 ON and wheel red OFF |
-| 4 | left red attention 2 ON and wheel red OFF |
-| 5 | left blue attention 3 ON and wheel red OFF |
-| 6 | triangle on the robot's right side (operator-confirmed) |
+| Index at `FF` | Operator observation | Supply observation |
+|---:|---|---|
+| 0 | red wheel LEDs OFF, not on | not recorded |
+| 1 | robot-left blue attention LED 1 ON; wheel LEDs OFF | not recorded |
+| 2 | robot-left red attention LED 1 ON; wheel LEDs stayed ON during the set; exact restore turned this red LED OFF and wheel LEDs OFF | not recorded |
+| 3 | robot-left blue attention LED 2 ON; wheel LEDs OFF | baseline 12.6 V / 0.40 A; set 12.6 V / 0.29 A; restore 12.6 V / 0.40 A |
+| 4 | robot-left red attention LED 2 ON; wheel LEDs OFF | set 12.6 V / 0.30 A |
+| 5 | robot-left blue attention LED 3 ON; wheel LEDs OFF | set 12.3 V / 0.30 A |
+| 6 | operator-confirmed red channel of the triangle on the robot's right side ON; wheel LEDs OFF | set 12.3 V / 0.29 A |
+| 7 | blue channel of the right triangle ON; wheel LEDs OFF | set 12.4 V / 0.44 A |
+| 8 | second red LED on the right attention display ON; wheel LEDs OFF | set 12.3 V / 0.31 A |
+
+Across all LED tests so far, the operator also observed that setting an index
+turns OFF a blinking red LED bar on the bottom of the robot and restoring the
+exact baseline turns that bar back ON. This is an operator observation, not a
+mapped payload field or inferred circuit relationship.
+
+The stable or decreased measured current in most recorded rounds argues
+against a supply-current-limit explanation, but the supply ranged from 12.3 V
+to 12.6 V and index 7 drew 0.44 A. No fault or absence of fault is established.
+Indices 9 through 17 remain unmapped.
+
+#### Fixed left-attention photo pattern
 
 The left-side photo of the indices-1-through-5 pattern shows two magenta
 sections and one blue-only triangle. The missing left red channel remains
-unmapped and may not be connected; the photo does not establish which.
+unmapped and may not be connected; the photo does not establish which. The
+pattern was visibly restored after the photo.
 
 The named `left-attention-photo` pattern is the only group pattern. It uses the
 next fixed sequence block, 3272 through 3275. Its set phase first reads the
