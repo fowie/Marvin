@@ -53,7 +53,7 @@ units remain unknown unless stated.
 | `11` `SetMotorVelocity` | Actuator setter; left/right LE signed `int16` / 4 bytes (`-32768..32767`; physical units unknown). Button/random/fixed-timer sites `Form1.cs:897,992,1019`; the random source uses `Next(-1000,1000)`. | **Observed:** zero `80`/0 bytes; positive nonzero `82`/0 bytes | **Proven status behavior.** Fixed sequence 3072 zero `53000c11000400000000009a0145` -> `80`; sequence 3073 left `+1` `53010c1100040001000000ca3845` -> `82`; sequence 3073 left `+1000` `53010c11000400e80300000e6445` -> `82`; sequence 3074 cleanup zero `53020c11000400000000003bcb45` -> `80`. Both runs completed final `00`; the `+1000` run reported DMM 0.00 V/no change across the disconnected left output. | **Catalog-only: no larger value or repeat.** Value-dependent rejection is established for `+1` and `+1000`; `82` meaning and physical stop remain unknown. |
 | `15` `ResetPC` | Reset; empty. `Form1.cs:955` | Unknown legacy response shape | **Source-only; no live test.** Reset target/effects are not established. | **Catalog-only: reset/destructive lifecycle change.** |
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | Unknown legacy response shape | **Source-only; no live test.** A fixed index-0 value-1 round trip is prepared with exact baseline restoration. | **Bounded reversible trial prepared, not authorized here.** Paired `17` reads can verify byte storage; only operator observation can establish a visible LED effect. |
+| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for both attempted values | **Proven status behavior.** Sequence 3090 fully submitted the fixed index-0 value-1 vector and returned `82`; mandatory sequence 3092 exact-baseline restore also returned `82`. No verification getter followed, no visible LED change was observed, and state change is not established. | **Catalog-only: do not repeat.** Both setter and unchanged-baseline restore were rejected; raw `82` remains opaque. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
@@ -481,7 +481,7 @@ newer firmware and must not be used to label the installed S/E payloads. Except
 for the explicitly qualified four-zero-word grouping in `GetRawMotorPWM`, the
 payloads above remain opaque.
 
-### Planned reversible LED-state round trip
+### Failed reversible LED-state round trip
 
 **This is software readiness, not live authorization.** The fixed runner has a
 distinct literal setter scope and retains the disconnected-load requirements:
@@ -529,6 +529,25 @@ response, and restored-baseline getter verification separately. It does not
 infer a physical LED effect. The operator must separately record visible LED
 state before, during, and after the trial; no visible change does not invalidate
 the raw protocol evidence or establish channel meaning.
+
+In the separately authorized run, sequence 3089 returned raw `80` with the
+exact required baseline. The complete 28-byte sequence-3090 test setter was
+accepted by the host write and received CRC-valid matching response
+`53120c18820000d6fe45`: raw `82`, empty payload. The mandatory complete
+28-byte sequence-3092 exact-baseline restore write was then attempted once and
+received CRC-valid matching response `53140c18820000d69845`: raw `82`, empty
+payload. Neither verification getter was sent. Accounting recorded 3 writes,
+66 accepted TX bytes, 48 RX bytes, and zero uncertain TX bytes; those byte
+totals match one 28-byte getter reply and two 10-byte setter replies. The
+operator observed no visible LED change and cut power after the failure.
+
+Both the test setter and unchanged-baseline restore were rejected at the raw
+status level. This does not decode `82`, prove that either payload was applied,
+or establish any state change. The failed-run facts supplied to this repository
+did not include a `SHA256SUMS` verification result, and no capture manifest is
+available in this workspace, so the usual 13-entry evidence-seal claim cannot
+be made. The shared lifecycle attempts to seal failed captures, but successful
+failure-capture sealing remains unverified here.
 
 ### Conditional fixed reads after source recovery
 

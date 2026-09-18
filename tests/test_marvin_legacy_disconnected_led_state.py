@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from tests import test_marvin_session as session_tests
+from tests.test_marvin_legacy_client import frame
 from tools import marvin_legacy_disconnected_led_state as led
 from tools import marvin_motor_power_off_consent as consent
 from tools import marvin_session as session
@@ -32,6 +33,7 @@ class _Transport:
         self.restore_attempted = False
         self.restore_response_clean = False
         self.close = Mock()
+        self.event = Mock()
 
     def revalidate(self, *, deadline):
         return self.token
@@ -197,6 +199,38 @@ class DisconnectedLedStateTests(unittest.TestCase):
             transport._submit_restore_once(deadline=1)
         write.assert_called_once_with(99, led.RESTORE_SETTER)
         self.assertTrue(transport.restore_attempted)
+
+    def test_exact_live_non80_setter_and_restore_path(self):
+        self.assertEqual(
+            frame(b"", command=0x18, status=0x82, sequence=3090).hex(),
+            "53120c18820000d6fe45")
+        self.assertEqual(
+            frame(b"", command=0x18, status=0x82, sequence=3092).hex(),
+            "53140c18820000d69845")
+        transport = _Transport()
+        transport.serial_bytes = 48
+        report = {}
+
+        def respond(_, response, **kwargs):
+            baseline = response.sequence == 3089
+            response.feed(Mock(
+                data=frame(
+                    led.BASELINE if baseline else b"",
+                    command=response.command,
+                    status=0x80 if baseline else 0x82,
+                    sequence=response.sequence),
+                started_at=.1, ended_at=.2), .2)
+            response.finish(.2)
+
+        with patch.object(led.zero, "_observe_response", side_effect=respond), \
+                self.assertRaisesRegex(OSError, "uninterpreted_non80_status"):
+            led._observe(transport, report, clock=lambda: 0)
+        self.assertEqual(transport.attempts, ["baseline", "test", "restore"])
+        self.assertEqual((report["accepted_tx_bytes"], report["uncertain_tx_bytes"]), (66, 0))
+        self.assertEqual(report["serial_rx_bytes"], 48)
+        self.assertTrue(report["restore_attempted"])
+        self.assertFalse(report["test_vector_getter_verified"])
+        self.assertFalse(report["baseline_restore_getter_verified"])
 
 
 if __name__ == "__main__":
