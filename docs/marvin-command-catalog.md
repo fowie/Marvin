@@ -9,8 +9,12 @@ The two generations are not interchangeable:
 
 - The installed `045e:4444` controller has only demonstrated the legacy
   single-byte `53`/`45` framing at 57600/8N1.
-- The newer tables describe candidate `EF BE`/`AD DE` firmware built for other
-  USB identities. Shared numeric IDs do not establish shared meanings.
+- Supplied `PCTestApp/SerialPacket.cs` and `PCTestApp/Form1.cs` are legacy host
+  source: they define the S/E framing and request syntax used by multiple
+  proved installed command IDs. They do not contain the controller handlers.
+- Supplied `m_src/m_protocol.c` and `m_inc/protocol.cs` are newer firmware
+  source with `EF BE`/`AD DE` framing and a different command map. Shared
+  numeric IDs do not establish shared meanings.
 - `80` and `82` below are retained raw legacy response fields. Successor
   response-code conventions are not used to decode them.
 - Private-archive paths are provenance citations, not files in this repository.
@@ -40,26 +44,26 @@ units remain unknown unless stated.
 | `00` `ReadRawData` | Read-only; empty request. `PCTestApp/Form1.cs:934` | **Proven:** raw `80`, 134-byte payload / 144-byte frame | **Proven exchange**, repeatedly. Returns 82 raw fields including motor position/velocity/acceleration/current, four PWM words, cliff channels, raw flags, power/environment/IMU fields. | **Conditional read candidate.** Already exercised; no decoded reject/latch field. |
 | `04` `GetConfig` | Read-only; empty. `Form1.cs:862` | **Proven:** `80`, 108 bytes / 118-byte frame | **Proven exchange.** 27 words include source-labelled `maxVel=3500`, `minVel=-3500`, `motionTickTimeout=8`, `motorStop1Sec=1`, `heartbeatPeriod=8`, `cliffStopThreshold=80`, `cliffStopHysteresis=32`. The newer handler returns `defConfig`; active installed use is unproved. | **Conditional read candidate** only if recovered legacy code names a relevant config gate. Re-reading cannot prove a setting is active. |
 | `05` `SetConfig` | Configuration write; 27 words / 108 bytes. Sample fills a byte ramp. `Form1.cs:973` | Unknown legacy response shape | **Source-only; no live test.** Exact installed field acceptance and persistence are unknown. | **Catalog-only: persistent/destructive configuration write.** |
-| `0A` `GetRawMotorPWM` | Nominal read; empty. `Form1.cs:646` | Unknown legacy response shape | **Source-only; no live test.** Four PWM words are already present in proven `00`. Newer Drive `0A` is `SetFanRpm`. | **Catalog-only: installed shape unknown and getter/setter collision.** |
+| `0A` `GetRawMotorPWM` | Nominal read; empty. `Form1.cs:646` | Unknown legacy response shape | **Source-only; no live test.** Four PWM words are already present in proven `00`. Newer Drive `0A` is `SetFanRpm`. | **Fixed read-only survey candidate.** Legacy PCTestApp syntax is known; reply length remains opaque. |
 | `0B` `SetRawMotorPWM` | Actuator setter; four LE `uint16` words / 8 bytes (`0..65535` wire values; physical range unknown). Button and timer sites `Form1.cs:674,1057`. | Unknown legacy response shape | **Source-only; no live test.** Source-used timer/value bounds are not retained as installed facts. | **Catalog-only: direct raw output setter, no closed-loop safety basis.** |
 | `0C` `GetLog` | Diagnostic read; empty; may consume/advance log state. `Form1.cs:961` | **Proven:** `80`, 32 bytes / 42-byte frame | **Proven exchange.** Repeated historical reads and sequence 3076 returned ASCII `taskSystem: after software setup`; the latter used request `53040c0c00000071d045`, 10 TX / 42 RX / 0 uncertain bytes. | **Catalog-only for the current rejection:** repeated result contained no reason. Conditional only if source proves a relevant queued log record. |
 | `0E` `GetPowerState` | Read-only; empty. `Form1.cs:940` | **Proven:** `80`, 2 bytes / 12-byte frame | **Proven exchange.** Returned raw mask `0EFF`; bit-to-rail mapping and relation to command acceptance are unknown. | **Conditional read candidate** only after a source-backed mask mapping identifies a relevant bit. |
 | `0F` `SetPowerState` | Power-state setter; one LE `uint16`; sample writes `0`. `Form1.cs:949` | Unknown legacy response shape | **Source-only; no live test.** Zero is not known to mean safe/OFF. | **Catalog-only: power switching with unknown bit semantics.** |
-| `10` `GetMotorVelocity` | Nominal read; empty. `Form1.cs:868` | Unknown legacy response shape | **Source-only; no live test.** Velocity is already present in proven `00`. Newer Drive `10` is `ResetCliffStop`. | **Catalog-only: installed shape unknown and getter/reset collision.** |
+| `10` `GetMotorVelocity` | Nominal read; empty. `Form1.cs:868` | Unknown legacy response shape | **Source-only; no live test.** Velocity is already present in proven `00`. Newer Drive `10` is `ResetCliffStop`. | **Fixed read-only survey candidate.** Legacy PCTestApp syntax is known; reply length remains opaque. |
 | `11` `SetMotorVelocity` | Actuator setter; left/right LE signed `int16` / 4 bytes (`-32768..32767`; physical units unknown). Button/random/fixed-timer sites `Form1.cs:897,992,1019`; the random source uses `Next(-1000,1000)`. | **Observed:** zero `80`/0 bytes; positive nonzero `82`/0 bytes | **Proven status behavior.** Fixed sequence 3072 zero `53000c11000400000000009a0145` -> `80`; sequence 3073 left `+1` `53010c1100040001000000ca3845` -> `82`; sequence 3073 left `+1000` `53010c11000400e80300000e6445` -> `82`; sequence 3074 cleanup zero `53020c11000400000000003bcb45` -> `80`. Both runs completed final `00`; the `+1000` run reported DMM 0.00 V/no change across the disconnected left output. | **Catalog-only: no larger value or repeat.** Value-dependent rejection is established for `+1` and `+1000`; `82` meaning and physical stop remain unknown. |
 | `15` `ResetPC` | Reset; empty. `Form1.cs:955` | Unknown legacy response shape | **Source-only; no live test.** Reset target/effects are not established. | **Catalog-only: reset/destructive lifecycle change.** |
-| `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | Unknown legacy response shape | **Source-only; no live test.** Newer Drive `17` is `SetDriveVelocities`. | **Catalog-only: installed shape unknown and getter/motion collision.** |
+| `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | Unknown legacy response shape | **Source-only; no live test.** Newer Drive `17` is `SetDriveVelocities`. | **Fixed read-only survey candidate.** Legacy PCTestApp syntax is known; reply length remains opaque. |
 | `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
-| `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | Unknown legacy response shape | **Source-only; no live test.** Newer Drive/Head `19` is `SetServoRadians`. | **Catalog-only: installed shape unknown and getter/servo-setter collision.** |
+| `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | Unknown legacy response shape | **Source-only; no live test.** Newer Drive/Head `19` is `SetServoRadians`. | **Fixed read-only survey candidate.** Legacy PCTestApp syntax is known; reply length remains opaque. |
 | `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
 | `1C` `SetUnitInfo` | Identity write; 12 bytes; sample uses alternating `AA`/`55`. `Form1.cs:628` | Unknown legacy response shape | **Source-only; no live test.** Persistence is unknown. | **Catalog-only: identity/configuration write.** |
 | `1D` `GetServoPosition` | Read; empty. `Form1.cs:778` | **Proven:** `80`, 4 bytes / 14-byte frame | **Proven exchange.** Returned raw values 2500 and 2730; not measured angles. This legacy meaning conflicts with newer `GetSensorInfo`. | **Catalog-only for motor rejection:** unrelated returned state; generation-sensitive despite the proved legacy exchange. |
 | `1E` `SetServoPosition` | Actuator setter; two LE `uint16` / 4 bytes. UI suggests `0..3000`; parser only enforces `0..65535`. `Form1.cs:772` | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: servo setter and servos are isolated.** |
-| `1F` `GetSensorInfo` | Nominal read; empty. `Form1.cs:634` | Unknown legacy response shape | **Source-only; no live test.** Newer Drive is `ResetCom`; newer Head is `DepthCamPower`. | **Catalog-only: getter/reset/power collision and unknown installed shape.** |
+| `1F` `GetSensorInfo` | Nominal read; empty. `Form1.cs:634` | Unknown legacy response shape | **Source-only; no live test.** Newer Drive is `ResetCom`; newer Head is `DepthCamPower`. | **Fixed read-only survey candidate.** Legacy PCTestApp syntax is known; reply length remains opaque. |
 | `26` `DisableHeartbeat` | Telemetry-control command; empty. `Form1.cs:640` | Unknown legacy response shape | **Source-only; no live test.** There is no proved readback for heartbeat-enable state. Newer Drive `26` is `GetProjectorVersion`. | **Catalog-only: state-changing heartbeat control.** |
 | `27` `ResetMotorPositions` | Odometry reset; empty. `Form1.cs:856` | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: destructive state reset.** |
-| `28` `GetBatteryInfo` | Nominal read; empty. `Form1.cs:928` | Unknown legacy response shape | **Source-only; no live test.** Related raw battery fields are already present in `00`; newer Drive `28` moves the projector image. | **Catalog-only: installed shape unknown and getter/output collision.** |
+| `28` `GetBatteryInfo` | Nominal read; empty. `Form1.cs:928` | Unknown legacy response shape | **Source-only; no live test.** Related raw battery fields are already present in `00`; newer Drive `28` moves the projector image. | **Fixed read-only survey candidate.** Legacy PCTestApp syntax is known; reply length remains opaque. |
 
 The installed live evidence above also includes the repeated powered trials in
 [legacy-powered-left-stop.md](legacy-powered-left-stop.md) and the fixed
@@ -296,10 +300,12 @@ tables at `m_src/m_protocol.c:108-240`.
 **Conclusion:** no supplied firmware image matches the installed identity,
 framing, command layout, and observed response shapes. Candidate return code
 `2` and current `ResponseCode` names are not transferred to installed raw
-`82`, which remains opaque. The missing evidence is specifically the installed
-legacy firmware image, or matching legacy source/map output containing its
-S/E dispatcher, response enum, and command-`11` handler. Without that artifact,
-no existing read-only command is source-proved to expose the rejection cause.
+`82`, which remains opaque. Legacy PCTestApp host source is available and
+source-backs its getter request syntax. The missing evidence is specifically
+the installed legacy firmware image, or matching old firmware source/map output
+containing its S/E dispatcher, response enum, and command-`11` handler. Without
+that device-side artifact, no read-only reply field is source-proved to expose
+the rejection cause.
 
 ### Repository object-history search
 
@@ -426,11 +432,43 @@ command resolves raw `82`.
 
 ### Planned live trials
 
-| Stage | Fixed requests | Maximum application writes / bytes | Authorization |
-|---|---|---:|---|
-| 0 - source recovery | None | **0 / 0** | **Current plan.** Locate the absent installed legacy image or matching S/E dispatcher/status/command-`11` source offline. No powered session or command is authorized. |
+One future operator session is prepared but **not authorized by this document**:
 
-No generic getter runner is added. Existing allowlists remain unchanged.
+```bash
+python3 -B -m tools.marvin_legacy_disconnected_getter_survey \
+  --disconnected-load-legacy-getter-survey \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --output "$NEW_PRIVATE_CAPTURE" --run
+```
+
+| Order | Sequence / legacy PCTestApp getter | Exact fixed request |
+|---:|---|---|
+| 1 | 3083 / `0A GetRawMotorPWM` | `530b0c0a00000071a745` |
+| 2 | 3084 / `10 GetMotorVelocity` | `530c0c10000000770845` |
+| 3 | 3085 / `17 GetLedState` | `530d0c1700000077ad45` |
+| 4 | 3086 / `19 GetLedBlink` | `530e0c19000000757645` |
+| 5 | 3087 / `1F GetSensorInfo` | `530f0c1f000000742f45` |
+| 6 | 3088 / `28 GetBatteryInfo` | `53100c28000000783445` |
+
+The immutable transcript SHA-256 is
+`0fac72b34e77fbb432c9a43f786296515cf46fb8dac6ae6b080b5b03f077e24b`.
+The maximum is six serial writes and 60 application TX bytes, strictly in the
+listed order. Each request waits for one complete CRC-valid response with the
+same sequence and command and raw response `80` before the next request.
+Payload length and bytes are accepted only as framing-delimited opaque evidence;
+no expected length or field meaning is invented. Total serial RX is bounded at
+8192 bytes.
+
+The run stops immediately, without retry, reconnect, suffix resend, or another
+request, on partial/uncertain TX, timeout, framing/CRC corruption, unexpected
+sequence/command, non-`80` raw response, extra/ambiguous frame, identity change,
+recorder/accounting fault, or evidence-sealing failure. It sends no setter,
+reset, heartbeat, power/config/identity write, malformed enumeration, or
+successor-framed command. The named offline encoders are allowlisted; no
+arbitrary-command interface is added.
 
 ### Conditional fixed reads after source recovery
 
@@ -457,8 +495,8 @@ sequence/command, non-`80` raw response, wrong payload length, evidence sealing
 failure, or any unexpected physical observation. It must not automatically
 continue to another row.
 
-No installed request/response shape is established for `0A`, `10`, `17`, `19`,
-`1F`, or `28`, so none appears in the conditional matrix. No setter, reset,
-flash/configuration write, power-state change, heartbeat control, raw PWM,
-servo/motor command, malformed packet, enumeration sweep, or successor-framed
-command is planned.
+No installed response length is established for `0A`, `10`, `17`, `19`, `1F`,
+or `28`; the fixed survey therefore preserves each payload without decoding.
+No setter, reset, flash/configuration write, power-state change, heartbeat
+control, raw PWM setter, servo/motor setter, malformed packet, enumeration
+sweep, or successor-framed command is planned.

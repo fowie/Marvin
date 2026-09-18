@@ -71,13 +71,19 @@ class LegacyProtocolTests(unittest.TestCase):
                 protocol.get_config_request(value)
             with self.subTest(value=value), self.assertRaises(ValueError):
                 protocol.validate_get_config_reply(protocol.decode_packet(OBSERVED_REPLY), value)
-        self.assertFalse(hasattr(protocol, "get_sensor_info_request"))
+        self.assertNotIn("get-sensor-info", protocol.GETTERS)
 
-    def test_five_proved_empty_query_encoders_and_no_other_opcodes(self):
+    def test_source_backed_empty_query_encoders_and_no_other_opcodes(self):
         encoders = {
             4: protocol.get_config_request, 0x1B: protocol.get_unit_info_request,
             0x0E: protocol.get_power_state_request, 0x0C: protocol.get_log_request,
             0: protocol.read_raw_data_request,
+            0x0A: protocol.get_raw_motor_pwm_request,
+            0x10: protocol.get_motor_velocity_request,
+            0x17: protocol.get_led_state_request,
+            0x19: protocol.get_led_blink_request,
+            0x1F: protocol.get_sensor_info_request,
+            0x28: protocol.get_battery_info_request,
         }
         observed = (
             (4, 0, "53000004000000623545"),

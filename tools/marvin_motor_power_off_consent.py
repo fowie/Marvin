@@ -60,18 +60,27 @@ DISCONNECTED_GET_LOG_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+DISCONNECTED_GETTER_SURVEY_SCOPE = "disconnected_load_legacy_getter_survey"
+DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS = (DISCONNECTED_GETTER_SURVEY_SCOPE,)
+DISCONNECTED_GETTER_SURVEY_FLAGS = (
+    *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 POWERED_TRIAL_SCOPES = {
     "powered_left_stop_characterization": POWERED_TRIAL_FLAGS,
     MAPPING_TRIAL_SCOPE: MAPPING_TRIAL_FLAGS,
     DISCONNECTED_ORDER_SCOPE: DISCONNECTED_ORDER_FLAGS,
     DISCONNECTED_PLUS_1000_SCOPE: DISCONNECTED_PLUS_1000_FLAGS,
     DISCONNECTED_GET_LOG_SCOPE: DISCONNECTED_GET_LOG_FLAGS,
+    DISCONNECTED_GETTER_SURVEY_SCOPE: DISCONNECTED_GETTER_SURVEY_FLAGS,
 }
 ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS,
                                 *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS,
                                 *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
-                                *DISCONNECTED_GET_LOG_ONLY_FLAGS)))
+                                *DISCONNECTED_GET_LOG_ONLY_FLAGS,
+                                *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS)))
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
@@ -87,6 +96,7 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              disconnected_load_zero_plus_1000_order_diagnostic=False,
              authorize_unvalidated_left_plus_1000_order_diagnostic=False,
              disconnected_load_get_log=False,
+             disconnected_load_legacy_getter_survey=False,
              **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
@@ -109,7 +119,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      disconnected_load_zero_plus_1000_order_diagnostic),
                  authorize_unvalidated_left_plus_1000_order_diagnostic=(
                      authorize_unvalidated_left_plus_1000_order_diagnostic),
-                 disconnected_load_get_log=disconnected_load_get_log)
+                 disconnected_load_get_log=disconnected_load_get_log,
+                 disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey)
     if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
                                                 *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
@@ -189,14 +200,15 @@ def add_observation_arguments(parser):
 def add_powered_trial_arguments(parser):
     for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS,
                  *DISCONNECTED_ORDER_ONLY_FLAGS, *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
-                 *DISCONNECTED_GET_LOG_ONLY_FLAGS):
+                 *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
 def powered_trial_arguments(args):
     return {name: getattr(args, name) for name in (
         *POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS,
-        *DISCONNECTED_PLUS_1000_ONLY_FLAGS, *DISCONNECTED_GET_LOG_ONLY_FLAGS)}
+        *DISCONNECTED_PLUS_1000_ONLY_FLAGS, *DISCONNECTED_GET_LOG_ONLY_FLAGS,
+        *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS)}
 
 
 def observation_arguments(args):
@@ -249,12 +261,15 @@ def powered_trial_history(declarations):
     scope = classify(**declarations)
     if scope not in POWERED_TRIAL_SCOPES:
         raise ValueError("Powered trial history requires a complete powered-trial scope.")
-    if scope == DISCONNECTED_GET_LOG_SCOPE:
+    if scope in (DISCONNECTED_GET_LOG_SCOPE, DISCONNECTED_GETTER_SURVEY_SCOPE):
         return {
             **encoder_history(declarations),
             "scope": scope,
             "load_scope": "MOTOR_POWER_PLUGS_DISCONNECTED",
-            "outcome_meaning": "raw_get_log_observation_only_not_application_acknowledgment",
+            "outcome_meaning": (
+                "raw_legacy_getter_survey_only_not_application_acknowledgment"
+                if scope == DISCONNECTED_GETTER_SURVEY_SCOPE
+                else "raw_get_log_observation_only_not_application_acknowledgment"),
             "host_can_remove_energy": False,
             "physical_stop": "not_established",
         }
