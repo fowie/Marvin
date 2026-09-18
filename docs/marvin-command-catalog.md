@@ -181,6 +181,78 @@ and validation path, command-`11` handler, and every state field it checks.
 Newer command `11` handlers (`HostCommandGPIOPinSet` and
 `HostCommandMicrophoneGain`) are mismatched and cannot fill that gap.
 
+## Installed UnitInfo and firmware candidates
+
+The repository retains one standalone installed-controller `1B GetUnitInfo`
+response. References in the replay and telemetry tests are the same reviewed
+frame, not additional captures:
+
+```text
+frame:   5301001b800c00000002010000020104030201a3cb45
+payload:                 000002010000020104030201
+```
+
+The 22-byte frame is sequence 1, command `1B`, raw response `80`, payload length
+12, valid legacy CRC `cba3` as stored little-endian `a3cb`, and footer `45`.
+Its SHA-256 is
+`fb1d5bd963919f0a24eac9af1bfa3ef57a5cd7f80c39c662001d1f10e05b66e0`;
+the 12-byte payload SHA-256 is
+`f81073195173bf7c73ace0c58f823c21eec9530ebc5758f591b43c7cc0348446`.
+The independently captured installed `04 GetConfig` response starts with the
+same 12 payload bytes. That is corroboration of the bytes/layout, not a second
+`1B` response.
+
+The original PCTestApp sends the empty request at `Form1.cs:607-610`.
+Its `parseInt` at `Form1.cs:393-396` accumulates four bytes least-significant
+first using C# 32-bit integer arithmetic. The supplied `UnitInfo` declaration
+at `m_inc/protocol.cs:2890-2919` names three consecutive `uint32` fields:
+firmware version, communications version, and serial number. Preserving the
+wire bytes and applying that little-endian layout gives:
+
+| Payload offset | Original field/type | Raw bytes | Unsigned value | Hex |
+|---:|---|---|---:|---|
+| 0 | `fwVersion`, `uint32` | `00000201` | 16,908,288 | `0x01020000` |
+| 4 | `commVersion`, `uint32` | `00000201` | 16,908,288 | `0x01020000` |
+| 8 | `serialNumber`, `uint32` | `04030201` | 16,909,060 | `0x01020304` |
+
+No bytewise dotted-version rendering is present in the published PCTestApp
+facts, so `0x01020000` is not relabelled as a semantic version. The serial value
+is also the newer source default and therefore is not a unique device identity.
+The published facts do not retain a separate PCTestApp response-display call
+site for `1B`; the field names come from the supplied shared declaration while
+the byte order follows the sample's parser.
+
+### Image/source comparison
+
+The public repository publishes reviewed metadata for two supplied candidate
+firmware images. The original images, archive manifest, recovered symbol files,
+and string reports are deliberately not present, so this checkout cannot
+repeat `strings`, symbol lookup, or binary constant searches. The retained
+names, hashes, entrypoint findings, source constants, USB identities, and
+protocol behavior are sufficient to reject an exact match:
+
+| Rank | Candidate | Published identity evidence | Distinguishing evidence | Result |
+|---:|---|---|---|---|
+| 1 | Historical PCTestApp-compatible legacy generation | No firmware image or exact build constant is published. The sample's 12-byte layout accepts the installed words. | Exact match to installed `53`/`45` framing, 57600/8N1 behavior, legacy IDs `00`, `04`, `0C`, `0E`, `1B`, `1D`, and their observed payload sizes. | **Best protocol/profile match, but not an image match.** No binary or legacy handler is available to compare. |
+| 2 | `IOboard_FW45949.bin` | Name/build metadata `45949` (`0x0000B37D`); SHA-256 `28065f57d91b6ede41899be38ecc61cc2513e54369c35c4ef03598b9c9a562af`. Newer source default `commVersion=0x00010300`, `serialNumber=0x01020304`; `FirmwareVersion` is build-dependent. | Installed raw `fwVersion=0x01020000` and `commVersion=0x01020000` do not numerically equal the retained build tag or communications constant; no published mapping equates them. More decisively, the candidate uses successor framing/table, 157-byte raw data, command `03` for raw data and command `1D` for 128-byte SensorInfo; its build targets the newer vendor-bulk generation rather than installed `045e:4444` CDC behavior. | **Not an exact match.** Shared serial default and 12-byte UnitInfo shape are nondiscriminating. |
+| 3 | `HeadController_FW45949.bin` | Name/build metadata `45949` (`0x0000B37D`); SHA-256 `ac285e0284c3b638e3895c838b9258037c330b0ae96a99b9c2427200b6c443cc`. Same newer UnitInfo contract family. | Same raw-identity non-match, plus wrong controller role: retained Head raw data is 36 bytes and its command table contains head-specific microphone/servo/LED operations. The installed controller returns the legacy 134-byte body telemetry profile. | **Not an exact match; weaker than IOboard.** |
+
+Source anchors for the candidate metadata are
+`tools/marvin_campaign_plan.py:69-92`,
+`data/protocol-catalog.json:80-105`, `m_src/m_config.c:18-77`,
+`m_inc/m_hw.h:27-37`, and the archive-relative C tables at
+`m_src/m_protocol.c:108-240`. The archive itself is identified by SHA-256
+`c9977a4091c6186caef552143f5ef672f54a4e3c9b7c67c699dea9dc26ee0118`,
+but an archive hash does not identify which image is installed.
+
+Because no supplied image is an exact match, no candidate image is used to
+explain installed command `11` or raw response `82`. In particular,
+`IOboard_FW45949` command `11` is `HostCommandGPIOPinSet`, while
+`HeadController_FW45949` command `11` is `HostCommandMicrophoneGain`; neither is
+the legacy `SetMotorVelocity` handler. The exact legacy image, its response
+enum, and its command-`11` implementation remain the smallest missing offline
+evidence.
+
 ## Next powered-session matrix
 
 ### Planned live trials
