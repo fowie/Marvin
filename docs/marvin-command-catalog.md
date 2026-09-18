@@ -407,11 +407,20 @@ A public
 [RDS 2008 Academic installer item](https://archive.org/details/microsoft-robotics-developer-studio-2008-academic-edition_202201)
 and its
 [installer executable](https://archive.org/download/microsoft-robotics-developer-studio-2008-academic-edition_202201/Microsoft_Robotics_Developer_Studio_2008_Academic_Edition.exe)
-have been identified. Full installer extraction is **in progress and not yet
-concluded**. Remaining acquisition routes are to complete that extraction and
-inspect its nested installer payloads, recover historical CodePlex release
-artifacts, or obtain an owner/vendor PCTestApp-era S/E build with firmware plus
-map/listing or matching source. No current result justifies a new live command.
+were fully screened offline. The installer is 409,855,488 bytes, MD5
+`ea798ca7072da6c40f7c784e82b94efe`, and SHA-1
+`ac1c25931d23702f6f9dd0576fce63b6bf1dfc28`. Recursive extraction inspected
+72,360 decompressed files. It found no Marvin firmware/source, `PID_4444`,
+requested legacy protocol identifier, matching UnitInfo payload, or relevant
+PDB path. The six `VID_045E` hits were unrelated .NET prerequisite metadata
+for `PID_0707`. The bulky extracted tree was removed after inspection; the
+detailed private report is retained outside this repository.
+
+This exhausts the identified public MRDS installer route. The exact installed
+S/E firmware or command-`11` handler source must now come from Microsoft or
+other internal recovery media, or from a separately reviewed non-destructive
+controller dump. The user has rejected JTAG. No currently justified live
+command resolves raw `82`.
 
 ## Next powered-session matrix
 
