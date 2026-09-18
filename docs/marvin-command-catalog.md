@@ -224,34 +224,82 @@ the byte order follows the sample's parser.
 
 ### Image/source comparison
 
-The public repository publishes reviewed metadata for two supplied candidate
-firmware images. The original images, archive manifest, recovered symbol files,
-and string reports are deliberately not present, so this checkout cannot
-repeat `strings`, symbol lookup, or binary constant searches. The retained
-names, hashes, entrypoint findings, source constants, USB identities, and
-protocol behavior are sufficient to reject an exact match:
+The supplied archive was reviewed offline at SHA-256
+`c9977a4091c6186caef552143f5ef672f54a4e3c9b7c67c699dea9dc26ee0118`.
+All 159 retained BIN, HEX, and `.old` image artifacts were decoded; equivalent
+BIN/HEX representations collapse to 107 unique image byte streams. This is a
+content inventory, not evidence that any image was installed:
 
-| Rank | Candidate | Published identity evidence | Distinguishing evidence | Result |
-|---:|---|---|---|---|
-| 1 | Historical PCTestApp-compatible legacy generation | No firmware image or exact build constant is published. The sample's 12-byte layout accepts the installed words. | Exact match to installed `53`/`45` framing, 57600/8N1 behavior, legacy IDs `00`, `04`, `0C`, `0E`, `1B`, `1D`, and their observed payload sizes. | **Best protocol/profile match, but not an image match.** No binary or legacy handler is available to compare. |
-| 2 | `IOboard_FW45949.bin` | Name/build metadata `45949` (`0x0000B37D`); SHA-256 `28065f57d91b6ede41899be38ecc61cc2513e54369c35c4ef03598b9c9a562af`. Newer source default `commVersion=0x00010300`, `serialNumber=0x01020304`; `FirmwareVersion` is build-dependent. | Installed raw `fwVersion=0x01020000` and `commVersion=0x01020000` do not numerically equal the retained build tag or communications constant; no published mapping equates them. More decisively, the candidate uses successor framing/table, 157-byte raw data, command `03` for raw data and command `1D` for 128-byte SensorInfo; its build targets the newer vendor-bulk generation rather than installed `045e:4444` CDC behavior. | **Not an exact match.** Shared serial default and 12-byte UnitInfo shape are nondiscriminating. |
-| 3 | `HeadController_FW45949.bin` | Name/build metadata `45949` (`0x0000B37D`); SHA-256 `ac285e0284c3b638e3895c838b9258037c330b0ae96a99b9c2427200b6c443cc`. Same newer UnitInfo contract family. | Same raw-identity non-match, plus wrong controller role: retained Head raw data is 36 bytes and its command table contains head-specific microphone/servo/LED operations. The installed controller returns the legacy 134-byte body telemetry profile. | **Not an exact match; weaker than IOboard.** |
+| Image family | Unique images | Comparison with installed facts |
+|---|---:|---|
+| IO/controller | 60 | Every image was searched for the complete UnitInfo payload, its component words, the proven GetLog text, the installed GetConfig bytes, and legacy command names/tables. No exact identity and protocol match exists. |
+| Head controller | 41 | No exact identity match; the role, command tables, and raw-data profile disagree with the installed 134-byte body-controller response. |
+| RevC1 `blinky_wa` patch | 6 | Unrelated sample images. The archive's AXF/OUT symbol-bearing files belong only to this patch, not to a Marvin controller image. |
 
-Source anchors for the candidate metadata are
-`tools/marvin_campaign_plan.py:69-92`,
-`data/protocol-catalog.json:80-105`, `m_src/m_config.c:18-77`,
-`m_inc/m_hw.h:27-37`, and the archive-relative C tables at
-`m_src/m_protocol.c:108-240`. The archive itself is identified by SHA-256
-`c9977a4091c6186caef552143f5ef672f54a4e3c9b7c67c699dea9dc26ee0118`,
-but an archive hash does not identify which image is installed.
+No unique image contains the installed 12-byte sequence
+`000002010000020104030201`. The little-endian firmware/communications word
+`00000201` occurs once, isolated in `IoBoard_FW25723.hex.old`, without the
+second word or serial value and in a successor-protocol image. The serial
+default `04030201` occurs in 101 of 107 unique images and is therefore
+nondiscriminating. No image contains the exact proven 108-byte GetConfig
+payload, its 96-byte tail, or its 52-byte motor-config subsection.
 
-Because no supplied image is an exact match, no candidate image is used to
-explain installed command `11` or raw response `82`. In particular,
-`IOboard_FW45949` command `11` is `HostCommandGPIOPinSet`, while
-`HeadController_FW45949` command `11` is `HostCommandMicrophoneGain`; neither is
-the legacy `SetMotorVelocity` handler. The exact legacy image, its response
-enum, and its command-`11` implementation remain the smallest missing offline
-evidence.
+| Rank | Candidate | Why it ranks here | Excluding evidence |
+|---:|---|---|---|
+| 1 | Unretained PCTestApp-era S/E firmware | Only known profile matching installed framing and proven IDs/shapes | No matching image, map, response enum, or handler is supplied |
+| 2 | IO builds 22169, 22280, 22619 | Exact log text plus `0C GetLog`, four-byte `11 SetMototrVelocity`, and `1B GetUnitInfo` descriptors | Successor framing; wrong `00` and `1D` meanings; UnitInfo bytes absent |
+| 3 | IO builds 23977-25107 | Two-signed-16-bit `11 SetMotorVelocity` handler is retained | Successor framing/table; exact log absent; UnitInfo bytes absent |
+| 4 | IO build 25723 | Sole isolated occurrence of installed firmware/communications word | No adjacent identity words and a materially newer command map |
+| 5 | Later IO and all Head images | Build metadata, tables, and source are best documented | Command `11`, controller role, framing, and response profiles disagree |
+
+The exact ASCII GetLog payload `taskSystem: after software setup` occurs only
+in seven historical IO images: builds 21770, 21833, 21885, 22126, 22169,
+22280, and 22619. Builds 22169, 22280, and 22619 also retain diagnostic names
+and a 12-byte command-descriptor table. They are the strongest binary family
+candidates because their tables include `0C GetLog`, `11 SetMototrVelocity`
+with a four-byte request, and `1B GetUnitInfo`. They are nevertheless excluded
+as the installed image:
+
+- their parser uses `BEEF`/`DEAD` framing rather than installed `53`/`45`;
+- command `00` is `ReSync`, not the proven 134-byte `ReadRawData`;
+- command `1D` is `GetSensorInfo`, not the proven four-byte
+  `GetServoPosition`.
+
+The archive-relative `obj/old/IoBoard_FW22619.hex.old` table is at image offset
+`0x71BC`; its command-`11` descriptor points to Thumb handler `0x1312`.
+That candidate handler contains no value or state branch: it unconditionally
+clears the command-response byte. Its dispatcher initializes that byte before
+the call and reports a parameter error only if the handler leaves it set.
+Builds 22169 and 22280 use the same branch-free handler shape at `0x1B7E` and
+`0x1BAA`. These candidate-only paths cannot produce the installed
+zero=`80`, nonzero=`82` distinction.
+
+The next transitional IO family, builds 23977 through 25107, retains command
+`11 SetMotorVelocity` with two signed 16-bit arguments but has successor
+framing and maps `00` to `ReSync`, `03` to `ReadRawData`, `0C` to
+`ErrorReport`, and `1D` to `GetSensorInfo`. In builds 23977 through 24572 the
+stripped command-`11` handler has one explicit rejection: a global board-ID
+byte equal to `4` returns candidate code `2`; otherwise it bounds/scales the
+values and returns `0`. The supplied `m_inc/m_hw_drive.h:28-32` names board ID
+`4` as `D1`, but stripped-image symbol binding is not proved. The rejection is
+independent of requested velocity, so it also cannot explain the installed
+value-dependent result. Builds 24770 and 25107 remove that gate, scale/call
+the velocity path, and return candidate code `0`.
+
+Later generations diverge further: command `11` becomes unimplemented and
+then `GPioPinSet` in IO images, while current Head images use it for
+`MicrophoneGain`. Current source identifies build 50480 at
+`m_inc/protocol.cs:48-54`, initializes communications version `0x00010300` and
+serial `0x01020304` at `m_src/m_config.c:18-20`, and defines the mismatched
+tables at `m_src/m_protocol.c:108-240`.
+
+**Conclusion:** no supplied firmware image matches the installed identity,
+framing, command layout, and observed response shapes. Candidate return code
+`2` and current `ResponseCode` names are not transferred to installed raw
+`82`, which remains opaque. The missing evidence is specifically the installed
+legacy firmware image, or matching legacy source/map output containing its
+S/E dispatcher, response enum, and command-`11` handler. Without that artifact,
+no existing read-only command is source-proved to expose the rejection cause.
 
 ## Next powered-session matrix
 
@@ -259,7 +307,7 @@ evidence.
 
 | Stage | Fixed requests | Maximum application writes / bytes | Authorization |
 |---|---|---:|---|
-| 0 - source recovery | None | **0 / 0** | **Current plan.** Recover and review the missing legacy status enum and command-`11` handler offline. No powered session or command is authorized. |
+| 0 - source recovery | None | **0 / 0** | **Current plan.** Locate the absent installed legacy image or matching S/E dispatcher/status/command-`11` source offline. No powered session or command is authorized. |
 
 No generic getter runner is added. Existing allowlists remain unchanged.
 
