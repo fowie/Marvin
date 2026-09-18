@@ -87,6 +87,7 @@ owner's approval.** Publication acceptance is tracked in
 - [Explicitly guarded LIVE serial/USB collection](docs/legacy-live.md)
 - [Isolated one-shot zero-velocity characterization](docs/legacy-zero.md)
 - [Motor-power-OFF preparation (offline default; no power-ON permission)](docs/legacy-motor-power-off-prep.md)
+- [Complete source/evidence command catalogue and held test matrix](docs/marvin-command-catalog.md)
 - [Full historical/modern command catalogue](docs/marvin-command-map.json)
 - [Configuration export: 108 bytes, 27 words](docs/marvin-configuration.json)
 - [Raw telemetry snapshot: 134 bytes, 82 fields](docs/marvin-telemetry-snapshot.json)
