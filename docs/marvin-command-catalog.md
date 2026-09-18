@@ -673,6 +673,11 @@ the disconnected-load setup:
 | 3 | left blue attention 2 ON and wheel red OFF |
 | 4 | left red attention 2 ON and wheel red OFF |
 | 5 | left blue attention 3 ON and wheel red OFF |
+| 6 | triangle on the robot's right side (operator-confirmed) |
+
+The left-side photo of the indices-1-through-5 pattern shows two magenta
+sections and one blue-only triangle. The missing left red channel remains
+unmapped and may not be connected; the photo does not establish which.
 
 The named `left-attention-photo` pattern is the only group pattern. It uses the
 next fixed sequence block, 3272 through 3275. Its set phase first reads the
