@@ -53,7 +53,7 @@ units remain unknown unless stated.
 | `11` `SetMotorVelocity` | Actuator setter; left/right LE signed `int16` / 4 bytes (`-32768..32767`; physical units unknown). Button/random/fixed-timer sites `Form1.cs:897,992,1019`; the random source uses `Next(-1000,1000)`. | **Observed:** zero `80`/0 bytes; positive nonzero `82`/0 bytes | **Proven status behavior.** Fixed sequence 3072 zero `53000c11000400000000009a0145` -> `80`; sequence 3073 left `+1` `53010c1100040001000000ca3845` -> `82`; sequence 3073 left `+1000` `53010c11000400e80300000e6445` -> `82`; sequence 3074 cleanup zero `53020c11000400000000003bcb45` -> `80`. Both runs completed final `00`; the `+1000` run reported DMM 0.00 V/no change across the disconnected left output. | **Catalog-only: no larger value or repeat.** Value-dependent rejection is established for `+1` and `+1000`; `82` meaning and physical stop remain unknown. |
 | `15` `ResetPC` | Reset; empty. `Form1.cs:955` | Unknown legacy response shape | **Source-only; no live test.** Reset target/effects are not established. | **Catalog-only: reset/destructive lifecycle change.** |
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the earlier value-1 set/restore and every completed index-at-`FF` set/restore through index 12 | **Proven status and physical-effect behavior, not application semantics.** The earlier index-0 value-1 round had no observed change. In the later interactive rounds, each fully transmitted setter returned raw `82` while producing the recorded visible effect; each exact-baseline restore also returned raw `82` while visibly restoring state. Raw `82` remains opaque and the physical observations do not establish electrical topology. | **Interactive mapping only, separately authorized.** The two-phase index-at-255 mechanism preserves the exact live baseline and blocks another index until an operator-confirmed power-cycle acknowledgment after raw `82`. |
+| `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the earlier value-1 set/restore and every completed index-at-`FF` set/restore through index 17 | **Proven status and physical-effect behavior, not application semantics.** The earlier index-0 value-1 round had no observed change. In the later interactive rounds, each fully transmitted setter returned raw `82`; all but index 15 produced a visible effect. Each exact-baseline restore also returned raw `82` while visibly restoring state. Raw `82` remains opaque and the physical observations do not establish electrical topology. | **Completed interactive mapping, separately authorized.** The two-phase index-at-255 mechanism preserved the exact live baseline and blocked each next index until an operator-confirmed power-cycle acknowledgment after raw `82`. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `1A` `SetLedBlink` | Output setter; 18 `uint8` values. Sites `Form1.cs:812,836,844` set one/all/random entries; timing semantics and physical range are unknown. | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: state-changing output with no diagnostic value.** |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
@@ -660,17 +660,18 @@ change maps only the observed connected LED under that round's setup; it does
 not establish command acceptance semantics, complete channel identity, or
 physical safety.
 
-#### Interim live interactive LED mapping
+#### Completed live interactive LED mapping
 
-Every completed individual round through index 12 followed the same observed
+Every completed individual round through index 17 followed the same observed
 protocol pattern: the baseline getter returned matching CRC-valid raw `80`;
 the command-`18` set was fully transmitted and returned matching CRC-valid raw
-`82`; the requested visible effect nevertheless occurred; the exact captured
-baseline restore was fully transmitted and returned matching CRC-valid raw
-`82`; and the visible baseline state returned. Because raw `82` prevents getter
-verification, an operator-confirmed power-cycle acknowledgment was recorded
-before the next round. These observations do not decode `82`, prove application
-acknowledgment, or establish electrical topology.
+`82`; the exact captured baseline restore was fully transmitted and returned
+matching CRC-valid raw `82`; and the visible baseline state returned. Index 15
+had no visible set effect; it is not labelled unused. Because raw `82` prevents
+getter verification, an operator-confirmed power-cycle acknowledgment was
+recorded before the next round and after index 17. These observations do not
+decode `82`, prove application acknowledgment, or establish electrical
+topology.
 
 Individual operator-controlled rounds established these visible effects under
 the disconnected-load setup:
@@ -690,19 +691,41 @@ the disconnected-load setup:
 | 10 | robot-right position 2 red ON; wheel LEDs and bottom red bar OFF | set current approximately 0.31 A |
 | 11 | robot-right position 2 blue ON; wheel LEDs and bottom red bar OFF | set current approximately 0.32 A |
 | 12 | wheel LEDs ON; bottom blinking red bar OFF; exact restore turned wheel LEDs OFF and the bottom bar back ON | not recorded |
+| 13 | blue LED on the robot's front left ON; wheel LEDs and bottom flashing red bar OFF; exact baseline restore visibly complete | set 12.3 V / 0.28 A |
+| 14 | red LED on the robot's front right ON; wheel LEDs and bottom bar OFF; exact baseline restore visibly complete | set 12.3 V / 0.29 A |
+| 15 | no visible change; after exact baseline restore, visible state exactly matched baseline | not recorded |
+| 16 | bottom bar changed from flashing red to solid green; restore returned it to flashing red and visibly restored all state | set 12.3 V / 0.33 A |
+| 17 | bottom bar changed from flashing red to solid blue; restore returned it to flashing red and visibly restored all state | set 12.3 V / 0.33 A |
 
 The final operator-confirmed side convention is indices 0 through 5 for the
 robot-left display and indices 6 through 11 for the robot-right display. Within
 each side, consecutive red/blue pairs represent positions 0, 1, and 2.
 
-Across all LED tests so far, the operator also observed that setting an index
-turns OFF a blinking red LED bar on the bottom of the robot and restoring the
-exact baseline turns that bar back ON. This is an operator observation, not a
-mapped payload field or inferred circuit relationship.
+Through index 14, the operator observed that setting an index also turned OFF
+the blinking red LED bar on the bottom of the robot and restoring the exact
+baseline turned that bar back ON. Index 15 had no visible effect; indices 16
+and 17 changed the bar to solid green and solid blue respectively. These are
+operator observations, not inferred circuit relationships.
 
 Supply readings are retained exactly as operator observations without
 interpretation; the inexpensive supply varied between 12.3 V and 12.6 V.
-Indices 13 through 17 remain unmapped.
+All 18 payload indices now have an operator-observed disposition.
+
+For indices 13 through 17, all 13 entries in each of the ten set/restore
+`SHA256SUMS` manifests verified. Each set phase recorded 38 accepted TX, 38 RX,
+zero uncertain TX, matching USB OUT/IN accounting, an 18-byte raw-`80` baseline
+`000000000000000000000000000000ff0000`, and a zero-payload raw-`82` setter
+response. Each restore phase recorded 28 accepted TX, 10 RX, zero uncertain TX,
+matching USB accounting, and a zero-payload raw-`82` restore response; therefore
+no verification getter was sent.
+
+| Index | Exact transmitted set frames; transcript SHA-256 | Exact set response frames | Planned restore transcript; transcript SHA-256 | Exact restore response frame |
+|---:|---|---|---|---|
+| 13 | `53b40c170000006d0445`<br>`53b50c1800120000000000000000000000000000ff0000000083c045`<br>`9413bd4a9da1739a581cbb49ea97b0d6317769f8df87d68deed60ec094b0288b` | `53b40c17801200000000000000000000000000000000ff0000daf945`<br>`53b50c18820000cfe945` | restore `53b60c18001200000000000000000000000000000000ff0000431b45`<br>gated getter not sent `53b70c170000006d3745`<br>`065898e8cc089cf79892abed7df7bf3ca852542ce824b27dea1eec91a52a043d` | `53b60c18820000cfda45` |
+| 14 | `53b80c170000006dc845`<br>`53b90c180012000000000000000000000000000000ff00000032ff45`<br>`d2c5605e032a5e6f05fff4e399e97c7b4c89e704086ae42c605036ab311221ef` | `53b80c17801200000000000000000000000000000000ff00004fc645`<br>`53b90c18820000cf2545` | restore `53ba0c18001200000000000000000000000000000000ff0000d62445`<br>gated getter not sent `53bb0c170000006dfb45`<br>`e5c8a1238de9c59b065a819f02b9a173cfc3b524086e2c605924c4534493cf6b` | `53ba0c18820000cf1645` |
+| 15 | `53bc0c170000006c4c45`<br>`53bd0c18001200000000000000000000000000000000ff0000400e45`<br>`e04ec25c081867a2e3a9c6578259490ab33a01c67ee441c28cd0fd433fe81196` | `53bc0c17801200000000000000000000000000000000ff00003d1345`<br>`53bd0c18820000cea145` | restore `53be0c18001200000000000000000000000000000000ff0000a4f145`<br>gated getter not sent `53bf0c170000006c7f45`<br>`5b2bee088e1fa790ac72c7d8cf14d991f0e0fefb97cbd00bb70d1457805c35ec` | `53be0c18820000ce9245` |
+| 16 | `53c00c1700000067b045`<br>`53c10c1800120000000000000000000000000000000000ff00c2d845`<br>`77146992279c7bdc5843b903ee171746d7b06eb5a46144228cd62bd538a02777` | `53c00c17801200000000000000000000000000000000ff0000ce0545`<br>`53c10c18820000c55d45` | restore `53c20c18001200000000000000000000000000000000ff000057e745`<br>gated getter not sent `53c30c17000000678345`<br>`42e13b82cf4c71493910a69ab51249108d2803caa919dd29e38dc4916fac3af0` | `53c20c18820000c56e45` |
+| 17 | `53c40c17000000663445`<br>`53c50c180012000000000000000000000000000000000000ffb1bd45`<br>`aeec02a1bdec220eb8f2885bf8797d48fd23516b450323bfbcbf92d6bc04817b` | `53c40c17801200000000000000000000000000000000ff0000bcd045`<br>`53c50c18820000c4d945` | restore `53c60c18001200000000000000000000000000000000ff0000253245`<br>gated getter not sent `53c70c17000000660745`<br>`f934ca86887d65df3f9e7bec21dddd33c7a035efdbff6b8c6d6f3f4c0be19912` | `53c60c18820000c4ea45` |
 
 #### Fixed left-attention photo pattern
 
