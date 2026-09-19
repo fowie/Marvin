@@ -1327,7 +1327,7 @@ The robot was powered OFF after the final run. This establishes opposite
 observed polarity for positional words 2 and 3 on that connector, not
 calibrated output, bridge topology, motor direction, or loaded behavior.
 
-### Prepared connected right-motor word-2 and word-3 proofs
+### Completed connected right-motor word-2 and word-3 proofs
 
 Each proof is an independent literal scope. Only the physical right motor is
 connected to the robot-left-side connector printed `Motor R`; the left motor
@@ -1347,6 +1347,47 @@ clean response, exactly one zero cleanup, and a conditional exact-zero getter.
 The response budget remains 500 ms from pre-`os.write`; there is no retry or
 reconnect. Any nonzero final getter faults and retains the restoration lock.
 
+Both sealed evidence trees and all nested manifest entries verify. The word-2
+run exited zero with four accepted writes / 56 TX bytes, zero uncertain TX,
+and 56 RX bytes: exact-zero raw-`80` baseline, opaque raw-`82` setter, one
+raw-`80` zero cleanup, and exact-zero raw-`80` final getter. usbmon recorded
+four successful bulk OUT / 56 bytes and four successful payload-bearing bulk
+IN / 56 bytes without correlation faults. Hashes are outer
+`188915eb2cd531990072bd41321ad4401469a1f9f78e6c62e9300bb2e722ab26`,
+capture
+`b5e62ee7ba8f9caebcd5bf3dbbd8ab0bfe51fc3b7ab008f402e178ee45882542`,
+journal
+`adbb29836b1e2bcf83ac64716f374f82aecc51aa49dd1128471207e3dc3d286c`,
+and binary usbmon
+`ead985abaa6ac53307f5bff0f951dbe67d70c353128070917b8da42d91483d08`.
+The operator observed the physical right wheel move backward and visibly stop
+after the 250 ms window/cleanup.
+
+The word-3 run exited one only because its conditional final getter was
+nonzero. The exact-zero baseline was clean; the `[0,0,0,2000]` setter was fully
+accepted and returned opaque raw `82`; the all-zero cleanup was fully accepted
+exactly once and returned raw `80`. The final sequence-3372 getter was also
+fully transmitted and returned CRC-valid raw `80` payload
+`0000000064000000`, LE words `[0,0,100,0]`; this caused
+`unexpected_raw_pwm_payload`. Accounting was still four accepted writes /
+56 TX, zero uncertain TX, and 56 RX, with the same clean usbmon counts as the
+word-2 run. Hashes are outer
+`e8adc9915b0910b4a768c1376ca457ea58bad579c1800add0c20c85fc57d6345`,
+capture
+`9d0ed2467cbe345aad7c535a9fef2a11921bc324b1448d2a3ab3c5d456c33e26`,
+journal
+`7a84a229f6909c7be97e83bac0338735cf21fe336e8fac0010f43de819705211`,
+and binary usbmon
+`16756cf83784bf453a2f6141247d731640212be038b5fe9d884c89588fb1702f`.
+
+The operator observed the physical right wheel move forward and visibly stop,
+then cut power immediately when prompted. Software cleanup, observed stop, and
+external cutoff are separate facts; the stop is not attributed to cleanup.
+The evidence-bound state lock was acknowledged offline with
+`hardware_access:false` after the operator's physical-stop and power-cycle
+confirmation. This did not reinterpret the nonzero getter or claim software
+restoration.
+
 Exact word-2 offline dry run:
 
 ```bash
@@ -1360,7 +1401,8 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --unprivileged-usbmon
 ```
 
-Prepared live form (software readiness only, **not live authorization**):
+Historical prepared live form (software readiness only, not continuing live
+authorization):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -1374,8 +1416,8 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
-Word 3 substitutes `word3` for `word2` in the two literal flags and is not run
-until word-2 evidence and physical restoration are resolved.
+Word 3 used the corresponding `word3` literal flags. Neither completed scope
+authorizes another live run.
 
 ## Proven fixed legacy getter survey
 

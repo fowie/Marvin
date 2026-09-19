@@ -661,12 +661,15 @@ class RawPwmPilotTests(unittest.TestCase):
             connected_right_transport.success = success
             connected_right_transport.motor_connected = True
             connected_right_transport.physical_plug_label = "Motor R"
+            connected_right_transport.physical_motor_label = "RIGHT"
             connected_right_transport.observation_seconds = .25
             connected_right_report = {}
             with patch.object(pilot, "_response", side_effect=self.response()), \
-                    redirect_stderr(io.StringIO()):
+                    redirect_stderr(io.StringIO()) as stderr:
                 pilot._observe(
                     connected_right_transport, connected_right_report, clock=lambda: 0)
+            self.assertIn("OBSERVE_RIGHT_MOTOR_NOW", stderr.getvalue())
+            self.assertNotIn("OBSERVE_LEFT_MOTOR_NOW", stderr.getvalue())
             self.assertEqual(
                 [row["sequence"] for row in connected_right_report["responses"]],
                 sequences)

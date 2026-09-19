@@ -288,6 +288,7 @@ class _RawPwmTransport(LiveTransport):
     observation_seconds = OBSERVATION_SECONDS
     motor_connected = False
     physical_plug_label = "Motor L"
+    physical_motor_label = "LEFT"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -390,6 +391,7 @@ class _RawPwmWord2Value2000RightConnectedTransport(_RawPwmTransport):
     observation_seconds = 0.250
     motor_connected = True
     physical_plug_label = "Motor R"
+    physical_motor_label = "RIGHT"
 
 
 class _RawPwmWord3Value2000RightConnectedTransport(_RawPwmTransport):
@@ -398,6 +400,7 @@ class _RawPwmWord3Value2000RightConnectedTransport(_RawPwmTransport):
     observation_seconds = 0.250
     motor_connected = True
     physical_plug_label = "Motor R"
+    physical_motor_label = "RIGHT"
 
 
 def _submit(transport, report, step, *, deadline):
@@ -476,7 +479,8 @@ def _observe(transport, report, *, clock=time.monotonic):
         packet = _response(transport, report, "set", deadline=deadline, clock=clock)
         report["setter_raw_response_field"] = packet.response_field
         print(
-            ("OBSERVE_LEFT_MOTOR_NOW: report no_motion/motion_direction_uncertain/"
+            (f"OBSERVE_{getattr(transport, 'physical_motor_label', 'LEFT')}_MOTOR_NOW: "
+             "report no_motion/motion_direction_uncertain/"
              "motion_direction_observed; external cutoff is primary"
              if transport.motor_connected else
              f"OBSERVE_{getattr(transport, 'physical_plug_label', 'Motor L').replace(' ', '_')}_SCOPE_NOW: "

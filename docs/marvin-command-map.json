@@ -476,7 +476,7 @@
         "hypothesis": "word2/word3 may be the positional pair for printed Motor R, but polarity establishes only the tested waveform fact"
       },
       "motor_r_connected_profiles": {
-        "status": "prepared_not_executed",
+        "status": "completed",
         "physical_load": "only right motor connected to robot-left-side connector printed Motor R; left motor unplugged; servos isolated; both encoders connected; wheels clear",
         "word2": {
           "scope": "raw_pwm_word2_2000_right_motor_connected_proof",
@@ -492,7 +492,22 @@
         },
         "shared_gates": "separate runs; exact-zero baseline; one setter; 250ms observation after clean response; mandatory all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB; no retry/reconnect",
         "operator_observation": "watch physical right wheel; report actual direction and visible stop or uncertainty; unloaded polarity does not predict direction",
-        "nonzero_final_getter": "fault and restoration lock without reinterpretation"
+        "nonzero_final_getter": "fault and restoration lock without reinterpretation",
+        "word2_live_result": {
+          "status": "completed",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "physical_observation": "physical right wheel moved backward and visibly stopped after 250ms/cleanup",
+          "hashes": ["188915eb2cd531990072bd41321ad4401469a1f9f78e6c62e9300bb2e722ab26", "b5e62ee7ba8f9caebcd5bf3dbbd8ab0bfe51fc3b7ab008f402e178ee45882542", "adbb29836b1e2bcf83ac64716f374f82aecc51aa49dd1128471207e3dc3d286c", "ead985abaa6ac53307f5bff0f951dbe67d70c353128070917b8da42d91483d08"]
+        },
+        "word3_live_result": {
+          "status": "failed_final_exact_zero_gate",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; final raw80 getter payload 0000000064000000 / words [0,0,100,0]",
+          "physical_observation": "physical right wheel moved forward and visibly stopped; operator then cut power immediately",
+          "stop_attribution": "software cleanup, observed stop, and external cutoff are separate; cause unproved",
+          "offline_acknowledgment": "evidence-bound physical-stop plus power-cycle confirmation; hardware_access false; nonzero getter unchanged",
+          "hashes": ["e8adc9915b0910b4a768c1376ca457ea58bad579c1800add0c20c85fc57d6345", "9d0ed2467cbe345aad7c535a9fef2a11921bc324b1448d2a3ab3c5d456c33e26", "7a84a229f6909c7be97e83bac0338735cf21fe336e8fac0010f43de819705211", "16756cf83784bf453a2f6141247d731640212be038b5fe9d884c89588fb1702f"]
+        },
+        "established_direction_map": "raw2000/250ms: left word0 reverse, left word1 forward, right word2 backward, right word3 forward; raw82 opaque and stop causation unproved"
       },
       "newer_drive_meaning": {
         "command": 11,
