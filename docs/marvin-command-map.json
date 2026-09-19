@@ -748,7 +748,7 @@
       "sample_name": "SetMotorVelocity",
       "request_layout": "left/right LE int16 / 4 bytes; units not live calibrated",
       "sample_effect": "actuation",
-      "live_probe_policy": "completed_left_word_train_and_prepared_mirrored_right_word_train",
+      "live_probe_policy": "prepared_minimal_connected_left_cadence_discriminator",
       "sample_calls": [
         {
           "method": "setMotorVelocity_btn_Click",
@@ -807,6 +807,23 @@
           "operator_scope_target": "robot-right-side connector actually printed Motor L; actual Motor R-labelled connector untested",
           "operator_observation": "free-running differential/isolated scope 50ms/div showed no visible output change",
           "meaning": "not evidence about actual Motor R-labelled connector; does not establish source-field-to-connector, robot-side mapping, raw82 meaning, or output absence"
+        },
+        {
+          "status": "prepared_not_executed",
+          "scope": "left_motor_connected_left_plus_1000_velocity_train",
+          "physical_load": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; both encoders connected; wheels clear",
+          "payload": "source leftVel=+1000, rightVel=0",
+          "sequence_range": "3373..3379",
+          "train_count": 5,
+          "cadence_ms": 50,
+          "nominal_train_span_ms": 200,
+          "maximum_first_nonzero_to_cleanup_prewrite_ms": 250,
+          "transcript_sha256": "62f25f66bda910a2f9764db7809b844e0602ccad10bd0b8c7ff2e464367baa1d",
+          "bounds": "7 writes / 98 TX bytes / 70 expected RX bytes / 8192 maximum RX bytes",
+          "response_policy": "initial zero requires unique correlated CRC-valid empty raw80; nonzero and cleanup require unique correlated CRC-valid empty raw80/raw82",
+          "cleanup": "immediately after fifth planned response or any fault; exactly one zero syscall; no retry/reconnect",
+          "getters": "none; no getter may delay cleanup and raw getter state is not physical stop proof",
+          "operator_observation": "physical left wheel motion/no-motion, actual direction, visible stop/uncertainty, abnormal sound, cutoff use"
         }
       ],
       "newer_drive_meaning": {

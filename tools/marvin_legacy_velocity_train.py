@@ -22,7 +22,9 @@ from tools.marvin_legacy_protocol import decode_packet
 
 FIRST_SEQUENCE = 3285
 RIGHT_FIRST_SEQUENCE = 3307
+CONNECTED_LEFT_FIRST_SEQUENCE = 3373
 TRAIN_COUNT = 20
+CONNECTED_TRAIN_COUNT = 5
 CADENCE_SECONDS = 0.050
 LEFT_PLUS_1000 = (1000).to_bytes(2, "little", signed=True) + bytes(2)
 RIGHT_PLUS_1000 = bytes(2) + (1000).to_bytes(2, "little", signed=True)
@@ -41,11 +43,22 @@ RIGHT_TRAIN = tuple(
 )
 RIGHT_CLEANUP_ZERO = _frame(RIGHT_FIRST_SEQUENCE + 1 + TRAIN_COUNT, 0x11, ALL_ZERO)
 RIGHT_TRANSCRIPT = (RIGHT_INITIAL_ZERO, *RIGHT_TRAIN, RIGHT_CLEANUP_ZERO)
+CONNECTED_LEFT_INITIAL_ZERO = _frame(CONNECTED_LEFT_FIRST_SEQUENCE, 0x11, ALL_ZERO)
+CONNECTED_LEFT_TRAIN = tuple(
+    _frame(CONNECTED_LEFT_FIRST_SEQUENCE + 1 + index, 0x11, LEFT_PLUS_1000)
+    for index in range(CONNECTED_TRAIN_COUNT)
+)
+CONNECTED_LEFT_CLEANUP_ZERO = _frame(
+    CONNECTED_LEFT_FIRST_SEQUENCE + 1 + CONNECTED_TRAIN_COUNT, 0x11, ALL_ZERO)
+CONNECTED_LEFT_TRANSCRIPT = (
+    CONNECTED_LEFT_INITIAL_ZERO, *CONNECTED_LEFT_TRAIN, CONNECTED_LEFT_CLEANUP_ZERO)
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.040
 SUCCESS = "disconnected_load_left_plus_1000_velocity_train_complete_unverified"
 RIGHT_SUCCESS = "disconnected_load_right_plus_1000_velocity_train_complete_unverified"
+CONNECTED_LEFT_SUCCESS = (
+    "connected_left_plus_1000_velocity_train_complete_unverified")
 PROFILES = {
     consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE: {
         "transcript": TRANSCRIPT,
@@ -57,6 +70,8 @@ PROFILES = {
         "report_key": "disconnected_load_left_plus_1000_velocity_train_observation",
         "authorization": "unvalidated_left_plus_1000_velocity_train_authorized",
         "physical_plug": "Motor L",
+        "train_count": TRAIN_COUNT,
+        "motor_connected": False,
     },
     consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: {
         "transcript": RIGHT_TRANSCRIPT,
@@ -68,6 +83,21 @@ PROFILES = {
         "report_key": "disconnected_load_right_plus_1000_velocity_train_observation",
         "authorization": "unvalidated_right_plus_1000_velocity_train_authorized",
         "physical_plug": "Motor R",
+        "train_count": TRAIN_COUNT,
+        "motor_connected": False,
+    },
+    consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE: {
+        "transcript": CONNECTED_LEFT_TRANSCRIPT,
+        "first_sequence": CONNECTED_LEFT_FIRST_SEQUENCE,
+        "commanded_field": "PCTestApp leftVel first signed int16 word",
+        "fixed_left_raw_value": 1000,
+        "fixed_right_raw_value": 0,
+        "success": CONNECTED_LEFT_SUCCESS,
+        "report_key": "connected_left_plus_1000_velocity_train_observation",
+        "authorization": "unvalidated_connected_left_plus_1000_velocity_train_authorized",
+        "physical_plug": "Motor L",
+        "train_count": CONNECTED_TRAIN_COUNT,
+        "motor_connected": True,
     },
 }
 
@@ -99,16 +129,19 @@ def prepare(scope=consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE):
         "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
         "transcript_sha256": hashlib.sha256(b"".join(transcript)).hexdigest(),
         "initial_zero_sequence": first_sequence,
-        "train_sequences": [first_sequence + 1, first_sequence + TRAIN_COUNT],
-        "cleanup_zero_sequence": first_sequence + TRAIN_COUNT + 1,
+        "train_sequences": [first_sequence + 1, first_sequence + profile["train_count"]],
+        "cleanup_zero_sequence": first_sequence + profile["train_count"] + 1,
         "commanded_field": profile["commanded_field"],
         "operator_selected_physical_plug_label": profile["physical_plug"],
         "physical_plug_to_source_field_mapping": "not_established",
         "fixed_left_raw_value": profile["fixed_left_raw_value"],
         "fixed_right_raw_value": profile["fixed_right_raw_value"],
-        "fixed_train_count": TRAIN_COUNT,
+        "fixed_train_count": profile["train_count"],
         "fixed_cadence_seconds": CADENCE_SECONDS,
-        "nominal_train_span_seconds": (TRAIN_COUNT - 1) * CADENCE_SECONDS,
+        "nominal_train_span_seconds": (profile["train_count"] - 1) * CADENCE_SECONDS,
+        "maximum_planned_first_nonzero_to_cleanup_prewrite_seconds": (
+            profile["train_count"] * CADENCE_SECONDS
+            if profile["motor_connected"] else None),
         "maximum_application_bytes": sum(map(len, transcript)),
         "maximum_writes": len(transcript),
         "maximum_serial_rx_bytes": 8192,
@@ -122,6 +155,8 @@ def prepare(scope=consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE):
         "automatic_retries": False,
         "automatic_reconnect": False,
         "scope_observation": (
+            "observe_connected_physical_left_wheel_motion_direction_and_stop"
+            if profile["motor_connected"] else
             f"observe_disconnected_physical_{profile['physical_plug'].replace(' ', '_')}_plug_"
             "without_inferring_source_field_mapping"),
         "software_outcome_is_physical_scope_result": False,
@@ -138,6 +173,9 @@ def prepare(scope=consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE):
 class _VelocityTrainTransport(LiveTransport):
     transcript = TRANSCRIPT
     success = SUCCESS
+    train_count = TRAIN_COUNT
+    cleanup_immediately_after_train = False
+    motor_connected = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -173,6 +211,14 @@ class _VelocityTrainTransport(LiveTransport):
 class _RightVelocityTrainTransport(_VelocityTrainTransport):
     transcript = RIGHT_TRANSCRIPT
     success = RIGHT_SUCCESS
+
+
+class _ConnectedLeftVelocityTrainTransport(_VelocityTrainTransport):
+    transcript = CONNECTED_LEFT_TRANSCRIPT
+    success = CONNECTED_LEFT_SUCCESS
+    train_count = CONNECTED_TRAIN_COUNT
+    cleanup_immediately_after_train = True
+    motor_connected = True
 
 
 def _submit(transport, report, index, *, deadline, cleanup=False):
@@ -235,6 +281,9 @@ def _attempt_cleanup(transport, report, *, clock=time.monotonic):
     index = len(transport.transcript) - 1
     deadline = clock() + CLEANUP_SECONDS
     _submit(transport, report, index, deadline=deadline, cleanup=True)
+    if "train_start_monotonic" in report:
+        report["cleanup_prewrite_elapsed_seconds"] = (
+            transport.last_write_started - report["train_start_monotonic"])
     report["cleanup_zero_fully_accepted"] = True
     packet = _response(transport, report, index, deadline=deadline, clock=clock)
     report["cleanup_raw_response_field"] = packet.response_field
@@ -257,9 +306,14 @@ def _observe(transport, report, *, clock=time.monotonic, sleeper=time.sleep):
             raise OSError("Fresh transport identity differs from the pinned connection.")
         _submit(transport, report, 0, deadline=deadline)
         _response(transport, report, 0, deadline=deadline, clock=clock)
+        if transport.motor_connected:
+            print(
+                "OBSERVE_LEFT_MOTOR_NOW: report motion/no_motion, actual direction, "
+                "visible stop/uncertainty, abnormal sound, and cutoff use",
+                file=sys.stderr, flush=True)
         train_start = clock()
         report["train_start_monotonic"] = train_start
-        for train_index in range(TRAIN_COUNT):
+        for train_index in range(transport.train_count):
             index = train_index + 1
             target = train_start + train_index * CADENCE_SECONDS
             lateness = _wait_until(
@@ -271,10 +325,15 @@ def _observe(transport, report, *, clock=time.monotonic, sleeper=time.sleep):
                 transport, report, index,
                 deadline=min(deadline, target + CADENCE_SECONDS),
                 clock=clock)
-        _wait_until(
-            transport, train_start + TRAIN_COUNT * CADENCE_SECONDS,
-            deadline, clock=clock, sleeper=sleeper)
+        if not transport.cleanup_immediately_after_train:
+            _wait_until(
+                transport, train_start + transport.train_count * CADENCE_SECONDS,
+                deadline, clock=clock, sleeper=sleeper)
         _attempt_cleanup(transport, report, clock=clock)
+        if (transport.cleanup_immediately_after_train
+                and report["cleanup_prewrite_elapsed_seconds"]
+                > transport.train_count * CADENCE_SECONDS):
+            raise OSError("Connected velocity cleanup prewrite exceeded 250 ms dwell bound.")
         report["status"] = transport.success
     except BaseException as error:
         primary = error
@@ -314,7 +373,7 @@ def _validate_capture(options):
     if (options.get("_isolated_zero_velocity") or options.get("_motor_power_off_preparation")
             or consent.classify(
                 actuators_isolated=options.get("actuators_isolated", False),
-                **declarations) not in consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES):
+            **declarations) not in consent.VELOCITY_TRAIN_SCOPES):
         raise ValueError("Velocity train capture requires its complete literal scope.")
 
 
@@ -322,13 +381,15 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
                    actuators_isolated=False, **declarations):
     try:
         scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
-        if run is not True or scope not in consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES:
+        if run is not True or scope not in consent.VELOCITY_TRAIN_SCOPES:
             raise ValueError("Literal --run and fixed velocity-train scope are required.")
         profile = PROFILES[scope]
-        transport_type = (
-            _RightVelocityTrainTransport
-            if scope == consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
-            else _VelocityTrainTransport)
+        transport_type = {
+            consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE: _VelocityTrainTransport,
+            consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: _RightVelocityTrainTransport,
+            consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE: (
+                _ConnectedLeftVelocityTrainTransport),
+        }[scope]
         return zero._run_diagnostic(
             output, expected_physical_port=expected_physical_port, review=prepare(scope),
             transport_type=transport_type, observe=_observe,

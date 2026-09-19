@@ -72,6 +72,19 @@ DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE = (
+    "left_motor_connected_left_plus_1000_velocity_train")
+CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS = (
+    CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE,
+    "authorize_unvalidated_connected_left_plus_1000_velocity_train",
+)
+CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS = (
+    *CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS,
+    "physical_left_motor_connected_to_robot_right_motor_l_connector",
+    "motor_left_connected", "motor_right_disconnected", "servos_isolated",
+    "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 RAW_PWM_PILOT_SCOPE = "disconnected_load_raw_pwm_word0_one_pilot"
 RAW_PWM_PILOT_ONLY_FLAGS = (
     RAW_PWM_PILOT_SCOPE, "authorize_unvalidated_raw_pwm_word0_one_pilot",
@@ -207,6 +220,9 @@ RAW_PWM_CONNECTED_SCOPES = (
 DISCONNECTED_VELOCITY_TRAIN_SCOPES = (
     DISCONNECTED_VELOCITY_TRAIN_SCOPE, DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE,
 )
+VELOCITY_TRAIN_SCOPES = (
+    *DISCONNECTED_VELOCITY_TRAIN_SCOPES, CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE,
+)
 DISCONNECTED_ORDER_SCOPES = (DISCONNECTED_ORDER_SCOPE, DISCONNECTED_PLUS_1000_SCOPE)
 DISCONNECTED_MOTOR_SETTER_SCOPES = (
     *DISCONNECTED_ORDER_SCOPES, *DISCONNECTED_VELOCITY_TRAIN_SCOPES,
@@ -260,6 +276,7 @@ POWERED_TRIAL_SCOPES = {
     DISCONNECTED_PLUS_1000_SCOPE: DISCONNECTED_PLUS_1000_FLAGS,
     DISCONNECTED_VELOCITY_TRAIN_SCOPE: DISCONNECTED_VELOCITY_TRAIN_FLAGS,
     DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS,
+    CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE: CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS,
     RAW_PWM_PILOT_SCOPE: RAW_PWM_PILOT_FLAGS,
     RAW_PWM_1000_PILOT_SCOPE: RAW_PWM_1000_PILOT_FLAGS,
     RAW_PWM_2000_PILOT_SCOPE: RAW_PWM_2000_PILOT_FLAGS,
@@ -283,6 +300,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                 *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
                                 *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                *CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS,
                                 *RAW_PWM_PILOT_ONLY_FLAGS,
                                 *RAW_PWM_1000_PILOT_ONLY_FLAGS,
                                 *RAW_PWM_2000_PILOT_ONLY_FLAGS,
@@ -316,6 +334,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_left_plus_1000_velocity_train=False,
              disconnected_load_right_plus_1000_velocity_train=False,
              authorize_unvalidated_right_plus_1000_velocity_train=False,
+             left_motor_connected_left_plus_1000_velocity_train=False,
+             authorize_unvalidated_connected_left_plus_1000_velocity_train=False,
              disconnected_load_raw_pwm_word0_one_pilot=False,
              authorize_unvalidated_raw_pwm_word0_one_pilot=False,
              disconnected_load_raw_pwm_word0_1000_pilot=False,
@@ -378,6 +398,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      disconnected_load_right_plus_1000_velocity_train),
                  authorize_unvalidated_right_plus_1000_velocity_train=(
                      authorize_unvalidated_right_plus_1000_velocity_train),
+                 left_motor_connected_left_plus_1000_velocity_train=(
+                     left_motor_connected_left_plus_1000_velocity_train),
+                 authorize_unvalidated_connected_left_plus_1000_velocity_train=(
+                     authorize_unvalidated_connected_left_plus_1000_velocity_train),
                  disconnected_load_raw_pwm_word0_one_pilot=(
                      disconnected_load_raw_pwm_word0_one_pilot),
                  authorize_unvalidated_raw_pwm_word0_one_pilot=(
@@ -519,6 +543,7 @@ def add_powered_trial_arguments(parser):
                  *DISCONNECTED_ORDER_ONLY_FLAGS, *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                  *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
                  *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                 *CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS,
                  *RAW_PWM_PILOT_ONLY_FLAGS,
                  *RAW_PWM_1000_PILOT_ONLY_FLAGS,
                  *RAW_PWM_2000_PILOT_ONLY_FLAGS,
@@ -542,6 +567,7 @@ def powered_trial_arguments(args):
         *DISCONNECTED_PLUS_1000_ONLY_FLAGS, *DISCONNECTED_GET_LOG_ONLY_FLAGS,
         *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
         *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+        *CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS,
         *RAW_PWM_PILOT_ONLY_FLAGS,
         *RAW_PWM_1000_PILOT_ONLY_FLAGS,
         *RAW_PWM_2000_PILOT_ONLY_FLAGS,
@@ -727,6 +753,27 @@ def powered_trial_history(declarations):
                 "one_fixed_all_zero_cleanup_syscall_after_any_possible_nonzero_submission"),
             "cleanup_start_bound": (
                 "after_correlated_response_plus_250ms_or_immediately_after_500ms_response_timeout"),
+            "host_can_remove_energy": False,
+            "external_cutoff_is_primary": True,
+            "physical_stop": "not_established",
+        }
+    if scope == CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE:
+        return {
+            **encoder_history(declarations),
+            "scope": scope,
+            "load_scope": "LEFT_MOTOR_CONNECTED_RIGHT_MOTOR_AND_SERVOS_ISOLATED",
+            "physical_connection": (
+                "left_motor_to_robot_right_side_controller_connector_printed_Motor_L"),
+            "outcome_meaning": (
+                "bounded_connected_left_velocity_train_motion_observation_"
+                "separate_from_protocol_status"),
+            "unvalidated_connected_left_plus_1000_velocity_train_authorized": True,
+            "fixed_source_leftVel": 1000,
+            "fixed_source_rightVel": 0,
+            "planned_zero_policy": (
+                "one_fixed_zero_cleanup_syscall_after_any_possible_nonzero_submission"),
+            "cleanup_start_bound": (
+                "absolute_50ms_schedule; immediately_after_fifth_response_or_any_fault"),
             "host_can_remove_energy": False,
             "external_cutoff_is_primary": True,
             "physical_stop": "not_established",

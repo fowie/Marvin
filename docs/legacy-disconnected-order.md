@@ -1419,6 +1419,72 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
 Word 3 used the corresponding `word3` literal flags. Neither completed scope
 authorizes another live run.
 
+### Prepared connected-left `SetMotorVelocity` cadence discriminator
+
+Direct raw-PWM tests proved that the robot-right-side connector printed
+`Motor L` and its connected physical left motor can actuate. This makes one
+smaller connected-load command-`11` discriminator reasonable without repeating
+the broader source investigation. The future setup connects only the physical
+left motor to that connector; the right motor remains unplugged, servos are
+isolated, both encoder harnesses are connected, wheels are clear on blocks, and
+the operator remains at the independent cutoff.
+
+The immutable transcript uses source `leftVel=+1000`, `rightVel=0`. It sends
+one initial zero, five unique nonzero frames at absolute 50 ms targets
+(0, 50, 100, 150, and 200 ms), then exactly one zero cleanup immediately after
+the fifth clean response. The 40 ms response gate must fit before each next
+target; lateness or any response/USB/evidence fault skips remaining stimuli and
+enters cleanup. Successful cleanup prewrite must occur no later than 250 ms
+after the first nonzero prewrite. Cleanup uses the syscall-before-journal path.
+There is no retry or reconnect.
+
+| Step | Sequence | Exact request |
+|---:|---:|---|
+| initial zero | 3373 | `532d0d1100040000000000070145` |
+| nonzero 1 | 3374 | `532e0d11000400e803000032ae45` |
+| nonzero 2 | 3375 | `532f0d11000400e8030000636b45` |
+| nonzero 3 | 3376 | `53300d11000400e803000052ce45` |
+| nonzero 4 | 3377 | `53310d11000400e8030000030b45` |
+| nonzero 5 | 3378 | `53320d11000400e8030000f30445` |
+| cleanup zero | 3379 | `53330d1100040000000000676145` |
+
+The transcript SHA-256 is
+`62f25f66bda910a2f9764db7809b844e0602ccad10bd0b8c7ff2e464367baa1d`.
+Bounds are seven writes / 98 TX bytes / 70 expected RX bytes / 8192 maximum
+serial RX bytes. The initial zero requires a unique CRC-valid correlated empty
+raw-`80` response; train and cleanup accept unique CRC-valid correlated empty
+raw `80` or `82` opaquely. No post-cleanup getter is included: it cannot delay
+cleanup, and prior nonzero raw-PWM getters cannot prove or disprove physical
+stop. The operator reports left-wheel motion/no-motion, actual direction,
+visible stop/uncertainty, abnormal sound, and cutoff use.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_velocity_train \
+  --left-motor-connected-left-plus-1000-velocity-train \
+  --authorize-unvalidated-connected-left-plus-1000-velocity-train \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon
+```
+
+Prepared live form (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_velocity_train \
+  --left-motor-connected-left-plus-1000-velocity-train \
+  --authorize-unvalidated-connected-left-plus-1000-velocity-train \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load

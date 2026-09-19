@@ -23,6 +23,10 @@ FLAGS = ["--" + name.replace("_", "-")
 RIGHT_DECLARATIONS = dict.fromkeys(consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS, True)
 RIGHT_FLAGS = ["--" + name.replace("_", "-")
                for name in consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS]
+CONNECTED_DECLARATIONS = dict.fromkeys(
+    consent.CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS, True)
+CONNECTED_FLAGS = ["--" + name.replace("_", "-")
+                   for name in consent.CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS]
 
 
 class _Transport:
@@ -31,6 +35,9 @@ class _Transport:
     plan = Mock(max_lateness=.02)
     transcript = train.TRANSCRIPT
     success = train.SUCCESS
+    train_count = train.TRAIN_COUNT
+    cleanup_immediately_after_train = False
+    motor_connected = False
 
     def __init__(self, submit_fault=None):
         self.submit_fault = submit_fault
@@ -38,6 +45,7 @@ class _Transport:
         self.writes = 0
         self.may_have_applied = False
         self.cleanup_attempted = False
+        self.cleanup_started = 100.24
         self.close = Mock()
         self.ingress = Mock(rx=[])
 
@@ -61,6 +69,7 @@ class _Transport:
         self.cleanup_attempted = True
         self.attempts.append("cleanup")
         self.writes += 1
+        self.last_write_started = self.cleanup_started
         if self.submit_fault == ("cleanup", "error"):
             raise OSError("cleanup uncertain")
         return len(train.CLEANUP_ZERO)
@@ -75,7 +84,7 @@ class VelocityTrainTests(unittest.TestCase):
 
     @staticmethod
     def response(transport, report, index, **_):
-        status = 0x80 if index in (0, len(train.TRANSCRIPT) - 1) else 0x82
+        status = 0x80 if index in (0, len(transport.transcript) - 1) else 0x82
         report["responses"].append({
             "sequence": train.decode_packet(transport.transcript[index]).sequence,
             "raw_response_field": status,
@@ -138,6 +147,30 @@ class VelocityTrainTests(unittest.TestCase):
         self.assertEqual(
             train.transcript_for_scope(consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
             train.RIGHT_TRANSCRIPT)
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(train.main(CONNECTED_FLAGS), 0)
+        connected_plan = json.loads(stdout.getvalue())
+        self.assertEqual(connected_plan["immutable_application_transcript_hex"], [
+            "532d0d1100040000000000070145",
+            "532e0d11000400e803000032ae45",
+            "532f0d11000400e8030000636b45",
+            "53300d11000400e803000052ce45",
+            "53310d11000400e8030000030b45",
+            "53320d11000400e8030000f30445",
+            "53330d1100040000000000676145",
+        ])
+        self.assertEqual(
+            connected_plan["transcript_sha256"],
+            "62f25f66bda910a2f9764db7809b844e0602ccad10bd0b8c7ff2e464367baa1d")
+        self.assertEqual(
+            (connected_plan["fixed_train_count"],
+             connected_plan["nominal_train_span_seconds"],
+             connected_plan["maximum_planned_first_nonzero_to_cleanup_prewrite_seconds"],
+             connected_plan["maximum_application_bytes"],
+             connected_plan["maximum_expected_response_bytes"]),
+            (5, .2, .25, 98, 70))
         for knob in ("value", "duration", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -152,6 +185,11 @@ class VelocityTrainTests(unittest.TestCase):
                 train.run_diagnostic(
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     **(RIGHT_DECLARATIONS | {name: False}))
+        for name in consent.CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS:
+            with self.subTest(connected_name=name), self.assertRaises(ValueError):
+                train.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(CONNECTED_DECLARATIONS | {name: False}))
 
         harness = session_tests.SessionTests()
         harness.setUp()
@@ -200,6 +238,31 @@ class VelocityTrainTests(unittest.TestCase):
             self.assertIn(flag, right_command)
         train._validate_capture(right_runner.call_args.kwargs)
 
+        connected_harness = session_tests.SessionTests()
+        connected_harness.setUp()
+        self.addCleanup(connected_harness.doCleanups)
+        connected_runner = Mock(side_effect=connected_harness.capture)
+        connected_result = connected_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=connected_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **CONNECTED_DECLARATIONS)
+        connected_command = connected_harness.popen.call_args.args[0]
+        self.assertEqual(
+            connected_result["scope"], consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE)
+        self.assertEqual(
+            connected_result["probe_name"], "ConnectedLeftPlus1000VelocityTrain")
+        self.assertTrue(
+            connected_result["fixed_connected_left_plus_1000_velocity_train_authorized"])
+        for flag in CONNECTED_FLAGS:
+            self.assertIn(flag, connected_command)
+        train._validate_capture(connected_runner.call_args.kwargs)
+        with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(usbmon.main(connected_command[2:]), 0)
+        train._validate_capture(capture.call_args.kwargs)
+
         transport = _Transport()
         targets = []
 
@@ -234,6 +297,41 @@ class VelocityTrainTests(unittest.TestCase):
             [row["sequence"] for row in right_report["responses"]],
             list(range(3307, 3329)))
         self.assertEqual(right_transport.attempts, [*range(21), "cleanup"])
+
+        connected_transport = _Transport()
+        connected_transport.transcript = train.CONNECTED_LEFT_TRANSCRIPT
+        connected_transport.success = train.CONNECTED_LEFT_SUCCESS
+        connected_transport.train_count = train.CONNECTED_TRAIN_COUNT
+        connected_transport.cleanup_immediately_after_train = True
+        connected_transport.motor_connected = True
+        connected_report = {}
+        targets = []
+        with patch.object(train, "_response", side_effect=self.response), \
+                patch.object(
+                    train, "_wait_until",
+                    side_effect=lambda _, target, __, **___: targets.append(target) or 0), \
+                redirect_stderr(io.StringIO()) as stderr:
+            train._observe(connected_transport, connected_report, clock=lambda: 100)
+        self.assertIn("OBSERVE_LEFT_MOTOR_NOW", stderr.getvalue())
+        self.assertEqual(connected_transport.attempts, [*range(6), "cleanup"])
+        self.assertEqual(targets, [100 + index * .05 for index in range(5)])
+        self.assertAlmostEqual(
+            connected_report["cleanup_prewrite_elapsed_seconds"], .24)
+        self.assertEqual(connected_report["status"], train.CONNECTED_LEFT_SUCCESS)
+
+        late_transport = _Transport()
+        late_transport.transcript = train.CONNECTED_LEFT_TRANSCRIPT
+        late_transport.success = train.CONNECTED_LEFT_SUCCESS
+        late_transport.train_count = train.CONNECTED_TRAIN_COUNT
+        late_transport.cleanup_immediately_after_train = True
+        late_transport.motor_connected = True
+        late_transport.cleanup_started = 100.251
+        with patch.object(train, "_response", side_effect=self.response), \
+                patch.object(train, "_wait_until", return_value=0), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "exceeded 250 ms"):
+            train._observe(late_transport, {}, clock=lambda: 100)
+        self.assertEqual(late_transport.attempts.count("cleanup"), 1)
 
         fault_cases = (
             ((1, "error"), None),
