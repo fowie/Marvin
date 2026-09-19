@@ -334,8 +334,10 @@ PCTestApp serializes `leftVel` into payload bytes 0–1 and `rightVel` into byte
 2–3 at `Form1.cs:891-895`, `987-990`, and `1013-1017`. The mirrored diagnostic
 changes only the source-named second signed word to `+1000`; it does not claim
 that this field drives a particular robot side. The separately reviewed
-operator setup places the differential/isolated DC-coupled scope across the
-disconnected physical plug printed `Motor R`.
+operator setup intended the differential/isolated DC-coupled scope for the
+`Motor R`-labelled connector. The later connector correction below records
+that the operator actually selected the robot-right-side connector printed
+`Motor L`; the actual `Motor R`-labelled connector remains untested.
 
 | Sequence | Payload | Exact frame |
 |---:|---|---|
@@ -382,10 +384,10 @@ python3 -B -m tools.marvin_legacy_velocity_train \
 
 This is software readiness, not live authorization. A separately authorized
 run requires the same disconnected-load setup and cutoff operator. The scope
-must be appropriately rated, isolated/differential, DC-coupled, confirmed
-free-running or correctly triggered before the run, and connected across the
-disconnected physical plug printed `Motor R`; this does not establish the
-source-field-to-plug mapping.
+must be appropriately rated, isolated/differential, DC-coupled, and confirmed
+free-running or correctly triggered before the run. The historical target was
+described as physical `Motor R`; the later correction below controls the
+evidence interpretation and does not establish source-field-to-plug mapping.
 
 ### Completed mirrored `rightVel` train
 
@@ -405,12 +407,15 @@ the nested capture manifest file SHA-256 is
 and the adapter journal SHA-256 is
 `f13bceee624d40a17639c457a5733c7295de70f14a5e2f99f14acf260ec964fa`.
 
-With the differential/isolated scope free-running at 50 ms/div across the
-disconnected physical plug printed `Motor R`, the operator observed **no
-visible output change**. This establishes only the tested source-word/physical-
-plug pairing and observation. It does not establish robot-side naming,
-source-field-to-plug topology, application acknowledgment, absence of pulses
-outside instrument visibility, or physical stop. Raw `82` remains opaque.
+The earlier live instruction named physical plug `Motor R`, but the operator
+later corrected the actual tested connector: they selected the connector on
+the robot-right physical side, which is printed **`Motor L`** and controls the
+left motor. The free-running differential/isolated scope at 50 ms/div showed
+no visible output change on that `Motor L`-labelled connector. This is not
+evidence about the actual `Motor R`-labelled connector. It also does not map
+source `rightVel` to either connector or robot side, establish application
+acknowledgment, exclude pulses outside instrument visibility, or prove physical
+stop. Raw `82` remains opaque.
 
 ## Ranked next motor-output discriminator
 
@@ -440,14 +445,15 @@ The matching PCTestApp source supports the following facts:
 
 Ranked reversible disconnected-load options:
 
-1. **Command `0B SetRawMotorPWM`: strongest conceptual discriminator; one
-   deliberately experimental pilot is prepared below.** It bypasses the
+1. **Command `0B SetRawMotorPWM`: strongest conceptual discriminator; the raw-1
+   pilot completed and one raw-1000 escalation is prepared below.** It bypasses the
    source-named velocity request and more directly tests a bridge/PWM path.
    No source-used nonzero value or setter-channel mapping exists. The fixed
-   pilot therefore uses raw `1`, only because it is the smallest representable
-   nonzero `UInt16`, and labels its units, effective threshold, and physical
-   channel as unknown. A null result is inconclusive. No larger or repeated
-   value is prepared.
+   first pilot used raw `1`, only because it is the smallest representable
+   nonzero `UInt16`; its null result remains inconclusive. The next fixed value
+   is raw `1000`, matching the previously bounded numeric magnitude and only
+   1.53% of the `UInt16` full scale. Units, effective threshold, and channel
+   binding remain unknown. No repetition or other word is prepared.
 2. **Larger command `11` velocity: not recommended.** Both source-named words
    have now received complete `+1000` 20 Hz trains with raw `82` and no visible
    output change on the separately selected physical plugs. A larger value
@@ -465,9 +471,9 @@ or a reviewed original-host capture showing a known nonzero command-`0B`
 payload. Power-state, heartbeat-control, reset, configuration, identity, and
 flash commands remain excluded; no inverse/readback basis was found.
 
-### Fixed experimental raw-PWM word-0/value-1 pilot
+### Completed experimental raw-PWM word-0/value-1 pilot
 
-`tools/marvin_legacy_raw_pwm_pilot.py` is an **unexecuted, deliberately
+`tools/marvin_legacy_raw_pwm_pilot.py` supplied the **completed, deliberately
 experimental** direct-output discriminator. It does not claim source-backed
 units, an effective PWM minimum, duty-cycle meaning, channel binding, or
 source-word-to-physical-plug mapping. It sends one nonzero setter only; the
@@ -549,6 +555,96 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
 
 This acknowledgment performs no hardware access and is valid only after the
 operator has separately confirmed both facts.
+
+#### Two completed raw-1 runs
+
+Both separately authorized runs completed with the same exact accounting:
+four fully accepted writes / 56 TX bytes, zero uncertain TX bytes, and 56
+serial RX bytes. Sequence 3329 returned raw `80` with exactly eight zero bytes;
+the sequence-3330 setter returned opaque raw `82` with no payload; sequence
+3331 all-zero cleanup returned raw `80` with no payload; and conditional
+sequence 3332 returned raw `80` with exactly eight zero bytes. Cleanup was
+attempted once and the zero baseline was getter-reverified. This is protocol
+store/readback evidence, not a decoded application acknowledgment or physical
+stop.
+
+Usbmon recorded four successful bulk OUT completions / 56 captured and
+completed OUT bytes and four payload-bearing successful bulk IN completions /
+56 captured and completed IN bytes in each run. There were zero unmatched
+completions, unmatched submission errors, endpoint mismatches, evictions,
+pending retained transfers, or uncaptured payload bytes. Both outer and nested
+manifests verified every listed artifact.
+
+| Run | Outer manifest | Nested manifest | Adapter journal | Binary usbmon |
+|---|---|---|---|---|
+| First | `3cd5d838d4b67500124e4fe126d73ea8cd989fe41d45e05195979bdde3da76fa` | `90d68d1886b92488bf31c3d908d0399c6ccff7329aac3f3fee1749d9eee0f522` | `5fcace9a6bc50547b87a7fcabade13a40c01fbb56da3a8fcb5a077baecaeec5b` | `3e751237ed945a0a343fedf37b01514ef262a80ca8367664b894fa11d6c70200` |
+| Repeat | `00edc54c095ba6f29f6166cada745df2d5d997d4cf843cce3b216f62e748b519` | `54370b8741527a16acf354d2eba4ce1ddf3b4bc8ae4bba2c6160fc23e1d01f5c` | `1cf27b62c313e6bf3224eb5ebe3f215036bf49a6daaaf0ddb5ca218eb2c89d91` | `c7b90dc29d07e0adac470f5a3f5448f02cb03268d04807a4d114187d2155a738` |
+
+The first scope observation is **uncertain** because the instrument was not
+correctly configured; it must not be recorded as no output. The operator then
+power-cycled. For the repeat, the differential/isolated scope was armed at
+1 V/div, 500 us/div, and approximately 1.5 V trigger across the disconnected
+connector printed `Motor L`; it did not trigger and showed no visible waveform.
+The operator then powered the robot OFF. A null raw-1 result remains
+inconclusive because its effective PWM significance is unknown.
+
+Connector naming is now operator-confirmed separately: the controller
+connector physically on the **robot-right side** is printed `Motor L` and
+controls the **left motor**. Keep these three descriptions distinct from the
+PCTestApp source fields and raw-PWM word numbers. No mapping between command
+`0B` word 0 and that connector follows from the null observation.
+
+### Prepared fixed raw-PWM word-0/value-1000 escalation
+
+The next profile reuses the same runner and changes only the immutable scope,
+sequence block, and word-0 value. It still sends one setter only and observes
+the same disconnected physical connector printed `Motor L` for three seconds.
+Raw `1000` is 1.53% of the `UInt16` full scale and matches the already bounded
+numeric magnitude used in the velocity diagnostics; that does **not** establish
+PWM units, duty cycle, source use, effective minimum, or channel mapping.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3333 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes | `53050d0a0000004d4945` |
+| 2 | 3334 | command `0B`; four LE `UInt16` words `[1000,0,0,0]` | `53060d0b000800e8030000000000005ea945` |
+| 3 | 3335 | mandatory command `0B`; exact all-zero cleanup once after the setter may reach its syscall | `53070d0b0008000000000000000000628645` |
+| 4 | 3336 | conditional command `0A` verification after clean empty raw-`80` cleanup; require eight zero bytes | `53080d0a0000004c5445` |
+
+The concatenated transcript SHA-256 is
+`f9fb5e2ae27dbbeb0c8c57b3d9bb1663ca2d34fa16f2c2ae7966e505310e012b`.
+Bounds remain four writes / 56 TX bytes / 56 expected response bytes and 8192
+serial RX bytes, or three writes / 46 TX bytes when verification is suppressed.
+All response, pre-`os.write`, cleanup, state-lock, no-retry, no-reconnect, and
+evidence rules above are unchanged.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word0-1000-pilot \
+  --authorize-unvalidated-raw-pwm-word0-1000-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word0-1000-pilot \
+  --authorize-unvalidated-raw-pwm-word0-1000-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+A waveform would establish a lower-level path only for raw word 0 and the
+tested `Motor L`-labelled connector. No waveform remains inconclusive. This
+profile is unexecuted; no hardware authorization follows from its preparation.
 
 ## Proven fixed legacy getter survey
 

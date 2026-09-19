@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "prepared_experimental_fixed_word0_raw1_with_zero_gate_and_cleanup",
+      "live_probe_policy": "raw1_completed_raw1000_prepared_with_zero_gate_and_cleanup",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -232,16 +232,27 @@
           "source": "PCTestApp/Form1.cs:1057"
         }
       ],
-      "live_observations": [],
+      "live_observations": [
+        {
+          "status": "two_raw1_runs_completed",
+          "scope": "disconnected_load_raw_pwm_word0_one_pilot",
+          "protocol_each": "baseline getter raw80 exact 8 zero bytes; word0 raw1 setter raw82 empty; all-zero cleanup raw80 empty; final getter raw80 exact 8 zero bytes",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX",
+          "first_scope_observation": "uncertain; instrument not correctly configured",
+          "repeat_scope_observation": "1V/div, 500us/div, about 1.5V trigger; no trigger or visible waveform",
+          "physical_connector": "robot-right-side connector printed Motor L; operator states it controls left motor",
+          "meaning": "raw statuses opaque; null raw1 result inconclusive; no word-to-connector mapping established"
+        }
+      ],
       "offline_preparation": {
         "status": "prepared_not_executed",
-        "scope": "disconnected_load_raw_pwm_word0_one_pilot",
-        "sequence_range": "3329..3332",
-        "setter_words_uint16": [1, 0, 0, 0],
+        "scope": "disconnected_load_raw_pwm_word0_1000_pilot",
+        "sequence_range": "3333..3336",
+        "setter_words_uint16": [1000, 0, 0, 0],
         "cleanup_words_uint16": [0, 0, 0, 0],
         "observation_seconds": 3,
-        "transcript_sha256": "6880718e5a54cf8a8225d3d2afc3cd4cc975f6c0bb6552a8de4161bf4a6b0df8",
-        "limitations": "raw1 units/effective minimum and word-to-plug mapping unknown; null result inconclusive"
+        "transcript_sha256": "f9fb5e2ae27dbbeb0c8c57b3d9bb1663ca2d34fa16f2c2ae7966e505310e012b",
+        "limitations": "raw1000 units/duty and word-to-connector mapping unknown; null result inconclusive"
       },
       "newer_drive_meaning": {
         "command": 11,
@@ -538,9 +549,9 @@
           "transcript_sha256": "07d2dec07a7db89cc859ac16f4aeb16390361076385aafa41af1fb563c43ec5d",
           "protocol": "initial zero raw80, 20 right-word +1000 responses raw82, cleanup zero raw80",
           "accounting": "22 writes / 308 accepted TX / 0 uncertain TX / 220 RX",
-          "operator_scope_target": "disconnected physical plug printed Motor R",
+          "operator_scope_target": "robot-right-side connector actually printed Motor L; actual Motor R-labelled connector untested",
           "operator_observation": "free-running differential/isolated scope 50ms/div showed no visible output change",
-          "meaning": "tested pairing only; does not establish source-field-to-plug, robot-side mapping, raw82 meaning, or output absence"
+          "meaning": "not evidence about actual Motor R-labelled connector; does not establish source-field-to-connector, robot-side mapping, raw82 meaning, or output absence"
         }
       ],
       "newer_drive_meaning": {

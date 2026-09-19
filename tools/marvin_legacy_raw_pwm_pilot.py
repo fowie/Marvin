@@ -1,4 +1,4 @@
-"""Fixed experimental raw-PWM word-0/value-1 pilot with mandatory zero cleanup.
+"""Fixed experimental raw-PWM word-0 pilots with mandatory zero cleanup.
 
 Offline by default. This is software readiness, not live authorization.
 """
@@ -23,51 +23,85 @@ from tools.marvin_paths import new_output_path
 
 ZERO_PWM = bytes(8)
 WORD0_ONE = (1).to_bytes(2, "little") + bytes(6)
-STEPS = {
-    "baseline": _frame(3329, 0x0A),
-    "set": _frame(3330, 0x0B, WORD0_ONE),
-    "cleanup": _frame(3331, 0x0B, ZERO_PWM),
-    "verify": _frame(3332, 0x0A),
-}
+WORD0_1000 = (1000).to_bytes(2, "little") + bytes(6)
+
+
+def _steps(first_sequence, payload):
+    return {
+        "baseline": _frame(first_sequence, 0x0A),
+        "set": _frame(first_sequence + 1, 0x0B, payload),
+        "cleanup": _frame(first_sequence + 2, 0x0B, ZERO_PWM),
+        "verify": _frame(first_sequence + 3, 0x0A),
+    }
+
+
+STEPS = _steps(3329, WORD0_ONE)
 TRANSCRIPT = tuple(STEPS.values())
+STEPS_1000 = _steps(3333, WORD0_1000)
+TRANSCRIPT_1000 = tuple(STEPS_1000.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
 OBSERVATION_SECONDS = 3
 SUCCESS = "raw_pwm_word0_one_pilot_complete_unverified"
-TARGET = "raw-pwm-word0-one-pilot"
+SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
+PROFILES = {
+    consent.RAW_PWM_PILOT_SCOPE: {
+        "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
+        "value": 1, "success": SUCCESS, "target": "raw-pwm-word0-one-pilot",
+        "authorization": "unvalidated_raw_pwm_word0_one_pilot_authorized",
+        "report_key": "raw_pwm_word0_one_pilot",
+    },
+    consent.RAW_PWM_1000_PILOT_SCOPE: {
+        "steps": STEPS_1000, "transcript": TRANSCRIPT_1000, "first_sequence": 3333,
+        "value": 1000, "success": SUCCESS_1000, "target": "raw-pwm-word0-1000-pilot",
+        "authorization": "unvalidated_raw_pwm_word0_1000_pilot_authorized",
+        "report_key": "raw_pwm_word0_1000_pilot",
+    },
+}
 
 
-def prepare():
+def transcript_for_scope(scope):
+    try:
+        return PROFILES[scope]["transcript"]
+    except KeyError:
+        raise ValueError("Unknown fixed raw-PWM pilot scope.") from None
+
+
+def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
+    profile = PROFILES[scope]
+    transcript = profile["transcript"]
+    first_sequence = profile["first_sequence"]
+    value = profile["value"]
     expected = (
-        (3329, 0x0A, b""),
-        (3330, 0x0B, WORD0_ONE),
-        (3331, 0x0B, ZERO_PWM),
-        (3332, 0x0A, b""),
+        (first_sequence, 0x0A, b""),
+        (first_sequence + 1, 0x0B, value.to_bytes(2, "little") + bytes(6)),
+        (first_sequence + 2, 0x0B, ZERO_PWM),
+        (first_sequence + 3, 0x0A, b""),
     )
-    for raw, fields in zip(TRANSCRIPT, expected):
+    for raw, fields in zip(transcript, expected):
         packet = decode_packet(raw)
         if (packet.sequence, packet.command, packet.response_field, packet.payload) != (
                 fields[0], fields[1], 0, fields[2]):
             raise ValueError("Fixed raw-PWM transcript disagrees with the legacy decoder.")
     return {
         "status": "dry_run",
-        "name": consent.RAW_PWM_PILOT_SCOPE,
+        "name": scope,
         "profile": "marvin-legacy-se",
-        "immutable_application_transcript_hex": [raw.hex() for raw in TRANSCRIPT],
-        "transcript_sha256": hashlib.sha256(b"".join(TRANSCRIPT)).hexdigest(),
+        "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
+        "transcript_sha256": hashlib.sha256(b"".join(transcript)).hexdigest(),
         "required_baseline_payload_hex": ZERO_PWM.hex(),
-        "fixed_setter_words_uint16": [1, 0, 0, 0],
+        "fixed_setter_words_uint16": [value, 0, 0, 0],
         "fixed_cleanup_words_uint16": [0, 0, 0, 0],
         "observation_seconds": OBSERVATION_SECONDS,
         "operator_selected_physical_plug_label": "Motor L",
         "word_to_physical_plug_mapping": "not_established",
         "raw_value_units_or_effective_minimum": "not_established",
-        "null_scope_result": "inconclusive_raw_one_may_be_below_effective_pwm_minimum",
+        "null_scope_result": "inconclusive_effective_pwm_minimum_and_channel_mapping_unknown",
         "waveform_result": "evidence_of_lower_level_path_not_channel_topology",
-        "maximum_application_bytes": sum(map(len, TRANSCRIPT)),
-        "minimum_application_bytes_after_setter": sum(map(len, TRANSCRIPT[:3])),
-        "maximum_writes": len(TRANSCRIPT),
+        "maximum_application_bytes": sum(map(len, transcript)),
+        "minimum_application_bytes_after_setter": sum(map(len, transcript[:3])),
+        "maximum_writes": len(transcript),
         "maximum_serial_rx_bytes": 8192,
         "maximum_expected_response_bytes": 56,
         "response_policy": (
@@ -88,11 +122,14 @@ def prepare():
         "physical_stop": "not_established",
         "required": ["--run", "--expected-physical-port", "--output NEWDIR",
                      *("--" + name.replace("_", "-")
-                       for name in consent.RAW_PWM_PILOT_FLAGS)],
+                       for name in consent.POWERED_TRIAL_SCOPES[scope])],
     }
 
 
 class _RawPwmTransport(LiveTransport):
+    steps = STEPS
+    success = SUCCESS
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.completed = []
@@ -115,8 +152,8 @@ class _RawPwmTransport(LiveTransport):
                 raise OSError("Raw-PWM getter verification requires a clean raw-80 cleanup.")
         else:
             raise OSError("Only the fixed raw-PWM pilot transcript is permitted.")
-        count = self._submit_once(STEPS[step], deadline=deadline)
-        if count == len(STEPS[step]):
+        count = self._submit_once(self.steps[step], deadline=deadline)
+        if count == len(self.steps[step]):
             self.completed.append(step)
         return count
 
@@ -126,7 +163,7 @@ class _RawPwmTransport(LiveTransport):
         if not self.may_have_applied:
             raise OSError("Raw-PWM cleanup is not required before the setter.")
         self.cleanup_attempted = True
-        raw = STEPS["cleanup"]
+        raw = self.steps["cleanup"]
         self._check(deadline)
         self.ingress.expected_tx.append(raw)
         self.writes += 1
@@ -140,8 +177,13 @@ class _RawPwmTransport(LiveTransport):
         return count
 
 
+class _RawPwm1000Transport(_RawPwmTransport):
+    steps = STEPS_1000
+    success = SUCCESS_1000
+
+
 def _submit(transport, report, step, *, deadline):
-    raw = STEPS[step]
+    raw = transport.steps[step]
     report["uncertain_tx_bytes"] += len(raw)
     count = transport.submit(step, deadline=deadline)
     if type(count) is not int or not 0 <= count <= len(raw):
@@ -153,7 +195,7 @@ def _submit(transport, report, step, *, deadline):
 
 
 def _response(transport, report, step, *, deadline, clock=time.monotonic):
-    request = decode_packet(STEPS[step])
+    request = decode_packet(transport.steps[step])
     if (transport.last_write_sequence != request.sequence
             or type(transport.last_write_started) not in (int, float)
             or transport.last_write_started > clock()):
@@ -263,7 +305,7 @@ def _observe(transport, report, *, clock=time.monotonic):
             physical_stop="not_established",
         )
         if primary is None and not cleanup_errors:
-            report["status"] = SUCCESS
+            report["status"] = transport.success
         elif cleanup_errors:
             report["status"] = "failed"
             if primary is None:
@@ -278,15 +320,19 @@ def _validate_capture(options):
     declarations = {name: options.get(name, False) for name in consent.ALL_FLAGS}
     if consent.classify(
             actuators_isolated=options.get("actuators_isolated", False),
-            **declarations) != consent.RAW_PWM_PILOT_SCOPE:
+            **declarations) not in consent.RAW_PWM_PILOT_SCOPES:
         raise ValueError("Raw-PWM pilot requires its complete literal scope.")
 
 
 def run_diagnostic(output, *, expected_physical_port, run=False,
                    actuators_isolated=False, **declarations):
     scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
-    if run is not True or scope != consent.RAW_PWM_PILOT_SCOPE:
-        raise ValueError("Literal --run and raw-PWM word-0/value-1 scope are required.")
+    if run is not True or scope not in consent.RAW_PWM_PILOT_SCOPES:
+        raise ValueError("Literal --run and one fixed raw-PWM word-0 scope are required.")
+    profile = PROFILES[scope]
+    transport_type = (
+        _RawPwm1000Transport if scope == consent.RAW_PWM_1000_PILOT_SCOPE
+        else _RawPwmTransport)
     output = new_output_path(output)
     root = output.parent
     previous = _load_state(root)
@@ -295,22 +341,23 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         raise ValueError("RESTORATION_ACK_REQUIRED before another live diagnostic.")
     state = {
         "status": "raw_pwm_started",
-        "target": TARGET,
+        "target": profile["target"],
         "set_evidence": str(output),
         "created_at": time.time(),
     }
     _write_state(root, state)
     try:
         result = zero._run_diagnostic(
-            output, expected_physical_port=expected_physical_port, review=prepare(),
-            transport_type=_RawPwmTransport, observe=_observe,
-            limits=zero._Limits(first_sequence=3329, max_requests=4, interval=0),
+            output, expected_physical_port=expected_physical_port, review=prepare(scope),
+            transport_type=transport_type, observe=_observe,
+            limits=zero._Limits(
+                first_sequence=profile["first_sequence"], max_requests=4, interval=0),
             session_options={"actuators_isolated": False, **declarations},
             declarations={**consent.powered_trial_history(declarations),
                           "run_id": str(uuid.uuid4())},
             expected_tx=lambda report: report["accepted_tx_bytes"],
-            success_status=SUCCESS, report_key="raw_pwm_word0_one_pilot",
-            authorizations={"unvalidated_raw_pwm_word0_one_pilot_authorized": True},
+            success_status=profile["success"], report_key=profile["report_key"],
+            authorizations={profile["authorization"]: True},
             capture_validator=_validate_capture,
             on_failure=consent.notify_powered_trial_fault,
             serial_seconds=SERIAL_SECONDS,
@@ -341,7 +388,8 @@ def acknowledge_restoration(evidence, *, physical_output_baseline_confirmed=Fals
     evidence = _evidence_path(evidence)
     root = evidence.parent
     state = _load_state(root)
-    if (not state or state.get("target") != TARGET
+    targets = {profile["target"] for profile in PROFILES.values()}
+    if (not state or state.get("target") not in targets
             or state.get("set_evidence") != str(evidence)
             or state.get("status") != "raw_pwm_restoration_unverified"):
         raise ValueError("No matching unverified raw-PWM pilot awaits acknowledgment.")
@@ -358,7 +406,7 @@ def acknowledge_restoration(evidence, *, physical_output_baseline_confirmed=Fals
     _write_state(root, state)
     return {
         "status": "power_cycle_reset_confirmed",
-        "target": TARGET,
+        "target": state["target"],
         "hardware_access": False,
         "restoration": "operator_scope_baseline_plus_power_cycle_not_software_verification",
     }
@@ -394,11 +442,14 @@ def main(argv=None):
         if (args.evidence or args.physical_output_baseline_confirmed
                 or args.power_cycle_confirmed):
             raise ValueError("Acknowledgment arguments require --acknowledge-restoration.")
+        scope = consent.RAW_PWM_PILOT_SCOPE
         if args.actuators_isolated or any(declarations.values()):
             _validate_capture({"actuators_isolated": args.actuators_isolated, **declarations})
+            scope = consent.classify(
+                actuators_isolated=args.actuators_isolated, **declarations)
         if args.run and args.output is None:
             raise ValueError("--output NEWDIR is required.")
-        result = prepare() if not args.run else run_diagnostic(
+        result = prepare(scope) if not args.run else run_diagnostic(
             args.output, expected_physical_port=args.expected_physical_port,
             run=True, actuators_isolated=args.actuators_isolated, **declarations)
     except (Exception, KeyboardInterrupt) as error:
