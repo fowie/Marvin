@@ -63,7 +63,10 @@ def prepare():
         "maximum_writes": len(TRANSCRIPT),
         "maximum_serial_rx_bytes": 8192,
         "maximum_expected_response_bytes": len(TRANSCRIPT) * 10,
-        "response_policy": "each_crc_valid_correlated_empty_raw80_or_raw82_before_next_fixed_write",
+        "response_policy": (
+            "initial_zero_requires_crc_valid_correlated_empty_raw80; "
+            "fixed_nonzero_train_accepts_raw80_or_raw82_opaquely"),
+        "response_time_origin": "matching_immediate_pre_os_write_monotonic_timestamp",
         "cleanup_policy": (
             "exactly_one_fixed_all_zero_attempt_after_any_nonzero_may_reach_syscall"),
         "automatic_retries": False,
@@ -104,6 +107,8 @@ class _VelocityTrainTransport(LiveTransport):
         self._check(deadline)
         self.ingress.expected_tx.append(raw)
         self.writes += 1
+        self.last_write_sequence = decode_packet(raw).sequence
+        self.last_write_started = time.monotonic()
         count = os.write(self.fd, raw)
         self.last_write = time.monotonic()
         self.event("velocity_train_cleanup_returned", raw_hex=raw.hex(), accepted_bytes=count)
@@ -126,11 +131,15 @@ def _submit(transport, report, index, *, deadline, cleanup=False):
 
 def _response(transport, report, index, *, deadline, clock=time.monotonic):
     request = decode_packet(TRANSCRIPT[index])
+    if (transport.last_write_sequence != request.sequence
+            or type(transport.last_write_started) not in (int, float)
+            or transport.last_write_started > clock()):
+        raise OSError("Response evidence lacks the matching immediate pre-syscall boundary.")
     evidence = zero._ResponseEvidence(
         transport.event, sequence=request.sequence, command=0x11,
-        accepted_response_fields=(0x80, 0x82),
+        accepted_response_fields=((0x80,) if index == 0 else (0x80, 0x82)),
         validate_packet=lambda packet: [] if not packet.payload else ["unexpected_setter_payload"])
-    evidence.submitted_at = clock()
+    evidence.submitted_at = transport.last_write_started
     evidence.deadline = min(deadline, evidence.submitted_at + RESPONSE_SECONDS)
     if evidence.deadline != evidence.submitted_at + RESPONSE_SECONDS:
         raise OSError("Insufficient fixed cadence budget for correlated setter response.")

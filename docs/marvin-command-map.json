@@ -492,7 +492,7 @@
       ],
       "live_observations": [
         {
-          "status": "prepared_not_executed",
+          "status": "first_live_attempt_stopped_after_one_nonzero",
           "scope": "disconnected_load_left_plus_1000_velocity_train",
           "payload": "left signed raw +1000, right zero",
           "cadence_ms": 50,
@@ -500,7 +500,13 @@
           "sequence_range": "3285..3306",
           "bounds": "22 writes / 308 TX bytes / 8192 maximum RX bytes",
           "cleanup": "exactly one fixed all-zero attempt after any possible nonzero syscall",
-          "meaning": "oscilloscope observation separate from opaque protocol response and physical stop"
+          "transmitted": "seq3285 zero, seq3286 one left +1000, seq3306 cleanup zero; 42 accepted TX / 0 uncertain TX",
+          "responses": "seq3285 raw80, seq3286 raw82, seq3306 raw80; CRC-valid correlated empty command11 frames",
+          "not_transmitted": "seq3287..3305",
+          "scope_observation": "uncertain_scope_was_not_triggered",
+          "software_fault": "post-write submitted_at timestamp mislabeled a fast correlated response prewrite_or_ambiguous",
+          "fix": "response boundary now uses matching immediate pre-os.write monotonic timestamp; ambiguity gate retained",
+          "meaning": "single nonzero application/output unknown; oscilloscope observation separate from opaque protocol response and physical stop"
         }
       ],
       "newer_drive_meaning": {

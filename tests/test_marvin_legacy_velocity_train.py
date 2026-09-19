@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from tests import test_marvin_session as session_tests
+from tests.test_marvin_legacy_client import frame
 from tools import marvin_legacy_velocity_train as train
 from tools import marvin_motor_power_off_consent as consent
 from tools import marvin_session as session
@@ -188,6 +189,48 @@ class VelocityTrainTests(unittest.TestCase):
             self.assertEqual(transport.attempts.count("cleanup"), 1)
             self.assertTrue(transport.cleanup_attempted)
             transport.close.assert_called_once()
+
+        live_start = 281342.3600659589
+        transport = Mock(
+            last_write_sequence=3286, last_write_started=281342.359916316)
+        transport.event = Mock()
+        report = {"responses": []}
+
+        def observed(_, evidence, **kwargs):
+            evidence.feed(Mock(
+                data=frame(b"", command=0x11, status=0x82, sequence=3286),
+                started_at=live_start, ended_at=live_start + .000002), live_start + .005)
+            evidence.finish(live_start + .005)
+
+        with patch.object(train.zero, "_observe_response", side_effect=observed):
+            packet = train._response(
+                transport, report, 1, deadline=live_start + 1,
+                clock=lambda: live_start + .005)
+        self.assertEqual(packet.response_field, 0x82)
+        self.assertEqual(
+            report["responses"][0]["events"][0]["labels"],
+            ["unverified_shape_and_semantics", "correlated_command_sequence_only"])
+
+        transport.last_write_started = live_start
+        with patch.object(train.zero, "_observe_response", side_effect=observed), \
+                self.assertRaisesRegex(OSError, "prewrite_or_ambiguous"):
+            train._response(
+                transport, {"responses": []}, 1, deadline=live_start + 1,
+                clock=lambda: live_start + .005)
+
+        transport.last_write_sequence = 3285
+        transport.last_write_started = live_start - .001
+
+        def initial_raw82(_, evidence, **kwargs):
+            evidence.feed(Mock(
+                data=frame(b"", command=0x11, status=0x82, sequence=3285),
+                started_at=live_start, ended_at=live_start + .000002), live_start + .005)
+
+        with patch.object(train.zero, "_observe_response", side_effect=initial_raw82), \
+                self.assertRaisesRegex(OSError, "uninterpreted_non80_status"):
+            train._response(
+                transport, {"responses": []}, 0, deadline=live_start + 1,
+                clock=lambda: live_start + .005)
 
         transport = train._VelocityTrainTransport.__new__(train._VelocityTrainTransport)
         transport.may_have_applied = True

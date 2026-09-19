@@ -206,8 +206,9 @@ The immutable transcript is 22 writes / 308 TX bytes, with at most 220 expected
 response bytes inside the 8192-byte RX bound. Its SHA-256 is
 `15f8e1754674fbc866b93c812f4438c470db9c7652f94ca9515a1fe451ffd59b`.
 Every request requires one unique correlated CRC-valid empty command-`11`
-response before the next scheduled request. Raw `80` and `82` are both retained
-opaquely and permit the predeclared sequence to continue. Timeout, partial or
+response before the next scheduled request. The initial zero requires its
+previously proven raw `80`; nonzero train responses retain raw `80` or `82`
+opaquely and permit only the predeclared next request. Timeout, partial or
 uncertain TX, CRC/framing/correlation/extra-frame, identity, timing, evidence,
 or interruption faults stop the train. Once any nonzero may have reached its
 syscall, the fixed sequence-3306 cleanup syscall is attempted exactly once
@@ -242,6 +243,57 @@ a single transient, repeated PWM/enable activity aligned to the 50 ms train, or
 another raw waveform observation, including instrument settings. Software
 completion and raw `80`/`82` responses do not establish physical output,
 application acknowledgment, or stop.
+
+### First live attempt: timestamp gate stop after one nonzero
+
+The first separately authorized attempt stopped safely before the repeated
+train, but the initial console interpretation that no nonzero was sent was
+wrong. The sealed serial and usbmon evidence proves exactly three successful
+14-byte OUT completions / 42 accepted TX bytes / zero uncertain TX bytes:
+
+| Sequence | Request | Correlated response |
+|---:|---|---|
+| 3285 | initial zero | CRC-valid empty command `11`, raw `80` |
+| 3286 | left `+1000`, right zero | CRC-valid empty command `11`, raw `82` |
+| 3306 | mandatory cleanup zero | CRC-valid empty command `11`, raw `80` |
+
+No request from sequence 3287 through 3305 was transmitted. Serial accounting
+was 30 RX bytes. Usbmon retained all 42 OUT payload bytes and all 30 IN payload
+bytes, with three successful bulk-OUT and three successful payload-bearing
+bulk-IN completions; it reported no unmatched transfers or uncaptured payload
+bytes. Both manifests verified every listed artifact. The outer manifest file
+SHA-256 is
+`9299dcd56acf6568c278e0f0863074f351fbb466828ea43679873a19c572bbdd`;
+the nested capture manifest file SHA-256 is
+`3711f86c538bf4faa4ecdfa7246f55c20a4c33906ecaac9bc289998371f91d76`.
+The adapter journal SHA-256 is
+`490f89269de63e918aedc75a72c476dde7152bea352ce998fd6c32b752825077`.
+
+The initial-zero response was clean. The sequence-3286 response began in usbmon
+about 0.150 ms after the `write_returned` journal event, but the runner assigned
+the response evidence `submitted_at` timestamp only after the write helper and
+accounting returned. That post-write software timestamp could therefore be
+later than a fast real response and mislabeled this uniquely correlated frame
+`prewrite_or_ambiguous`. The fault path then sent the one fixed cleanup zero,
+whose response was clean raw `80`, and stopped. The usb recorder metadata is
+sealed with failed/signal status because the coordinator stopped it after the
+software fault; this is not a sealing gap.
+
+The fix records the matching sequence and monotonic boundary immediately before
+the single `os.write` syscall and uses that boundary for response evidence.
+Sequence, command, CRC, empty payload, raw-status, extra-frame, serial/usbmon
+correlation, identity, timing, no-retry, and cleanup gates remain unchanged. A
+response whose USB start is at or before that pre-syscall boundary still fails
+as ambiguous.
+
+The operator reported the scope result as **uncertain: scope was not triggered**.
+This must not be recorded as no output. The operator cut power after the stop.
+The single `+1000` application meaning and physical output remain unknown.
+A new attempt is technically justified only after separate live authorization:
+the timestamp bug is reproduced and fixed without relaxing a gate, the initial
+zero and cleanup were clean raw `80`, and the first attempt produced no scope
+result. That conclusion is software readiness, not authorization; the operator
+must also configure and confirm a working trigger before any repeat.
 
 ## Proven fixed legacy getter survey
 
