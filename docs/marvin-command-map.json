@@ -445,22 +445,54 @@
         }
       },
       "motor_r_disconnected_profiles": {
-        "status": "prepared_not_executed",
+        "status": "four_runs_completed",
         "physical_target": "robot-left-side connector printed Motor R; both motor power plugs disconnected",
         "word2": {
           "scope": "disconnected_load_raw_pwm_word2_2000_pilot",
           "sequence_range": "3357..3360",
           "setter_words_uint16": [0, 0, 2000, 0],
-          "transcript_sha256": "64bf02c70c5b94a5e2845e73468d72a3b441fa4cd0002f38012707a2b2bc8fca"
+          "transcript_sha256": "64bf02c70c5b94a5e2845e73468d72a3b441fa4cd0002f38012707a2b2bc8fca",
+          "observed_polarity": "negative",
+          "manual_capture": "approximately -12V negative excursion, 26.4us width, 15.2kHz; division-count uncertainty",
+          "run_hashes": [
+            ["97b2f9056588cb79df550bbd0f2f2bbaebc025d259da5c482f94164e14de8e3a", "1d17f4f9f0b20af183c77dbcc59887b49613d1e913701c4a855da9dc81fcf365", "7aeff3e9a46550b21cd339040f08e0a22b4af7ff88e4d368f8386a22a842791e", "334b84e2551a1184770daf1fb663b269336a7f361c22c2228a46982983ea5e0c"],
+            ["40579ff19e3c4848017926f6ca3a5dd1c9c4f6ffa06fa801d97e40a9579bd1f8", "c4a3159714f081b0e0a75b4026716898f96abbdf531013de1ead38c67b35e839", "50e076474d2e883aacd857b4b0702e1361847c462ad418eb7686a5c98eb7c078", "fad6814e27a5a7b63781e4fd3cb8330ccd2d3c85d8fc02460fbc887f85724698"]
+          ]
         },
         "word3": {
           "scope": "disconnected_load_raw_pwm_word3_2000_pilot",
           "sequence_range": "3361..3364",
           "setter_words_uint16": [0, 0, 0, 2000],
-          "transcript_sha256": "6ecfb0fac2ed75ae890517d913ba82b1e5a460d52826bf50661d0ec01304700d"
+          "transcript_sha256": "6ecfb0fac2ed75ae890517d913ba82b1e5a460d52826bf50661d0ec01304700d",
+          "observed_polarity": "positive",
+          "manual_capture": "approximately 8Vpp, 38.8us width, 15kHz; division-count uncertainty",
+          "run_hashes": [
+            ["8997d72e708c5bd159520b177ab9856cdae7c00c78f3fc012e4b57e8305cc6d2", "b4b288f59c735975ee804cb3aefc9e5281f213edff4ef70932f8014c7021abc4", "c7d7f984b479390c0ac05597ace629fcf70046b88a6239af0aad53efa4cb10a1", "b4bcd0cd14d22923e7c730f8aa996c644f3f0d47365d2372267f8941710d27b3"],
+            ["76c829231ffe13893827ffc9d101e5a6f1f4546682a923314fc88db162025412", "b27f5282bab48a2c63395b55b5612e195f6b7caeeebd2222f6e1104f5e2850b5", "fca25eae47bf800dd71f450ad5b97b26dbcd29a4d088c3a0aafd2f637b130f42", "5f3f98e3fca07b10dbf48dfb1b448c9ed7c6c1c93e763662cbf46fa0cbe622b4"]
+          ]
         },
+        "shared_protocol": "each: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 empty setter; raw80 empty cleanup; exact-zero raw80 final getter",
         "shared_gates": "separate runs; exact-zero baseline; one setter; 3s observation; mandatory all-zero cleanup; conditional exact-zero getter; no retry/reconnect",
         "hypothesis": "word2/word3 may be the positional pair for printed Motor R, but polarity establishes only the tested waveform fact"
+      },
+      "motor_r_connected_profiles": {
+        "status": "prepared_not_executed",
+        "physical_load": "only right motor connected to robot-left-side connector printed Motor R; left motor unplugged; servos isolated; both encoders connected; wheels clear",
+        "word2": {
+          "scope": "raw_pwm_word2_2000_right_motor_connected_proof",
+          "sequence_range": "3365..3368",
+          "setter_words_uint16": [0, 0, 2000, 0],
+          "transcript_sha256": "4bb4f48a37e8a08db303b7df19990108504ca4e5800d71c13ddd9fd189a2f064"
+        },
+        "word3": {
+          "scope": "raw_pwm_word3_2000_right_motor_connected_proof",
+          "sequence_range": "3369..3372",
+          "setter_words_uint16": [0, 0, 0, 2000],
+          "transcript_sha256": "45853e630a4d4f1fb292b77ffe68c0c0bef1258bfb757de80840f9210c106ccd"
+        },
+        "shared_gates": "separate runs; exact-zero baseline; one setter; 250ms observation after clean response; mandatory all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB; no retry/reconnect",
+        "operator_observation": "watch physical right wheel; report actual direction and visible stop or uncertainty; unloaded polarity does not predict direction",
+        "nonzero_final_getter": "fault and restoration lock without reinterpretation"
       },
       "newer_drive_meaning": {
         "command": 11,

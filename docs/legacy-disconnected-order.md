@@ -337,7 +337,8 @@ that this field drives a particular robot side. The separately reviewed
 operator setup intended the differential/isolated DC-coupled scope for the
 `Motor R`-labelled connector. The later connector correction below records
 that the operator actually selected the robot-right-side connector printed
-`Motor L`; the actual `Motor R`-labelled connector remains untested.
+`Motor L`; that velocity run did not test the actual `Motor R`-labelled
+connector. Later raw-PWM word-2/word-3 evidence below does test that connector.
 
 | Sequence | Payload | Exact frame |
 |---:|---|---|
@@ -1300,6 +1301,81 @@ The live form, which is software readiness and **not live authorization**, adds
 Only after word 2 evidence is sealed should the same invocation substitute
 `word3` for `word2` in both literal flags. Waveform polarity is recorded as an
 observation only; it does not prove direction, calibrated duty, or motor binding.
+
+#### Four completed actual-Motor-R disconnected runs
+
+Both word-2 and both word-3 evidence trees and nested manifests verify. Every
+run recorded four accepted writes / 56 TX bytes, zero uncertain TX, and 56 RX
+bytes. Word 2 used sequences 3357..3360 and word 3 used 3361..3364. Each had
+an exact-zero raw-`80` baseline, opaque empty raw-`82` setter, one empty
+raw-`80` all-zero cleanup, and exact-zero raw-`80` final getter. usbmon
+recorded four successful OUT / 56 bytes and four payload-bearing successful
+IN / 56 bytes in each run, without correlation faults.
+
+| Run | Observation | Outer | Capture | Journal | Binary usbmon |
+|---|---|---|---|---|---|
+| word2 1238 | Continuous display clearly showed a negative waveform; no capture | `97b2f9056588cb79df550bbd0f2f2bbaebc025d259da5c482f94164e14de8e3a` | `1d17f4f9f0b20af183c77dbcc59887b49613d1e913701c4a855da9dc81fcf365` | `7aeff3e9a46550b21cd339040f08e0a22b4af7ff88e4d368f8386a22a842791e` | `334b84e2551a1184770daf1fb663b269336a7f361c22c2228a46982983ea5e0c` |
+| word2 1239 | Negative-edge capture; manual estimates about -12 V negative excursion, 26.4 us width, 15.2 kHz | `40579ff19e3c4848017926f6ca3a5dd1c9c4f6ffa06fa801d97e40a9579bd1f8` | `c4a3159714f081b0e0a75b4026716898f96abbdf531013de1ead38c67b35e839` | `50e076474d2e883aacd857b4b0702e1361847c462ad418eb7686a5c98eb7c078` | `fad6814e27a5a7b63781e4fd3cb8330ccd2d3c85d8fc02460fbc887f85724698` |
+| word3 1240 | Continuous display clearly showed a positive waveform | `8997d72e708c5bd159520b177ab9856cdae7c00c78f3fc012e4b57e8305cc6d2` | `b4b288f59c735975ee804cb3aefc9e5281f213edff4ef70932f8014c7021abc4` | `c7d7f984b479390c0ac05597ace629fcf70046b88a6239af0aad53efa4cb10a1` | `b4bcd0cd14d22923e7c730f8aa996c644f3f0d47365d2372267f8941710d27b3` |
+| word3 1241 | Positive capture; manual estimates about 8 Vpp, 38.8 us width, 15 kHz | `76c829231ffe13893827ffc9d101e5a6f1f4546682a923314fc88db162025412` | `b27f5282bab48a2c63395b55b5612e195f6b7caeeebd2222f6e1104f5e2850b5` | `fca25eae47bf800dd71f450ad5b97b26dbcd29a4d088c3a0aafd2f637b130f42` | `5f3f98e3fca07b10dbf48dfb1b448c9ed7c6c1c93e763662cbf46fa0cbe622b4` |
+
+The operator called the word-2 quantity “Vpp -12”; it is recorded as a
+negative excursion because Vpp is unsigned. All values were manually counted
+from divisions and carry that uncertainty. Both motors were unplugged and the
+differential scope was across the robot-left-side connector printed `Motor R`.
+The robot was powered OFF after the final run. This establishes opposite
+observed polarity for positional words 2 and 3 on that connector, not
+calibrated output, bridge topology, motor direction, or loaded behavior.
+
+### Prepared connected right-motor word-2 and word-3 proofs
+
+Each proof is an independent literal scope. Only the physical right motor is
+connected to the robot-left-side connector printed `Motor R`; the left motor
+is unplugged, servos isolated, both encoders connected, wheels clear on blocks,
+and the cutoff operator remains present. Word 2 is executed first. The
+operator watches the physical right wheel and reports actual direction, visible
+stop or uncertainty, abnormal sound, and cutoff use. No direction is predicted
+from unloaded polarity because mounting or wiring may invert it.
+
+| Scope | Sequences | Setter words | Exact frames | Transcript SHA-256 |
+|---|---:|---|---|---|
+| connected word 2 | 3365..3368 | `[0,0,2000,0]` | `53250d0a0000004a2945`; `53260d0b00080000000000d0070000caa645`; `53270d0b0008000000000000000000436645`; `53280d0a0000004b3445` | `4bb4f48a37e8a08db303b7df19990108504ca4e5800d71c13ddd9fd189a2f064` |
+| connected word 3 | 3369..3372 | `[0,0,0,2000]` | `53290d0a0000004ae545`; `532a0d0b000800000000000000d00753a945`; `532b0d0b00080000000000000000004f6a45`; `532c0d0a0000004ab045` | `45853e630a4d4f1fb292b77ffe68c0c0bef1258bfb757de80840f9210c106ccd` |
+
+Both require an exact-zero baseline, one setter, a 250 ms observation after a
+clean response, exactly one zero cleanup, and a conditional exact-zero getter.
+The response budget remains 500 ms from pre-`os.write`; there is no retry or
+reconnect. Any nonzero final getter faults and retains the restoration lock.
+
+Exact word-2 offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word2-2000-right-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-word2-2000-right-motor-connected-proof \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-right-connected --motor-left-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon
+```
+
+Prepared live form (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word2-2000-right-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-word2-2000-right-motor-connected-proof \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-right-connected --motor-left-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+Word 3 substitutes `word3` for `word2` in the two literal flags and is not run
+until word-2 evidence and physical restoration are resolved.
 
 ## Proven fixed legacy getter survey
 

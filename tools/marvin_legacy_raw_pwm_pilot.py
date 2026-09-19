@@ -58,6 +58,12 @@ STEPS_WORD2_2000 = _steps(3357, WORD2_2000)
 TRANSCRIPT_WORD2_2000 = tuple(STEPS_WORD2_2000.values())
 STEPS_WORD3_2000 = _steps(3361, WORD3_2000)
 TRANSCRIPT_WORD3_2000 = tuple(STEPS_WORD3_2000.values())
+STEPS_WORD2_2000_RIGHT_CONNECTED = _steps(3365, WORD2_2000)
+TRANSCRIPT_WORD2_2000_RIGHT_CONNECTED = tuple(
+    STEPS_WORD2_2000_RIGHT_CONNECTED.values())
+STEPS_WORD3_2000_RIGHT_CONNECTED = _steps(3369, WORD3_2000)
+TRANSCRIPT_WORD3_2000_RIGHT_CONNECTED = tuple(
+    STEPS_WORD3_2000_RIGHT_CONNECTED.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -72,6 +78,10 @@ SUCCESS_WORD1_2000_LEFT_CONNECTED = (
     "raw_pwm_word1_2000_left_motor_connected_proof_complete_unverified")
 SUCCESS_WORD2_2000 = "raw_pwm_word2_2000_pilot_complete_unverified"
 SUCCESS_WORD3_2000 = "raw_pwm_word3_2000_pilot_complete_unverified"
+SUCCESS_WORD2_2000_RIGHT_CONNECTED = (
+    "raw_pwm_word2_2000_right_motor_connected_proof_complete_unverified")
+SUCCESS_WORD3_2000_RIGHT_CONNECTED = (
+    "raw_pwm_word3_2000_right_motor_connected_proof_complete_unverified")
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -144,12 +154,36 @@ PROFILES = {
         "authorization": "unvalidated_raw_pwm_word3_2000_pilot_authorized",
         "report_key": "raw_pwm_word3_2000_pilot", "observation_seconds": 3,
     },
+    consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE: {
+        "steps": STEPS_WORD2_2000_RIGHT_CONNECTED,
+        "transcript": TRANSCRIPT_WORD2_2000_RIGHT_CONNECTED,
+        "first_sequence": 3365, "value": 2000,
+        "success": SUCCESS_WORD2_2000_RIGHT_CONNECTED,
+        "target": "raw-pwm-word2-2000-right-motor-connected-proof",
+        "authorization": (
+            "unvalidated_raw_pwm_word2_2000_right_motor_connected_proof_authorized"),
+        "report_key": "raw_pwm_word2_2000_right_motor_connected_proof",
+        "observation_seconds": 0.250,
+    },
+    consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE: {
+        "steps": STEPS_WORD3_2000_RIGHT_CONNECTED,
+        "transcript": TRANSCRIPT_WORD3_2000_RIGHT_CONNECTED,
+        "first_sequence": 3369, "value": 2000,
+        "success": SUCCESS_WORD3_2000_RIGHT_CONNECTED,
+        "target": "raw-pwm-word3-2000-right-motor-connected-proof",
+        "authorization": (
+            "unvalidated_raw_pwm_word3_2000_right_motor_connected_proof_authorized"),
+        "report_key": "raw_pwm_word3_2000_right_motor_connected_proof",
+        "observation_seconds": 0.250,
+    },
 }
 SETTER_PAYLOADS = {
     consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: WORD1_2000,
     consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE: WORD1_2000,
     consent.RAW_PWM_WORD2_2000_PILOT_SCOPE: WORD2_2000,
     consent.RAW_PWM_WORD3_2000_PILOT_SCOPE: WORD3_2000,
+    consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE: WORD2_2000,
+    consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE: WORD3_2000,
 }
 
 
@@ -196,7 +230,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "operator_selected_physical_plug_label": (
             "Motor R" if scope in (
                 consent.RAW_PWM_WORD2_2000_PILOT_SCOPE,
-                consent.RAW_PWM_WORD3_2000_PILOT_SCOPE)
+                consent.RAW_PWM_WORD3_2000_PILOT_SCOPE,
+                consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE,
+                consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE)
             else "Motor L"),
         "word_to_physical_plug_mapping": "not_established",
         "physical_load": (
@@ -205,6 +241,10 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
                 consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
                 consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
                 consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
+            else "right_motor_connected_to_robot_left_side_connector_printed_Motor_R"
+            if scope in (
+                consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE,
+                consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE)
             else "both_motor_power_plugs_disconnected"),
         "raw_value_units_or_effective_minimum": "not_established",
         "null_scope_result": "inconclusive_effective_pwm_minimum_and_channel_mapping_unknown",
@@ -341,6 +381,22 @@ class _RawPwmWord2Value2000Transport(_RawPwmTransport):
 class _RawPwmWord3Value2000Transport(_RawPwmTransport):
     steps = STEPS_WORD3_2000
     success = SUCCESS_WORD3_2000
+    physical_plug_label = "Motor R"
+
+
+class _RawPwmWord2Value2000RightConnectedTransport(_RawPwmTransport):
+    steps = STEPS_WORD2_2000_RIGHT_CONNECTED
+    success = SUCCESS_WORD2_2000_RIGHT_CONNECTED
+    observation_seconds = 0.250
+    motor_connected = True
+    physical_plug_label = "Motor R"
+
+
+class _RawPwmWord3Value2000RightConnectedTransport(_RawPwmTransport):
+    steps = STEPS_WORD3_2000_RIGHT_CONNECTED
+    success = SUCCESS_WORD3_2000_RIGHT_CONNECTED
+    observation_seconds = 0.250
+    motor_connected = True
     physical_plug_label = "Motor R"
 
 
@@ -512,6 +568,10 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             _RawPwmWord1Value2000LeftConnectedTransport),
         consent.RAW_PWM_WORD2_2000_PILOT_SCOPE: _RawPwmWord2Value2000Transport,
         consent.RAW_PWM_WORD3_2000_PILOT_SCOPE: _RawPwmWord3Value2000Transport,
+        consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE: (
+            _RawPwmWord2Value2000RightConnectedTransport),
+        consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE: (
+            _RawPwmWord3Value2000RightConnectedTransport),
     }[scope]
     output = new_output_path(output)
     root = output.parent

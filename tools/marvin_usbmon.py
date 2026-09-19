@@ -752,6 +752,11 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=False,
             raw_pwm_word1_2000_left_motor_connected_proof=False,
             authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=False,
+            raw_pwm_word2_2000_right_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof=False,
+            raw_pwm_word3_2000_right_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof=False,
+            physical_right_motor_connected_to_robot_left_motor_r_connector=False,
             disconnected_load_get_log=False,
             disconnected_load_legacy_getter_survey=False,
             disconnected_load_led_state_round_trip=False,
@@ -828,6 +833,16 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             raw_pwm_word1_2000_left_motor_connected_proof),
         authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=(
             authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof),
+        raw_pwm_word2_2000_right_motor_connected_proof=(
+            raw_pwm_word2_2000_right_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof),
+        raw_pwm_word3_2000_right_motor_connected_proof=(
+            raw_pwm_word3_2000_right_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof),
+        physical_right_motor_connected_to_robot_left_motor_r_connector=(
+            physical_right_motor_connected_to_robot_left_motor_r_connector),
         disconnected_load_get_log=disconnected_load_get_log,
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
         disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
@@ -873,9 +888,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                     motor_consent.DISCONNECTED_LED_STATE_SCOPE,
                     *motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES,
                     *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
-                    motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
-                    motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
-                    motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
+                    *motor_consent.RAW_PWM_CONNECTED_SCOPES)
                 else 15 if powered_trial else 45 if encoder_feedback_observation else 13)
             or coordinator_stop is not True
             or max_bytes != 1048576 or max_records != 10000 or max_line_bytes != 16384
