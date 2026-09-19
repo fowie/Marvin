@@ -734,7 +734,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             disconnected_load_led_state_round_trip=False,
             authorize_unvalidated_led_state_round_trip=False,
             disconnected_load_led_mapping_phase=False,
-            authorize_unvalidated_led_mapping_phase=False):
+            authorize_unvalidated_led_mapping_phase=False,
+            disconnected_load_wheel_led_blink_pilot=False,
+            authorize_unvalidated_wheel_led_blink_pilot=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -763,6 +765,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
         disconnected_load_led_mapping_phase=disconnected_load_led_mapping_phase,
         authorize_unvalidated_led_mapping_phase=authorize_unvalidated_led_mapping_phase,
+        disconnected_load_wheel_led_blink_pilot=disconnected_load_wheel_led_blink_pilot,
+        authorize_unvalidated_wheel_led_blink_pilot=(
+            authorize_unvalidated_wheel_led_blink_pilot),
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -793,7 +798,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096
             or seconds != (
-                20 if scope in (
+                25 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                else 20 if scope in (
                     motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
                     motor_consent.DISCONNECTED_LED_STATE_SCOPE)
                 else 15 if powered_trial else 45 if encoder_feedback_observation else 13)

@@ -702,7 +702,7 @@
       "sample_name": "SetLedBlink",
       "request_layout": "18 uint8 blink values; timing semantics unconfirmed",
       "sample_effect": "output_setting",
-      "live_probe_policy": "retired_after_precondition_stop_no_setter_sent",
+      "live_probe_policy": "fixed_off_start_reversible_pilot_prepared_offline_unexecuted",
       "sample_calls": [
         {
           "method": "setLedBlink_btn_Click",

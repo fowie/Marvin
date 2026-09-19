@@ -55,7 +55,7 @@ units remain unknown unless stated.
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the earlier value-1 set/restore and every completed index-at-`FF` set/restore through index 17 | **Proven status and physical-effect behavior, not application semantics.** The earlier index-0 value-1 round had no observed change. In the later interactive rounds, each fully transmitted setter returned raw `82`; all but index 15 produced a visible effect. Each exact-baseline restore also returned raw `82` while visibly restoring state. Raw `82` remains opaque and the physical observations do not establish electrical topology. | **Completed interactive mapping, separately authorized.** The two-phase index-at-255 mechanism preserved the exact live baseline and blocked each next index until an operator-confirmed power-cycle acknowledgment after raw `82`. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `1A` `SetLedBlink` | Output setter; 18 `uint8` values. `Form1.cs:781-812` zeroes all bytes, parses index `0..17` and value `0..255`, and sets only that index; `Form1.cs:815-844` also sends all-equal or random vectors. Timing semantics remain unknown. | No installed response: the only prepared pilot stopped before command `1A` | **Not executed.** A live prerequisite command-`17` read proved wheel-state index 12 was `00`, so the stale pilot stopped before its command-`19` read or any setter. | **Catalog-only.** The stale executable pilot is retired; a combined state-plus-blink probe cannot guarantee reverse cleanup across two opaque setters and an observation pause. |
+| `1A` `SetLedBlink` | Output setter; 18 `uint8` values. `Form1.cs:781-812` zeroes all bytes, parses index `0..17` and value `0..255`, and sets only that index; `Form1.cs:815-844` also sends all-equal or random vectors. Timing semantics remain unknown. | No installed setter response: the earlier pilot stopped before command `1A` | **Fixed OFF-start pilot prepared offline; not executed.** It preserves both exact installed baselines, changes only wheel index 12 to source/installed-backed value `42`, then attempts exact blink and LED-state restores in reverse order. | **Separately authorized fixed pilot only.** Residual application ambiguity is explicit; no generic index/value/payload access. |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
 | `1C` `SetUnitInfo` | Identity write; 12 bytes; sample uses alternating `AA`/`55`. `Form1.cs:628` | Unknown legacy response shape | **Source-only; no live test.** Persistence is unknown. | **Catalog-only: identity/configuration write.** |
 | `1D` `GetServoPosition` | Read; empty. `Form1.cs:778` | **Proven:** `80`, 4 bytes / 14-byte frame | **Proven exchange.** Returned raw values 2500 and 2730; not measured angles. This legacy meaning conflicts with newer `GetSensorInfo`. | **Catalog-only for motor rejection:** unrelated returned state; generation-sensitive despite the proved legacy exchange. |
@@ -754,25 +754,97 @@ afterward and reported that the earlier issue causing wheel LEDs to start ON
 had been fixed; wheels now start OFF. That power and visible-state statement is
 an operator observation, not software verification.
 
-The stale executable pilot is retired. Legacy source does support indexed
-18-byte `SetLedState` and `SetLedBlink` vectors, and installed evidence supplies
-blink value `42`, but a combined visible probe would require:
+The earlier two-phase executable was retired. Its replacement is a single
+bounded process so interruption or a protocol fault during the fixed
+three-second observation window enters the same mandatory cleanup. This is the
+strongest achievable software cleanup, not proof that an opaque setter or
+restore was applied.
 
-1. exact command-`17` and command-`19` baseline reads;
-2. command `18` changing only state index 12 to `FF`;
-3. command `1A` changing only blink index 12 to `42`;
-4. an operator observation pause;
-5. exact command-`1A` then command-`18` reverse restoration.
+#### Fixed OFF-start wheel LED blink pilot
 
-That sequence cannot meet the requested cleanup guarantee. Both installed
-command-`18` set and restore operations have returned opaque raw `82` while
-physical effects occurred, and command `1A` has no installed response evidence.
-A process interruption during the deliberate observation pause can prevent
-both restore writes entirely. A response timeout or fault after either setter
-also leaves application state uncertain; attempting the two reverse writes can
-be bounded, but cannot prove that either was applied. Power-cycle fallback is
-useful operator recovery, not guaranteed software cleanup. No combined runner,
-generic setter access, or replacement live invocation is therefore provided.
+**Prepared offline; never executed. This is software readiness, not live
+authorization.** It requires the exact installed OFF-start LED-state baseline
+`000000000000000000000000000000ff0000` and exact blink baseline
+`0000000000000000000000000000002a0000`. Any mismatch or non-`80` baseline
+reply stops before a setter.
+
+The fixed transcript is:
+
+| Step | Sequence/command | Exact request |
+|---|---:|---|
+| LED-state baseline | 3277 / `17` | `53cd0c1700000066ad45` |
+| blink baseline | 3278 / `19` | `53ce0c19000000647645` |
+| wheel state ON | 3279 / `18` | `53cf0c18001200000000000000000000000000ff0000ff00008b4245` |
+| wheel blink pilot | 3280 / `1A` | `53d00c1a0012000000000000000000000000002a00002a000096f345` |
+| exact blink restore | 3281 / `1A` | `53d10c1a0012000000000000000000000000000000002a0000ccac45` |
+| exact LED-state restore | 3282 / `18` | `53d20c18001200000000000000000000000000000000ff00009a7245` |
+| conditional blink getter | 3283 / `19` | `53d30c1900000067fb45` |
+| conditional state getter | 3284 / `17` | `53d40c1700000064a445` |
+
+The state setter changes only byte 12 from `00` to `FF`. The blink setter
+changes only byte 12 from `00` to `2A`; byte 15 remains the installed baseline
+`2A`. Raw `80` and `82` setter replies are recorded without decoding and the
+pilot continues to its fixed three-second visual observation window. The
+operator should report whether the wheel LEDs visibly blinked.
+
+Before each setter syscall, that component is conservatively marked
+`may_have_applied`. In cleanup, every still-required restore is attempted
+exactly once, blink first and LED state second, across raw `80`/`82`, timeout,
+CRC/correlation/extra-frame fault, partial/uncertain TX, interruption, or
+journal failure. Restore-attempt state is recorded before each restore syscall,
+and the syscall precedes its journal event, so a journal failure cannot suppress
+the second restore. There is no retry or reconnect.
+
+Only a matching CRC-valid raw-`80` restore permits its corresponding getter.
+Raw `82`, a missing response, or any other fault leaves application restoration
+unverified even when the exact restore write was fully accepted. The root-local
+state lock then blocks another LED mapper or blink phase until the operator
+confirms visible restoration, power cycles the controller, and records both
+facts offline against the exact sealed evidence manifest.
+
+Offline review:
+
+```sh
+python3 -B -m tools.marvin_legacy_wheel_led_blink \
+  --disconnected-load-wheel-led-blink-pilot \
+  --authorize-unvalidated-wheel-led-blink-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+Separately authorized live invocation, not authorized by this document:
+
+```sh
+python3 -B -m tools.marvin_legacy_wheel_led_blink \
+  --output "$MAPPING_ROOT/wheel-led-blink-off-start" --run \
+  --expected-physical-port "$REVIEWED_PHYSICAL_PORT" \
+  --disconnected-load-wheel-led-blink-pilot \
+  --authorize-unvalidated-wheel-led-blink-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+If either baseline is not getter-reverified after cleanup, power off, confirm
+the visible baseline has returned, power cycle, then record the external
+recovery without device access:
+
+```sh
+python3 -B -m tools.marvin_legacy_wheel_led_blink \
+  --acknowledge-restoration \
+  --evidence "$MAPPING_ROOT/wheel-led-blink-off-start" \
+  --physical-restoration-confirmed --power-cycle-confirmed
+```
+
+The successful maximum is 8 writes and 152 application TX bytes; a raw-`82`
+cleanup path skips both conditional getters and uses 6 writes / 132 TX bytes.
+Serial RX is capped at 8192 bytes. Full usbmon/accounting and shared evidence
+sealing are mandatory. Both motor power plugs and all servos remain physically
+disconnected; no motion or DMM observation is requested. Successful writes,
+CRC-valid frames, visible blinking, restore attempts, and power cycling do not
+decode raw status or prove application acknowledgment, electrical topology, or
+physical safety.
 
 #### Fixed left-attention photo pattern
 
