@@ -444,7 +444,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     root = output.parent
     previous = _load_state(root)
     if previous and previous["status"] not in (
-            "restored", "power_cycle_reset_confirmed", "set_aborted_before_baseline"):
+            "restored", "power_cycle_reset_confirmed", "set_aborted_before_baseline",
+            "set_aborted_before_nonzero", "aborted_before_hardware"):
         raise ValueError("RESTORATION_ACK_REQUIRED before another live diagnostic.")
     state = {
         "status": "raw_pwm_started",
@@ -470,7 +471,24 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             serial_seconds=SERIAL_SECONDS,
         )
     except BaseException:
-        state["status"] = "raw_pwm_restoration_unverified"
+        metadata = output / "metadata.json"
+        observation = {"nonzero_may_have_applied": output.exists()}
+        if metadata.is_file():
+            try:
+                observation = json.loads(metadata.read_text(encoding="utf-8")).get(
+                    "observation", observation)
+            except (OSError, json.JSONDecodeError):
+                pass
+        if observation.get("nonzero_may_have_applied") is True:
+            state["status"] = "raw_pwm_restoration_unverified"
+        elif not output.exists():
+            state.update(
+                status="aborted_before_hardware", hardware_access=False,
+                application_tx_bytes=0)
+        else:
+            state.update(
+                status="set_aborted_before_nonzero",
+                nonzero_may_have_applied=False)
         if output.is_dir() and (output / "SHA256SUMS").is_file():
             state["set_manifest_sha256"] = _verify_manifest(output)
         _write_state(root, state)
@@ -486,6 +504,30 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     )
     _write_state(root, state)
     return result
+
+
+def clear_stale_preflight_lock(output):
+    output = new_output_path(output)
+    root = output.parent
+    state = _load_state(root)
+    if (not state or state.get("status") not in (
+                "raw_pwm_restoration_unverified", "aborted_before_hardware")
+            or state.get("set_evidence") != str(output) or output.exists()
+            or state.get("set_manifest_sha256") is not None):
+        raise ValueError("No matching artifact-free raw-PWM preflight lock exists.")
+    state.update(
+        status="aborted_before_hardware", hardware_access=False,
+        application_tx_bytes=0,
+        cleared_at=time.time(),
+        reason="preflight_failed_before_output_or_serial_creation",
+    )
+    _write_state(root, state)
+    return {
+        "status": "aborted_before_hardware",
+        "target": state["target"],
+        "hardware_access": False,
+        "application_tx_bytes": 0,
+    }
 
 
 def acknowledge_restoration(evidence, *, physical_output_baseline_confirmed=False,

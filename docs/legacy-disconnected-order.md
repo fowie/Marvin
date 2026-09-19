@@ -1108,6 +1108,46 @@ locks exactly as it did in the connected raw-2000 run. Disconnected results
 and clean restoration evidence are prerequisites to considering any connected
 word-1 test.
 
+#### Two aborted pre-hardware word-1 attempts
+
+The first requested output path ended in a reported udevadm by-id preflight
+failure while robot power was initially OFF. The second requested output path
+was immediately rejected by `RESTORATION_ACK_REQUIRED` after power was turned
+on. The user then cut power. Neither named output directory exists: there is no
+outer manifest, nested capture manifest, serial adapter journal, usbmon trace,
+or metadata file for either attempt. Because session output creation follows
+preflight and serial opening follows successful capture setup, this absence,
+together with the state file pointing only at the first requested path, proves
+that both attempts submitted zero application commands / zero TX bytes. The
+first failed before output or serial creation; the second failed at the stale
+lock before preflight.
+
+Root cause was software state lifecycle: `raw_pwm_started` was persisted before
+the shared preflight, and the broad failure path unconditionally converted
+every failure into `raw_pwm_restoration_unverified`, even when no output
+directory or device access existed. The lifecycle now records:
+
+- `aborted_before_hardware`, `hardware_access: false` when the output path was
+  never created;
+- `set_aborted_before_nonzero` when sealed observation evidence explicitly
+  says no nonzero setter could have applied;
+- `raw_pwm_restoration_unverified` conservatively whenever observation says a
+  nonzero may have applied, or output evidence is missing/malformed after an
+  output directory exists.
+
+All three safe terminal states are explicit; only the first two permit another
+run without physical-restoration acknowledgment. The exact artifact-free lock
+for the first attempt was updated offline to `aborted_before_hardware` with
+`hardware_access: false` and `application_tx_bytes: 0`. No evidence was
+invented or sealed after the fact.
+
+A regression reproduces a udevadm/preflight exception, proves the output path
+remains absent, and proves the next run reaches preflight instead of the
+restoration gate. A separate regression confirms possible-setter evidence still
+locks. A fresh disconnected word-1 attempt is now software-justified after new
+operator safety confirmation and power-on; this is readiness, not live
+authorization.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load

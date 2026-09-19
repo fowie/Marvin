@@ -375,7 +375,26 @@
         "source_basis": "PCTestApp serializes four positional UInt16 words but does not name motor/direction/bridge semantics",
         "hypothesis": "word1 may be complementary direction for the same tested connector; inference only",
         "gates": "fresh-boot exact-zero cmd0A baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict prewrite/USB/correlation; no retry/reconnect",
-        "connected_followup": "not implemented; requires disconnected waveform and cleanup-state evidence first"
+        "connected_followup": "not implemented; requires disconnected waveform and cleanup-state evidence first",
+        "aborted_attempts": [
+          {
+            "requested_output": "raw-pwm-word1-2000-20260919T1222",
+            "result": "udevadm by-id preflight failure before output or serial creation",
+            "evidence": "named output directory absent; no manifest, metadata, adapter journal, or usbmon",
+            "application_commands": 0,
+            "application_tx_bytes": 0
+          },
+          {
+            "requested_output": "raw-pwm-word1-2000-20260919T1223",
+            "result": "stale RESTORATION_ACK_REQUIRED rejection before preflight",
+            "evidence": "named output directory absent; no manifest, metadata, adapter journal, or usbmon",
+            "application_commands": 0,
+            "application_tx_bytes": 0
+          }
+        ],
+        "state_fix": "artifact-free preflight failure => aborted_before_hardware/hardware_access false; explicit no-nonzero evidence => set_aborted_before_nonzero; possible or indeterminate setter => restoration lock retained",
+        "stale_state_resolution": "updated offline to aborted_before_hardware with hardware_access false and application_tx_bytes 0",
+        "fresh_attempt": "software-justified after new live safety confirmation; not authorization"
       },
       "newer_drive_meaning": {
         "command": 11,

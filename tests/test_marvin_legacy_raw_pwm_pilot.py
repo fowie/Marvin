@@ -551,6 +551,62 @@ class RawPwmPilotTests(unittest.TestCase):
             power_cycle_confirmed=True)
         self.assertEqual(result["status"], "power_cycle_reset_confirmed")
 
+        stale_output = self.root / "preflight-never-created"
+        pilot._write_state(self.root, {
+            "status": "raw_pwm_restoration_unverified",
+            "target": pilot.PROFILES[consent.RAW_PWM_WORD1_2000_PILOT_SCOPE]["target"],
+            "set_evidence": str(stale_output.resolve()),
+        })
+        cleared = pilot.clear_stale_preflight_lock(stale_output)
+        self.assertEqual(cleared, {
+            "status": "aborted_before_hardware",
+            "target": "raw-pwm-word1-2000-pilot",
+            "hardware_access": False,
+            "application_tx_bytes": 0,
+        })
+
+        first_output = self.root / "udevadm-preflight-failure"
+        second_output = self.root / "permitted-retry"
+        preflight = Mock(side_effect=[
+            OSError("udevadm by-id failed"),
+            OSError("retry reached preflight"),
+        ])
+        with patch.object(pilot.zero, "_run_diagnostic", preflight), \
+                redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(OSError, "udevadm by-id failed"):
+                pilot.run_diagnostic(
+                    first_output, expected_physical_port="1-3", run=True,
+                    **DECLARATIONS_WORD1_2000)
+            self.assertEqual(
+                pilot._load_state(self.root)["status"], "aborted_before_hardware")
+            self.assertEqual(
+                pilot._load_state(self.root)["application_tx_bytes"], 0)
+            with self.assertRaisesRegex(OSError, "retry reached preflight"):
+                pilot.run_diagnostic(
+                    second_output, expected_physical_port="1-3", run=True,
+                    **DECLARATIONS_WORD1_2000)
+        self.assertEqual(preflight.call_count, 2)
+        self.assertFalse(first_output.exists())
+        self.assertFalse(second_output.exists())
+
+        possible_setter_output = self.root / "possible-setter"
+
+        def possible_setter(output, **_):
+            output.mkdir()
+            (output / "metadata.json").write_text(json.dumps({
+                "observation": {"nonzero_may_have_applied": True},
+            }), encoding="utf-8")
+            raise OSError("fault after possible setter")
+
+        with patch.object(pilot.zero, "_run_diagnostic", side_effect=possible_setter), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "fault after possible setter"):
+            pilot.run_diagnostic(
+                possible_setter_output, expected_physical_port="1-3", run=True,
+                **DECLARATIONS_WORD1_2000)
+        self.assertEqual(
+            pilot._load_state(self.root)["status"], "raw_pwm_restoration_unverified")
+
         boundary = Mock(
             last_write_sequence=3330, last_write_started=10,
             event=Mock(), steps=pilot.STEPS)
