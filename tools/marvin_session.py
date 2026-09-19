@@ -269,6 +269,10 @@ def run_session(
     authorize_unvalidated_raw_pwm_word0_2000_pilot=False,
     disconnected_load_raw_pwm_word1_2000_pilot=False,
     authorize_unvalidated_raw_pwm_word1_2000_pilot=False,
+    disconnected_load_raw_pwm_word2_2000_pilot=False,
+    authorize_unvalidated_raw_pwm_word2_2000_pilot=False,
+    disconnected_load_raw_pwm_word3_2000_pilot=False,
+    authorize_unvalidated_raw_pwm_word3_2000_pilot=False,
     raw_pwm_word0_1000_left_motor_connected_proof=False,
     authorize_unvalidated_raw_pwm_left_motor_connected_proof=False,
     physical_left_motor_connected_to_robot_right_motor_l_connector=False,
@@ -340,6 +344,14 @@ def run_session(
             disconnected_load_raw_pwm_word1_2000_pilot),
         authorize_unvalidated_raw_pwm_word1_2000_pilot=(
             authorize_unvalidated_raw_pwm_word1_2000_pilot),
+        disconnected_load_raw_pwm_word2_2000_pilot=(
+            disconnected_load_raw_pwm_word2_2000_pilot),
+        authorize_unvalidated_raw_pwm_word2_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word2_2000_pilot),
+        disconnected_load_raw_pwm_word3_2000_pilot=(
+            disconnected_load_raw_pwm_word3_2000_pilot),
+        authorize_unvalidated_raw_pwm_word3_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word3_2000_pilot),
         raw_pwm_word0_1000_left_motor_connected_proof=(
             raw_pwm_word0_1000_left_motor_connected_proof),
         authorize_unvalidated_raw_pwm_left_motor_connected_proof=(
@@ -414,6 +426,8 @@ def run_session(
                                         *motor_consent.RAW_PWM_1000_PILOT_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_2000_PILOT_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD2_2000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD3_2000_PILOT_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS,
@@ -455,8 +469,7 @@ def run_session(
                 from tools.marvin_legacy_velocity_train import transcript_for_scope
                 TRANSCRIPT = transcript_for_scope(scope)
             elif scope in (
-                    *motor_consent.RAW_PWM_PILOT_SCOPES,
-                    motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE,
+                    *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
                     motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
                     motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
                     motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE):
@@ -483,8 +496,7 @@ def run_session(
                         motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
                         motor_consent.DISCONNECTED_LED_STATE_SCOPE,
                         *motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES,
-                        *motor_consent.RAW_PWM_PILOT_SCOPES,
-                        motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE,
+                        *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
                         motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
                         motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
                         motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
@@ -693,6 +705,10 @@ def run_session(
                             if scope == motor_consent.RAW_PWM_2000_PILOT_SCOPE
                             else "DisconnectedLoadRawPwmWord1Value2000Pilot"
                             if scope == motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord2Value2000Pilot"
+                            if scope == motor_consent.RAW_PWM_WORD2_2000_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord3Value2000Pilot"
+                            if scope == motor_consent.RAW_PWM_WORD3_2000_PILOT_SCOPE
                             else "RawPwmWord0Value1000LeftMotorConnectedProof"
                             if scope == motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE
                             else "RawPwmWord0Value2000LeftMotorConnectedProof"
@@ -734,6 +750,10 @@ def run_session(
                             scope == motor_consent.RAW_PWM_2000_PILOT_SCOPE),
                         fixed_raw_pwm_word1_2000_pilot_authorized=(
                             scope == motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE),
+                        fixed_raw_pwm_word2_2000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD2_2000_PILOT_SCOPE),
+                        fixed_raw_pwm_word3_2000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD3_2000_PILOT_SCOPE),
                         fixed_raw_pwm_left_motor_connected_proof_authorized=(
                             scope == motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE),
                         fixed_raw_pwm_2000_left_motor_connected_proof_authorized=(

@@ -422,7 +422,7 @@
         "meaning": "word1 raw2000 has opposite observed negative polarity from corrected word0 raw2000 positive output on same disconnected connector; field/direction/calibrated units unproved"
       },
       "connected_word1_2000_profile": {
-        "status": "prepared_not_executed",
+        "status": "completed",
         "scope": "raw_pwm_word1_2000_left_motor_connected_proof",
         "sequence_range": "3353..3356",
         "setter_words_uint16": [0, 2000, 0, 0],
@@ -433,7 +433,34 @@
         "physical_load": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; encoder harnesses connected; wheels clear",
         "expectation": "opposite/forward relative to word0 reverse is hypothesis only; operator reports actual direction",
         "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/correlation; no retry/reconnect",
-        "nonzero_final_getter": "fault and restoration lock without reinterpretation or relaxed policy"
+        "nonzero_final_getter": "fault and restoration lock without reinterpretation or relaxed policy",
+        "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 empty setter; raw80 empty cleanup; exact-zero raw80 final getter",
+        "physical_observation": "physical left wheel moved forward and visibly stopped after the 250ms window/cleanup; no abnormal behavior; robot powered OFF afterward",
+        "meaning": "combined tested map: word0 value2000 moved the physical left wheel reverse; word1 value2000 moved it forward; raw82 and stop causation remain unproved",
+        "hashes": {
+          "outer_metadata": "938afb98fc9cdf284a0d5810f5c099240b2fafe083ea173adaf9ad03bce9d43e",
+          "capture_metadata": "bf0a6e4274cbf7b24e907bd8d6e83c54f945bf9083fdb487e3a3327a319fc5ed",
+          "adapter_journal": "55baf86a273981238c880b50384ffe07ce1a1a59f5d7f2ab99da67f46890ae25",
+          "binary_usbmon": "03fca236daef6710119bd1c46a87c663c6826830a8c1962862217a2d546bf4ef"
+        }
+      },
+      "motor_r_disconnected_profiles": {
+        "status": "prepared_not_executed",
+        "physical_target": "robot-left-side connector printed Motor R; both motor power plugs disconnected",
+        "word2": {
+          "scope": "disconnected_load_raw_pwm_word2_2000_pilot",
+          "sequence_range": "3357..3360",
+          "setter_words_uint16": [0, 0, 2000, 0],
+          "transcript_sha256": "64bf02c70c5b94a5e2845e73468d72a3b441fa4cd0002f38012707a2b2bc8fca"
+        },
+        "word3": {
+          "scope": "disconnected_load_raw_pwm_word3_2000_pilot",
+          "sequence_range": "3361..3364",
+          "setter_words_uint16": [0, 0, 0, 2000],
+          "transcript_sha256": "6ecfb0fac2ed75ae890517d913ba82b1e5a460d52826bf50661d0ec01304700d"
+        },
+        "shared_gates": "separate runs; exact-zero baseline; one setter; 3s observation; mandatory all-zero cleanup; conditional exact-zero getter; no retry/reconnect",
+        "hypothesis": "word2/word3 may be the positional pair for printed Motor R, but polarity establishes only the tested waveform fact"
       },
       "newer_drive_meaning": {
         "command": 11,

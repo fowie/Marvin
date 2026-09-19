@@ -1188,9 +1188,9 @@ positional words under the tested disconnected setup. It does not prove field
 names, calibrated voltage/duty/frequency, motor direction, loaded torque, or
 bridge topology. The robot was powered OFF after the third run.
 
-### Prepared connected left-motor word-1/value-2000 proof
+### Completed connected left-motor word-1/value-2000 proof
 
-The connected proof is a separate literal scope: only the physical left motor
+The completed proof used the separate literal scope: only the physical left motor
 is connected to the robot-right-side controller connector printed `Motor L`;
 the right motor is unplugged, servos isolated, both encoder harnesses
 connected, wheels clear on blocks, and the operator remains at independent
@@ -1242,12 +1242,64 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --run
 ```
 
-The operator watches the physical left wheel and reports no motion or actual
-direction, visible stop or uncertainty after cleanup, abnormal sound, and
-whether cutoff was used. As before, a clean raw `80` cleanup response does not
-prove stop. If the final getter returns any nonzero word—including a pattern
-like the prior `[0,100,0,0]`—the exact-zero check fails and the state lock
-requires physical confirmation plus power cycle. That policy is unchanged.
+The sealed `raw-pwm-word1-left-motor-connected-20260919T1233` run exited zero.
+All manifests verified. It recorded four accepted writes / 56 TX bytes, zero
+uncertain TX, and 56 RX bytes: exact-zero raw-`80` baseline, opaque raw-`82`
+`[0,2000,0,0]` setter, one raw-`80` all-zero cleanup, and exact-zero raw-`80`
+final getter. usbmon independently recorded four successful OUT / 56 bytes
+and four payload-bearing successful IN / 56 bytes with no correlation faults.
+Evidence hashes are outer metadata
+`938afb98fc9cdf284a0d5810f5c099240b2fafe083ea173adaf9ad03bce9d43e`,
+capture metadata
+`bf0a6e4274cbf7b24e907bd8d6e83c54f945bf9083fdb487e3a3327a319fc5ed`,
+adapter journal
+`55baf86a273981238c880b50384ffe07ce1a1a59f5d7f2ab99da67f46890ae25`,
+and binary usbmon
+`03fca236daef6710119bd1c46a87c663c6826830a8c1962862217a2d546bf4ef`.
+
+The operator observed the physical left wheel move forward and visibly stop
+after the 250 ms window/cleanup, with no abnormal behavior, then powered the
+robot OFF. Combined with the earlier word-0/value-2000 reverse motion, this
+establishes those two tested physical directions for the connected left motor.
+It does not decode raw `82`, prove that cleanup caused the stop, or establish
+generic word/channel topology.
+
+### Prepared disconnected actual-Motor-R word-2 and word-3 mapping
+
+The corrected reciprocal connector map is: robot-right-side printed `Motor L`
+controls the physical left motor; robot-left-side printed `Motor R` controls
+the physical right motor. The earlier supposed Motor-R scope run used the
+former connector and is not evidence for actual printed `Motor R`.
+
+These are separate immutable disconnected-load scopes, never combined. Both
+motor power plugs remain disconnected, servos isolated, encoder harnesses
+connected, robot secured, and a differential/isolated scope is placed across
+the robot-left-side connector printed `Motor R`. Word 2 is tested first.
+Words 2/3 forming a direction pair is only a positional hypothesis.
+
+| Scope | Sequences | Setter words | Exact frames | Transcript SHA-256 |
+|---|---:|---|---|---|
+| word 2 | 3357..3360 | `[0,0,2000,0]` | `531d0d0a0000004e9145`; `531e0d0b00080000000000d0070000f35e45`; `531f0d0b00080000000000000000007a9e45`; `53200d0a0000004a7c45` | `64bf02c70c5b94a5e2845e73468d72a3b441fa4cd0002f38012707a2b2bc8fca` |
+| word 3 | 3361..3364 | `[0,0,0,2000]` | `53210d0a0000004bad45`; `53220d0b000800000000000000d0075a6145`; `53230d0b000800000000000000000046a245`; `53240d0a0000004bf845` | `6ecfb0fac2ed75ae890517d913ba82b1e5a460d52826bf50661d0ec01304700d` |
+
+Each performs an exact-zero `0A` baseline, one `0B` setter, fixed three-second
+scope window, exactly one all-zero cleanup, then conditional exact-zero getter.
+There is no retry or reconnect. The exact offline dry run for word 2 is:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word2-2000-pilot \
+  --authorize-unvalidated-raw-pwm-word2-2000-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+The live form, which is software readiness and **not live authorization**, adds
+`--expected-physical-port PORT --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run`.
+Only after word 2 evidence is sealed should the same invocation substitute
+`word3` for `word2` in both literal flags. Waveform polarity is recorded as an
+observation only; it does not prove direction, calibrated duty, or motor binding.
 
 ## Proven fixed legacy getter survey
 
