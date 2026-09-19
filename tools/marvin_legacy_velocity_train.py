@@ -21,9 +21,11 @@ from tools.marvin_legacy_protocol import decode_packet
 
 
 FIRST_SEQUENCE = 3285
+RIGHT_FIRST_SEQUENCE = 3307
 TRAIN_COUNT = 20
 CADENCE_SECONDS = 0.050
 LEFT_PLUS_1000 = (1000).to_bytes(2, "little", signed=True) + bytes(2)
+RIGHT_PLUS_1000 = bytes(2) + (1000).to_bytes(2, "little", signed=True)
 ALL_ZERO = bytes(4)
 INITIAL_ZERO = _frame(FIRST_SEQUENCE, 0x11, ALL_ZERO)
 TRAIN = tuple(
@@ -32,37 +34,85 @@ TRAIN = tuple(
 )
 CLEANUP_ZERO = _frame(FIRST_SEQUENCE + 1 + TRAIN_COUNT, 0x11, ALL_ZERO)
 TRANSCRIPT = (INITIAL_ZERO, *TRAIN, CLEANUP_ZERO)
+RIGHT_INITIAL_ZERO = _frame(RIGHT_FIRST_SEQUENCE, 0x11, ALL_ZERO)
+RIGHT_TRAIN = tuple(
+    _frame(RIGHT_FIRST_SEQUENCE + 1 + index, 0x11, RIGHT_PLUS_1000)
+    for index in range(TRAIN_COUNT)
+)
+RIGHT_CLEANUP_ZERO = _frame(RIGHT_FIRST_SEQUENCE + 1 + TRAIN_COUNT, 0x11, ALL_ZERO)
+RIGHT_TRANSCRIPT = (RIGHT_INITIAL_ZERO, *RIGHT_TRAIN, RIGHT_CLEANUP_ZERO)
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.040
 SUCCESS = "disconnected_load_left_plus_1000_velocity_train_complete_unverified"
+RIGHT_SUCCESS = "disconnected_load_right_plus_1000_velocity_train_complete_unverified"
+PROFILES = {
+    consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE: {
+        "transcript": TRANSCRIPT,
+        "first_sequence": FIRST_SEQUENCE,
+        "commanded_field": "PCTestApp leftVel first signed int16 word",
+        "fixed_left_raw_value": 1000,
+        "fixed_right_raw_value": 0,
+        "success": SUCCESS,
+        "report_key": "disconnected_load_left_plus_1000_velocity_train_observation",
+        "authorization": "unvalidated_left_plus_1000_velocity_train_authorized",
+        "physical_plug": "Motor L",
+    },
+    consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: {
+        "transcript": RIGHT_TRANSCRIPT,
+        "first_sequence": RIGHT_FIRST_SEQUENCE,
+        "commanded_field": "PCTestApp rightVel second signed int16 word",
+        "fixed_left_raw_value": 0,
+        "fixed_right_raw_value": 1000,
+        "success": RIGHT_SUCCESS,
+        "report_key": "disconnected_load_right_plus_1000_velocity_train_observation",
+        "authorization": "unvalidated_right_plus_1000_velocity_train_authorized",
+        "physical_plug": "Motor R",
+    },
+}
 
 
-def prepare():
-    for index, raw in enumerate(TRANSCRIPT):
+def transcript_for_scope(scope):
+    try:
+        return PROFILES[scope]["transcript"]
+    except KeyError:
+        raise ValueError("Unknown fixed velocity-train scope.") from None
+
+
+def prepare(scope=consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE):
+    profile = PROFILES[scope]
+    transcript = profile["transcript"]
+    first_sequence = profile["first_sequence"]
+    for index, raw in enumerate(transcript):
         packet = decode_packet(raw)
-        expected_payload = ALL_ZERO if index in (0, len(TRANSCRIPT) - 1) else LEFT_PLUS_1000
+        expected_payload = (
+            ALL_ZERO if index in (0, len(transcript) - 1)
+            else (profile["fixed_left_raw_value"].to_bytes(2, "little", signed=True)
+                  + profile["fixed_right_raw_value"].to_bytes(2, "little", signed=True)))
         if (packet.sequence, packet.command, packet.response_field, packet.payload) != (
-                FIRST_SEQUENCE + index, 0x11, 0, expected_payload):
+                first_sequence + index, 0x11, 0, expected_payload):
             raise ValueError("Fixed velocity-train transcript disagrees with the legacy decoder.")
     return {
         "status": "dry_run",
-        "name": consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE,
+        "name": scope,
         "profile": "marvin-legacy-se",
-        "immutable_application_transcript_hex": [raw.hex() for raw in TRANSCRIPT],
-        "transcript_sha256": hashlib.sha256(b"".join(TRANSCRIPT)).hexdigest(),
-        "initial_zero_sequence": FIRST_SEQUENCE,
-        "train_sequences": [FIRST_SEQUENCE + 1, FIRST_SEQUENCE + TRAIN_COUNT],
-        "cleanup_zero_sequence": FIRST_SEQUENCE + TRAIN_COUNT + 1,
-        "fixed_left_raw_value": 1000,
-        "fixed_right_raw_value": 0,
+        "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
+        "transcript_sha256": hashlib.sha256(b"".join(transcript)).hexdigest(),
+        "initial_zero_sequence": first_sequence,
+        "train_sequences": [first_sequence + 1, first_sequence + TRAIN_COUNT],
+        "cleanup_zero_sequence": first_sequence + TRAIN_COUNT + 1,
+        "commanded_field": profile["commanded_field"],
+        "operator_selected_physical_plug_label": profile["physical_plug"],
+        "physical_plug_to_source_field_mapping": "not_established",
+        "fixed_left_raw_value": profile["fixed_left_raw_value"],
+        "fixed_right_raw_value": profile["fixed_right_raw_value"],
         "fixed_train_count": TRAIN_COUNT,
         "fixed_cadence_seconds": CADENCE_SECONDS,
         "nominal_train_span_seconds": (TRAIN_COUNT - 1) * CADENCE_SECONDS,
-        "maximum_application_bytes": sum(map(len, TRANSCRIPT)),
-        "maximum_writes": len(TRANSCRIPT),
+        "maximum_application_bytes": sum(map(len, transcript)),
+        "maximum_writes": len(transcript),
         "maximum_serial_rx_bytes": 8192,
-        "maximum_expected_response_bytes": len(TRANSCRIPT) * 10,
+        "maximum_expected_response_bytes": len(transcript) * 10,
         "response_policy": (
             "initial_zero_requires_crc_valid_correlated_empty_raw80; "
             "fixed_nonzero_train_accepts_raw80_or_raw82_opaquely"),
@@ -72,7 +122,8 @@ def prepare():
         "automatic_retries": False,
         "automatic_reconnect": False,
         "scope_observation": (
-            "trigger_on_left_output_and_compare_absence_or_presence_of_pwm_or_enable_pulses"),
+            f"observe_disconnected_physical_{profile['physical_plug'].replace(' ', '_')}_plug_"
+            "without_inferring_source_field_mapping"),
         "software_outcome_is_physical_scope_result": False,
         "source_basis": (
             "PCTestApp timer2_Tick sends command11 repeatedly; Designer fixes timer2 to 50ms. "
@@ -80,22 +131,26 @@ def prepare():
         "physical_stop": "not_established",
         "required": ["--run", "--expected-physical-port", "--output NEWDIR",
                      *("--" + name.replace("_", "-")
-                       for name in consent.DISCONNECTED_VELOCITY_TRAIN_FLAGS)],
+                       for name in consent.POWERED_TRIAL_SCOPES[scope])],
     }
 
 
 class _VelocityTrainTransport(LiveTransport):
+    transcript = TRANSCRIPT
+    success = SUCCESS
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.may_have_applied = False
         self.cleanup_attempted = False
 
     def submit(self, index, *, deadline):
-        if type(index) is not int or index != self.writes or not 0 <= index < len(TRANSCRIPT) - 1:
+        if (type(index) is not int or index != self.writes
+                or not 0 <= index < len(self.transcript) - 1):
             raise OSError("Only the next fixed velocity-train write is permitted.")
         if index:
             self.may_have_applied = True
-        return self._submit_once(TRANSCRIPT[index], deadline=deadline)
+        return self._submit_once(self.transcript[index], deadline=deadline)
 
     def cleanup_once(self, *, deadline):
         if self.cleanup_attempted:
@@ -103,7 +158,7 @@ class _VelocityTrainTransport(LiveTransport):
         if not self.may_have_applied:
             raise OSError("Cleanup zero is not required before a nonzero syscall.")
         self.cleanup_attempted = True
-        raw = CLEANUP_ZERO
+        raw = self.transcript[-1]
         self._check(deadline)
         self.ingress.expected_tx.append(raw)
         self.writes += 1
@@ -115,8 +170,13 @@ class _VelocityTrainTransport(LiveTransport):
         return count
 
 
+class _RightVelocityTrainTransport(_VelocityTrainTransport):
+    transcript = RIGHT_TRANSCRIPT
+    success = RIGHT_SUCCESS
+
+
 def _submit(transport, report, index, *, deadline, cleanup=False):
-    raw = TRANSCRIPT[index]
+    raw = transport.transcript[index]
     report["uncertain_tx_bytes"] += len(raw)
     count = (transport.cleanup_once(deadline=deadline) if cleanup
              else transport.submit(index, deadline=deadline))
@@ -130,7 +190,7 @@ def _submit(transport, report, index, *, deadline, cleanup=False):
 
 
 def _response(transport, report, index, *, deadline, clock=time.monotonic):
-    request = decode_packet(TRANSCRIPT[index])
+    request = decode_packet(transport.transcript[index])
     if (transport.last_write_sequence != request.sequence
             or type(transport.last_write_started) not in (int, float)
             or transport.last_write_started > clock()):
@@ -172,7 +232,7 @@ def _wait_until(transport, target, deadline, *, clock=time.monotonic, sleeper=ti
 
 
 def _attempt_cleanup(transport, report, *, clock=time.monotonic):
-    index = len(TRANSCRIPT) - 1
+    index = len(transport.transcript) - 1
     deadline = clock() + CLEANUP_SECONDS
     _submit(transport, report, index, deadline=deadline, cleanup=True)
     report["cleanup_zero_fully_accepted"] = True
@@ -215,7 +275,7 @@ def _observe(transport, report, *, clock=time.monotonic, sleeper=time.sleep):
             transport, train_start + TRAIN_COUNT * CADENCE_SECONDS,
             deadline, clock=clock, sleeper=sleeper)
         _attempt_cleanup(transport, report, clock=clock)
-        report["status"] = SUCCESS
+        report["status"] = transport.success
     except BaseException as error:
         primary = error
         report.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024],
@@ -254,7 +314,7 @@ def _validate_capture(options):
     if (options.get("_isolated_zero_velocity") or options.get("_motor_power_off_preparation")
             or consent.classify(
                 actuators_isolated=options.get("actuators_isolated", False),
-                **declarations) != consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE):
+                **declarations) not in consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES):
         raise ValueError("Velocity train capture requires its complete literal scope.")
 
 
@@ -262,21 +322,26 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
                    actuators_isolated=False, **declarations):
     try:
         scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
-        if run is not True or scope != consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE:
+        if run is not True or scope not in consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES:
             raise ValueError("Literal --run and fixed velocity-train scope are required.")
+        profile = PROFILES[scope]
+        transport_type = (
+            _RightVelocityTrainTransport
+            if scope == consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
+            else _VelocityTrainTransport)
         return zero._run_diagnostic(
-            output, expected_physical_port=expected_physical_port, review=prepare(),
-            transport_type=_VelocityTrainTransport, observe=_observe,
+            output, expected_physical_port=expected_physical_port, review=prepare(scope),
+            transport_type=transport_type, observe=_observe,
             limits=zero._Limits(
-                first_sequence=FIRST_SEQUENCE, max_requests=len(TRANSCRIPT),
+                first_sequence=profile["first_sequence"],
+                max_requests=len(profile["transcript"]),
                 interval=0, max_lateness=0.020),
             session_options={"actuators_isolated": False, **declarations},
             declarations={**consent.powered_trial_history(declarations),
                           "run_id": str(uuid.uuid4())},
-            expected_tx=sum(map(len, TRANSCRIPT)), success_status=SUCCESS,
-            report_key="disconnected_load_left_plus_1000_velocity_train_observation",
-            authorizations={"unvalidated_left_plus_1000_velocity_train_authorized": True},
-            capture_validator=_validate_capture,
+            expected_tx=sum(map(len, profile["transcript"])),
+            success_status=profile["success"], report_key=profile["report_key"],
+            authorizations={profile["authorization"]: True}, capture_validator=_validate_capture,
             on_failure=consent.notify_powered_trial_fault,
             serial_seconds=SERIAL_SECONDS,
         )
@@ -298,11 +363,14 @@ def main(argv=None):
     declarations = {**consent.arguments(args), **consent.observation_arguments(args),
                     **consent.powered_trial_arguments(args)}
     try:
+        scope = consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE
         if args.run and args.output is None:
             raise ValueError("--output NEWDIR is required.")
         if args.actuators_isolated or any(declarations.values()):
+            scope = consent.classify(
+                actuators_isolated=args.actuators_isolated, **declarations)
             _validate_capture({"actuators_isolated": args.actuators_isolated, **declarations})
-        result = prepare() if not args.run else run_diagnostic(
+        result = prepare(scope) if not args.run else run_diagnostic(
             args.output, expected_physical_port=args.expected_physical_port,
             run=True, actuators_isolated=args.actuators_isolated, **declarations)
     except (Exception, KeyboardInterrupt) as error:

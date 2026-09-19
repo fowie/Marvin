@@ -20,12 +20,17 @@ from tools import marvin_usbmon as usbmon
 DECLARATIONS = dict.fromkeys(consent.DISCONNECTED_VELOCITY_TRAIN_FLAGS, True)
 FLAGS = ["--" + name.replace("_", "-")
          for name in consent.DISCONNECTED_VELOCITY_TRAIN_FLAGS]
+RIGHT_DECLARATIONS = dict.fromkeys(consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS, True)
+RIGHT_FLAGS = ["--" + name.replace("_", "-")
+               for name in consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS]
 
 
 class _Transport:
     token = "token"
     serial_bytes = 0
     plan = Mock(max_lateness=.02)
+    transcript = train.TRANSCRIPT
+    success = train.SUCCESS
 
     def __init__(self, submit_fault=None):
         self.submit_fault = submit_fault
@@ -72,7 +77,7 @@ class VelocityTrainTests(unittest.TestCase):
     def response(transport, report, index, **_):
         status = 0x80 if index in (0, len(train.TRANSCRIPT) - 1) else 0x82
         report["responses"].append({
-            "sequence": train.FIRST_SEQUENCE + index,
+            "sequence": train.decode_packet(transport.transcript[index]).sequence,
             "raw_response_field": status,
         })
         return Mock(response_field=status)
@@ -104,6 +109,35 @@ class VelocityTrainTests(unittest.TestCase):
         self.assertTrue(all(
             train.decode_packet(raw).payload == train.LEFT_PLUS_1000
             for raw in train.TRAIN))
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(train.main(RIGHT_FLAGS), 0)
+        right_plan = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (right_plan["name"], right_plan["commanded_field"],
+             right_plan["operator_selected_physical_plug_label"]),
+            (consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE,
+             "PCTestApp rightVel second signed int16 word", "Motor R"))
+        self.assertEqual(right_plan["immutable_application_transcript_hex"][:4], [
+            "53eb0c1100040000000000efb245",
+            "53ec0c110004000000e803506945",
+            "53ed0c110004000000e80301ac45",
+            "53ee0c110004000000e803f1a345",
+        ])
+        self.assertEqual(right_plan["immutable_application_transcript_hex"][-2:], [
+            "53ff0c110004000000e803a1f345",
+            "53000d1100040000000000979145",
+        ])
+        self.assertEqual(
+            right_plan["transcript_sha256"],
+            "07d2dec07a7db89cc859ac16f4aeb16390361076385aafa41af1fb563c43ec5d")
+        self.assertTrue(all(
+            train.decode_packet(raw).payload == train.RIGHT_PLUS_1000
+            for raw in train.RIGHT_TRAIN))
+        self.assertEqual(
+            train.transcript_for_scope(consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
+            train.RIGHT_TRANSCRIPT)
         for knob in ("value", "duration", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -113,6 +147,11 @@ class VelocityTrainTests(unittest.TestCase):
                 train.run_diagnostic(
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     **(DECLARATIONS | {name: False}))
+        for name in consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS:
+            with self.subTest(right_name=name), self.assertRaises(ValueError):
+                train.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(RIGHT_DECLARATIONS | {name: False}))
 
         harness = session_tests.SessionTests()
         harness.setUp()
@@ -139,6 +178,28 @@ class VelocityTrainTests(unittest.TestCase):
             self.assertEqual(usbmon.main(command[2:]), 0)
         train._validate_capture(capture.call_args.kwargs)
 
+        right_harness = session_tests.SessionTests()
+        right_harness.setUp()
+        self.addCleanup(right_harness.doCleanups)
+        right_runner = Mock(side_effect=right_harness.capture)
+        right_result = right_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=right_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False, **RIGHT_DECLARATIONS)
+        right_command = right_harness.popen.call_args.args[0]
+        self.assertEqual(
+            right_result["scope"], consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE)
+        self.assertEqual(
+            right_result["probe_name"], "DisconnectedLoadRightPlus1000VelocityTrain")
+        self.assertTrue(right_result["fixed_right_plus_1000_velocity_train_authorized"])
+        self.assertEqual(
+            right_result["immutable_application_transcript_hex"],
+            [raw.hex() for raw in train.RIGHT_TRANSCRIPT])
+        for flag in RIGHT_FLAGS:
+            self.assertIn(flag, right_command)
+        train._validate_capture(right_runner.call_args.kwargs)
+
         transport = _Transport()
         targets = []
 
@@ -160,6 +221,19 @@ class VelocityTrainTests(unittest.TestCase):
                          (308, 0))
         self.assertTrue(report["cleanup_zero_fully_accepted"])
         transport.close.assert_called_once()
+
+        right_transport = _Transport()
+        right_transport.transcript = train.RIGHT_TRANSCRIPT
+        right_transport.success = train.RIGHT_SUCCESS
+        right_report = {}
+        with patch.object(train, "_response", side_effect=self.response), \
+                patch.object(train, "_wait_until", return_value=0):
+            train._observe(right_transport, right_report, clock=lambda: 100)
+        self.assertEqual(right_report["status"], train.RIGHT_SUCCESS)
+        self.assertEqual(
+            [row["sequence"] for row in right_report["responses"]],
+            list(range(3307, 3329)))
+        self.assertEqual(right_transport.attempts, [*range(21), "cleanup"])
 
         fault_cases = (
             ((1, "error"), None),
@@ -192,7 +266,8 @@ class VelocityTrainTests(unittest.TestCase):
 
         live_start = 281342.3600659589
         transport = Mock(
-            last_write_sequence=3286, last_write_started=281342.359916316)
+            last_write_sequence=3286, last_write_started=281342.359916316,
+            transcript=train.TRANSCRIPT)
         transport.event = Mock()
         report = {"responses": []}
 

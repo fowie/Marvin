@@ -62,9 +62,22 @@ DISCONNECTED_VELOCITY_TRAIN_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE = "disconnected_load_right_plus_1000_velocity_train"
+DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS = (
+    DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE,
+    "authorize_unvalidated_right_plus_1000_velocity_train",
+)
+DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS = (
+    *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
+DISCONNECTED_VELOCITY_TRAIN_SCOPES = (
+    DISCONNECTED_VELOCITY_TRAIN_SCOPE, DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE,
+)
 DISCONNECTED_ORDER_SCOPES = (DISCONNECTED_ORDER_SCOPE, DISCONNECTED_PLUS_1000_SCOPE)
 DISCONNECTED_MOTOR_SETTER_SCOPES = (
-    *DISCONNECTED_ORDER_SCOPES, DISCONNECTED_VELOCITY_TRAIN_SCOPE,
+    *DISCONNECTED_ORDER_SCOPES, *DISCONNECTED_VELOCITY_TRAIN_SCOPES,
 )
 DISCONNECTED_GET_LOG_SCOPE = "disconnected_load_get_log"
 DISCONNECTED_GET_LOG_ONLY_FLAGS = (DISCONNECTED_GET_LOG_SCOPE,)
@@ -113,6 +126,7 @@ POWERED_TRIAL_SCOPES = {
     DISCONNECTED_ORDER_SCOPE: DISCONNECTED_ORDER_FLAGS,
     DISCONNECTED_PLUS_1000_SCOPE: DISCONNECTED_PLUS_1000_FLAGS,
     DISCONNECTED_VELOCITY_TRAIN_SCOPE: DISCONNECTED_VELOCITY_TRAIN_FLAGS,
+    DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS,
     DISCONNECTED_GET_LOG_SCOPE: DISCONNECTED_GET_LOG_FLAGS,
     DISCONNECTED_GETTER_SURVEY_SCOPE: DISCONNECTED_GETTER_SURVEY_FLAGS,
     DISCONNECTED_LED_STATE_SCOPE: DISCONNECTED_LED_STATE_FLAGS,
@@ -124,6 +138,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS,
                                 *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                 *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
+                                *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
                                 *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                                 *DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -144,6 +159,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_left_plus_1000_order_diagnostic=False,
              disconnected_load_left_plus_1000_velocity_train=False,
              authorize_unvalidated_left_plus_1000_velocity_train=False,
+             disconnected_load_right_plus_1000_velocity_train=False,
+             authorize_unvalidated_right_plus_1000_velocity_train=False,
              disconnected_load_get_log=False,
              disconnected_load_legacy_getter_survey=False,
              disconnected_load_led_state_round_trip=False,
@@ -178,6 +195,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      disconnected_load_left_plus_1000_velocity_train),
                  authorize_unvalidated_left_plus_1000_velocity_train=(
                      authorize_unvalidated_left_plus_1000_velocity_train),
+                 disconnected_load_right_plus_1000_velocity_train=(
+                     disconnected_load_right_plus_1000_velocity_train),
+                 authorize_unvalidated_right_plus_1000_velocity_train=(
+                     authorize_unvalidated_right_plus_1000_velocity_train),
                  disconnected_load_get_log=disconnected_load_get_log,
                  disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
                  disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
@@ -270,6 +291,7 @@ def add_powered_trial_arguments(parser):
     for name in (*POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS,
                  *DISCONNECTED_ORDER_ONLY_FLAGS, *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                  *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
+                 *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                  *DISCONNECTED_LED_STATE_ONLY_FLAGS, *LED_MAPPING_ONLY_FLAGS,
                  *WHEEL_LED_BLINK_ONLY_FLAGS):
@@ -281,6 +303,7 @@ def powered_trial_arguments(args):
         *POWERED_TRIAL_ONLY_FLAGS, *MAPPING_TRIAL_ONLY_FLAGS, *DISCONNECTED_ORDER_ONLY_FLAGS,
         *DISCONNECTED_PLUS_1000_ONLY_FLAGS, *DISCONNECTED_GET_LOG_ONLY_FLAGS,
         *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
+        *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
         *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS)}
 
@@ -397,24 +420,27 @@ def powered_trial_history(declarations):
             else "MOTOR_L_CONNECTED_MOTOR_R_DISCONNECTED"),
         "outcome_meaning": (
             "fixed_velocity_train_scope_observation_separate_from_protocol_status"
-            if scope == DISCONNECTED_VELOCITY_TRAIN_SCOPE
+            if scope in DISCONNECTED_VELOCITY_TRAIN_SCOPES
             else "raw_order_status_observation_only_not_protocol_inferred"
             if scope in DISCONNECTED_MOTOR_SETTER_SCOPES
             else "operator_motion_and_stop_observations_required_not_protocol_inferred"),
         **({("unvalidated_zero_one_order_diagnostic_authorized"
              if scope == DISCONNECTED_ORDER_SCOPE
+             else "unvalidated_right_plus_1000_velocity_train_authorized"
+             if scope == DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
              else "unvalidated_left_plus_1000_velocity_train_authorized"
              if scope == DISCONNECTED_VELOCITY_TRAIN_SCOPE
              else "unvalidated_left_plus_1000_order_diagnostic_authorized"): True,
             "planned_zero_policy": (
                 "one_fixed_cleanup_syscall_after_any_possible_nonzero_train_submission"
-                if scope == DISCONNECTED_VELOCITY_TRAIN_SCOPE
+                if scope in DISCONNECTED_VELOCITY_TRAIN_SCOPES
                 else "one_immediate_cleanup_attempt_after_fully_accepted_nonzero")}
            if scope in DISCONNECTED_MOTOR_SETTER_SCOPES else
            {"unvalidated_left_one_and_zero_authorized": True,
             "planned_zero_policy": "attempt_once_after_fully_accepted_start_on_same_owned_fd"}),
         **({("raw_setter_units"
-              if scope in (DISCONNECTED_PLUS_1000_SCOPE, DISCONNECTED_VELOCITY_TRAIN_SCOPE)
+              if scope == DISCONNECTED_PLUS_1000_SCOPE
+              or scope in DISCONNECTED_VELOCITY_TRAIN_SCOPES
               else "raw_one_units"):
             "unvalidated_raw_word_not_physical_speed"}),
         "planned_zero_guaranteed": False,

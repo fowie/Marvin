@@ -289,11 +289,103 @@ as ambiguous.
 The operator reported the scope result as **uncertain: scope was not triggered**.
 This must not be recorded as no output. The operator cut power after the stop.
 The single `+1000` application meaning and physical output remain unknown.
-A new attempt is technically justified only after separate live authorization:
-the timestamp bug is reproduced and fixed without relaxing a gate, the initial
-zero and cleanup were clean raw `80`, and the first attempt produced no scope
-result. That conclusion is software readiness, not authorization; the operator
-must also configure and confirm a working trigger before any repeat.
+
+### Two completed corrected left-word trains
+
+Two later separately authorized runs completed the full fixed left-word
+transcript after the timestamp fix. In each run:
+
+- all 22 writes completed: 308 accepted TX bytes and zero uncertain TX bytes;
+- sequence 3285 initial zero returned raw `80`;
+- all 20 sequence 3286 through 3305 left-word `+1000` stimuli returned raw `82`;
+- sequence 3306 mandatory zero cleanup completed and returned raw `80`;
+- serial RX was 220 bytes; usbmon captured 308 OUT and 220 IN payload bytes;
+- usbmon reported no unmatched transfers, submission errors, evictions, or
+  uncaptured payload bytes; and both manifests verified every listed artifact.
+
+The first completed run had maximum scheduled-write lateness 1.465 ms and mean
+lateness 0.319 ms. Its outer manifest file SHA-256 is
+`14d8cd43ddc8debadefd7985405eefd472abc7ac827e7afc31d70de8e43e237e`;
+its nested manifest file SHA-256 is
+`8037f929ea71ac73d42d6983e6cd88cf8f8c583d711c50fb77d23f8ec0edc769`;
+and its adapter journal SHA-256 is
+`9a163d4fd13efa7ab1d2bdba2397459a98d34d90c9ecea3c270a54eeb32548d7`.
+The operator reported **uncertain: scope did not trigger**.
+
+The requested repeat had maximum lateness 2.445 ms and mean lateness 0.568 ms.
+Its outer manifest file SHA-256 is
+`29a3c537979d8e21dfff75e820ccae96543189595a5bc4520d3facf419e580a9`;
+its nested manifest file SHA-256 is
+`de304e79e094a4eaa452fab54943718eb60230a9e6a6ea9e771760aad21ac3b3`;
+and its adapter journal SHA-256 is
+`b1f8cfaf49ef844a315bd696df17bbcfbcabd972dca8dbbdd98619879879cfea`.
+With the differential/isolated scope free-running at 50 ms/div across the
+physical plug printed `Motor L`, the operator observed **no output change**.
+
+These are distinct operator observations. The first is not evidence of no
+output; the second is not a calibration or proof that PCTestApp's source name
+`leftVel` maps to the physical `Motor L` label. Raw `82` remains opaque, and no
+application acknowledgment, output topology, motion, or physical stop is
+inferred.
+
+## Prepared mirrored PCTestApp `rightVel` train
+
+PCTestApp serializes `leftVel` into payload bytes 0–1 and `rightVel` into bytes
+2–3 at `Form1.cs:891-895`, `987-990`, and `1013-1017`. The mirrored diagnostic
+changes only the source-named second signed word to `+1000`; it does not claim
+that this field drives a particular robot side. The separately reviewed
+operator setup places the differential/isolated DC-coupled scope across the
+disconnected physical plug printed `Motor R`.
+
+| Sequence | Payload | Exact frame |
+|---:|---|---|
+| 3307 | initial zero | `53eb0c1100040000000000efb245` |
+| 3308 | `leftVel=0`, `rightVel=+1000` | `53ec0c110004000000e803506945` |
+| 3309 | `leftVel=0`, `rightVel=+1000` | `53ed0c110004000000e80301ac45` |
+| 3310 | `leftVel=0`, `rightVel=+1000` | `53ee0c110004000000e803f1a345` |
+| 3311 | `leftVel=0`, `rightVel=+1000` | `53ef0c110004000000e803a06645` |
+| 3312 | `leftVel=0`, `rightVel=+1000` | `53f00c110004000000e80391c345` |
+| 3313 | `leftVel=0`, `rightVel=+1000` | `53f10c110004000000e803c00645` |
+| 3314 | `leftVel=0`, `rightVel=+1000` | `53f20c110004000000e803300945` |
+| 3315 | `leftVel=0`, `rightVel=+1000` | `53f30c110004000000e80361cc45` |
+| 3316 | `leftVel=0`, `rightVel=+1000` | `53f40c110004000000e803d01645` |
+| 3317 | `leftVel=0`, `rightVel=+1000` | `53f50c110004000000e80381d345` |
+| 3318 | `leftVel=0`, `rightVel=+1000` | `53f60c110004000000e80371dc45` |
+| 3319 | `leftVel=0`, `rightVel=+1000` | `53f70c110004000000e803201945` |
+| 3320 | `leftVel=0`, `rightVel=+1000` | `53f80c110004000000e803102945` |
+| 3321 | `leftVel=0`, `rightVel=+1000` | `53f90c110004000000e80341ec45` |
+| 3322 | `leftVel=0`, `rightVel=+1000` | `53fa0c110004000000e803b1e345` |
+| 3323 | `leftVel=0`, `rightVel=+1000` | `53fb0c110004000000e803e02645` |
+| 3324 | `leftVel=0`, `rightVel=+1000` | `53fc0c110004000000e80351fc45` |
+| 3325 | `leftVel=0`, `rightVel=+1000` | `53fd0c110004000000e803003945` |
+| 3326 | `leftVel=0`, `rightVel=+1000` | `53fe0c110004000000e803f03645` |
+| 3327 | `leftVel=0`, `rightVel=+1000` | `53ff0c110004000000e803a1f345` |
+| 3328 | mandatory all-zero cleanup | `53000d1100040000000000979145` |
+
+The transcript is 22 writes / 308 TX bytes, with the same 220 expected-response
+bytes and 8192-byte RX bound. Its SHA-256 is
+`07d2dec07a7db89cc859ac16f4aeb16390361076385aafa41af1fb563c43ec5d`.
+Cadence, response, strict pre-`os.write` time boundary, fault, cleanup,
+no-retry/reconnect, and evidence rules are identical to the left-word profile.
+There is no side/value/count/cadence/duration/sequence CLI.
+
+Exact offline dry-run review:
+
+```sh
+python3 -B -m tools.marvin_legacy_velocity_train \
+  --disconnected-load-right-plus-1000-velocity-train \
+  --authorize-unvalidated-right-plus-1000-velocity-train \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+This is software readiness, not live authorization. A separately authorized
+run requires the same disconnected-load setup and cutoff operator. The scope
+must be appropriately rated, isolated/differential, DC-coupled, confirmed
+free-running or correctly triggered before the run, and connected across the
+disconnected physical plug printed `Motor R`; this does not establish the
+source-field-to-plug mapping.
 
 ## Proven fixed legacy getter survey
 

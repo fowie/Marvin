@@ -472,7 +472,7 @@
       "sample_name": "SetMotorVelocity",
       "request_layout": "left/right LE int16 / 4 bytes; units not live calibrated",
       "sample_effect": "actuation",
-      "live_probe_policy": "prepared_fixed_disconnected_load_plus_1000_50ms_train",
+      "live_probe_policy": "completed_left_word_train_and_prepared_mirrored_right_word_train",
       "sample_calls": [
         {
           "method": "setMotorVelocity_btn_Click",
@@ -507,6 +507,27 @@
           "software_fault": "post-write submitted_at timestamp mislabeled a fast correlated response prewrite_or_ambiguous",
           "fix": "response boundary now uses matching immediate pre-os.write monotonic timestamp; ambiguity gate retained",
           "meaning": "single nonzero application/output unknown; oscilloscope observation separate from opaque protocol response and physical stop"
+        },
+        {
+          "status": "two_corrected_left_word_trains_completed",
+          "scope": "disconnected_load_left_plus_1000_velocity_train",
+          "protocol": "each run: initial zero raw80, 20 left-word +1000 responses raw82, cleanup zero raw80",
+          "accounting": "each run: 22 writes / 308 accepted TX / 0 uncertain TX / 220 RX",
+          "first_scope_observation": "uncertain_scope_did_not_trigger",
+          "repeat_scope_observation": "free-running 50ms/div across physical Motor L showed no output change",
+          "meaning": "source field to physical plug mapping and raw82 application meaning remain unknown"
+        },
+        {
+          "status": "mirrored_right_word_train_prepared_not_executed",
+          "scope": "disconnected_load_right_plus_1000_velocity_train",
+          "source_field": "PCTestApp rightVel second signed int16 word",
+          "payload": "leftVel=0, rightVel=+1000",
+          "cadence_ms": 50,
+          "train_count": 20,
+          "sequence_range": "3307..3328",
+          "transcript_sha256": "07d2dec07a7db89cc859ac16f4aeb16390361076385aafa41af1fb563c43ec5d",
+          "operator_scope_target": "disconnected physical plug printed Motor R",
+          "meaning": "does not establish source-field-to-plug or robot-side mapping"
         }
       ],
       "newer_drive_meaning": {
