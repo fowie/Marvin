@@ -135,6 +135,19 @@ RAW_PWM_2000_LEFT_CONNECTED_FLAGS = (
     "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE = (
+    "raw_pwm_word1_2000_left_motor_connected_proof")
+RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS = (
+    RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE,
+    "authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof",
+)
+RAW_PWM_WORD1_2000_LEFT_CONNECTED_FLAGS = (
+    *RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS,
+    "physical_left_motor_connected_to_robot_right_motor_l_connector",
+    "motor_left_connected", "motor_right_disconnected", "servos_isolated",
+    "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 DISCONNECTED_VELOCITY_TRAIN_SCOPES = (
     DISCONNECTED_VELOCITY_TRAIN_SCOPE, DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE,
 )
@@ -197,6 +210,7 @@ POWERED_TRIAL_SCOPES = {
     RAW_PWM_WORD1_2000_PILOT_SCOPE: RAW_PWM_WORD1_2000_PILOT_FLAGS,
     RAW_PWM_LEFT_CONNECTED_SCOPE: RAW_PWM_LEFT_CONNECTED_FLAGS,
     RAW_PWM_2000_LEFT_CONNECTED_SCOPE: RAW_PWM_2000_LEFT_CONNECTED_FLAGS,
+    RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE: RAW_PWM_WORD1_2000_LEFT_CONNECTED_FLAGS,
     DISCONNECTED_GET_LOG_SCOPE: DISCONNECTED_GET_LOG_FLAGS,
     DISCONNECTED_GETTER_SURVEY_SCOPE: DISCONNECTED_GETTER_SURVEY_FLAGS,
     DISCONNECTED_LED_STATE_SCOPE: DISCONNECTED_LED_STATE_FLAGS,
@@ -215,6 +229,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
                                 *RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
                                 *RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
+                                *RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
                                 *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                                 *DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -250,6 +265,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              physical_left_motor_connected_to_robot_right_motor_l_connector=False,
              raw_pwm_word0_2000_left_motor_connected_proof=False,
              authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=False,
+             raw_pwm_word1_2000_left_motor_connected_proof=False,
+             authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=False,
              disconnected_load_get_log=False,
              disconnected_load_legacy_getter_survey=False,
              disconnected_load_led_state_round_trip=False,
@@ -314,6 +331,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      raw_pwm_word0_2000_left_motor_connected_proof),
                  authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=(
                      authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof),
+                 raw_pwm_word1_2000_left_motor_connected_proof=(
+                     raw_pwm_word1_2000_left_motor_connected_proof),
+                 authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=(
+                     authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof),
                  disconnected_load_get_log=disconnected_load_get_log,
                  disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
                  disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
@@ -413,6 +434,7 @@ def add_powered_trial_arguments(parser):
                  *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
                  *RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
                  *RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
+                 *RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                  *DISCONNECTED_LED_STATE_ONLY_FLAGS, *LED_MAPPING_ONLY_FLAGS,
                  *WHEEL_LED_BLINK_ONLY_FLAGS):
@@ -431,6 +453,7 @@ def powered_trial_arguments(args):
         *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
         *RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
         *RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
+        *RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
         *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS)}
 
@@ -563,7 +586,9 @@ def powered_trial_history(declarations):
             "host_can_remove_energy": False,
             "physical_stop": "not_established",
         }
-    if scope in (RAW_PWM_LEFT_CONNECTED_SCOPE, RAW_PWM_2000_LEFT_CONNECTED_SCOPE):
+    if scope in (
+            RAW_PWM_LEFT_CONNECTED_SCOPE, RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
+            RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE):
         return {
             **encoder_history(declarations),
             "scope": scope,
@@ -576,8 +601,14 @@ def powered_trial_history(declarations):
                 scope == RAW_PWM_LEFT_CONNECTED_SCOPE),
             "unvalidated_raw_pwm_2000_left_motor_connected_proof_authorized": (
                 scope == RAW_PWM_2000_LEFT_CONNECTED_SCOPE),
-            "fixed_raw_pwm_word0_value": (
-                2000 if scope == RAW_PWM_2000_LEFT_CONNECTED_SCOPE else 1000),
+            "unvalidated_raw_pwm_word1_2000_left_motor_connected_proof_authorized": (
+                scope == RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE),
+            **({"fixed_raw_pwm_word1_value": 2000}
+               if scope == RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE
+               else {"fixed_raw_pwm_word0_value": (
+                   1000 if scope == RAW_PWM_LEFT_CONNECTED_SCOPE else 2000)}),
+            "fixed_raw_pwm_word_index": (
+                1 if scope == RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE else 0),
             "raw_setter_units": "unvalidated_uint16_wire_value_not_duty_cycle",
             "planned_zero_policy": (
                 "one_fixed_all_zero_cleanup_syscall_after_any_possible_nonzero_submission"),

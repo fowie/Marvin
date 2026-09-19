@@ -37,6 +37,10 @@ DECLARATIONS_2000_CONNECTED = dict.fromkeys(
     consent.RAW_PWM_2000_LEFT_CONNECTED_FLAGS, True)
 FLAGS_2000_CONNECTED = ["--" + name.replace("_", "-")
                         for name in consent.RAW_PWM_2000_LEFT_CONNECTED_FLAGS]
+DECLARATIONS_WORD1_2000_CONNECTED = dict.fromkeys(
+    consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_FLAGS, True)
+FLAGS_WORD1_2000_CONNECTED = ["--" + name.replace("_", "-")
+                              for name in consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_FLAGS]
 
 
 class _Transport:
@@ -215,6 +219,23 @@ class RawPwmPilotTests(unittest.TestCase):
             "41b8589d900c4e071e8c5510a70411d43561bf2059314537b63b7b7d20dc5d27")
         self.assertEqual(word1_plan["fixed_setter_words_uint16"], [0, 2000, 0, 0])
         self.assertEqual(word1_plan["observation_seconds"], 3)
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(pilot.main(FLAGS_WORD1_2000_CONNECTED), 0)
+        connected_word1_plan = json.loads(stdout.getvalue())
+        self.assertEqual(connected_word1_plan["immutable_application_transcript_hex"], [
+            "53190d0a0000004f1545",
+            "531a0d0b0008000000d00700000000d9cb45",
+            "531b0d0b00080000000000000000007f5a45",
+            "531c0d0a0000004f4045",
+        ])
+        self.assertEqual(
+            connected_word1_plan["transcript_sha256"],
+            "2bdece99255756fed374341c9d8520eb7e0231c398aa5eb8f1e5da8dc8d58b95")
+        self.assertEqual(
+            connected_word1_plan["fixed_setter_words_uint16"], [0, 2000, 0, 0])
+        self.assertEqual(connected_word1_plan["observation_seconds"], .25)
         for knob in ("index", "value", "payload", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -249,6 +270,11 @@ class RawPwmPilotTests(unittest.TestCase):
                 pilot.run_diagnostic(
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     **(DECLARATIONS_2000_CONNECTED | {name: False}))
+        for name in consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_FLAGS:
+            with self.subTest(connected_word1_name=name), self.assertRaises(ValueError):
+                pilot.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(DECLARATIONS_WORD1_2000_CONNECTED | {name: False}))
 
         harness = session_tests.SessionTests()
         harness.setUp()
@@ -371,6 +397,30 @@ class RawPwmPilotTests(unittest.TestCase):
                 **DECLARATIONS_2000_CONNECTED)
         connected_2000_harness.preflight.assert_not_called()
 
+        connected_word1_harness = session_tests.SessionTests()
+        connected_word1_harness.setUp()
+        self.addCleanup(connected_word1_harness.doCleanups)
+        connected_word1_runner = Mock(side_effect=connected_word1_harness.capture)
+        connected_word1_result = connected_word1_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=connected_word1_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **DECLARATIONS_WORD1_2000_CONNECTED)
+        connected_word1_command = connected_word1_harness.popen.call_args.args[0]
+        self.assertEqual(
+            connected_word1_result["scope"],
+            consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
+        self.assertEqual(
+            connected_word1_result["probe_name"],
+            "RawPwmWord1Value2000LeftMotorConnectedProof")
+        self.assertTrue(
+            connected_word1_result[
+                "fixed_raw_pwm_word1_2000_left_motor_connected_proof_authorized"])
+        for flag in FLAGS_WORD1_2000_CONNECTED:
+            self.assertIn(flag, connected_word1_command)
+        pilot._validate_capture(connected_word1_runner.call_args.kwargs)
+
         transport = _Transport()
         report = {}
         with patch.object(pilot, "_response",
@@ -436,6 +486,23 @@ class RawPwmPilotTests(unittest.TestCase):
             [3349, 3350, 3351, 3352])
         word1_transport.wait.assert_called_once_with(3)
         self.assertEqual(word1_report["status"], pilot.SUCCESS_WORD1_2000)
+
+        connected_word1_transport = _Transport()
+        connected_word1_transport.steps = pilot.STEPS_WORD1_2000_LEFT_CONNECTED
+        connected_word1_transport.success = pilot.SUCCESS_WORD1_2000_LEFT_CONNECTED
+        connected_word1_transport.observation_seconds = .25
+        connected_word1_transport.motor_connected = True
+        connected_word1_report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                redirect_stderr(io.StringIO()):
+            pilot._observe(
+                connected_word1_transport, connected_word1_report, clock=lambda: 0)
+        self.assertEqual(
+            [row["sequence"] for row in connected_word1_report["responses"]],
+            [3353, 3354, 3355, 3356])
+        connected_word1_transport.wait.assert_called_once_with(.25)
+        self.assertEqual(
+            connected_word1_report["status"], pilot.SUCCESS_WORD1_2000_LEFT_CONNECTED)
 
         connected_transport = _Transport()
         connected_transport.steps = pilot.STEPS_LEFT_CONNECTED

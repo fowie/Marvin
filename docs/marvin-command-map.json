@@ -362,7 +362,7 @@
         "limitations": "raw80/raw82 and getter word meanings opaque; nonzero getter may be stale commanded state, another controller value, or incomplete cleanup application; physical stop not established"
       },
       "word1_2000_disconnected_profile": {
-        "status": "prepared_not_executed",
+        "status": "three_runs_completed",
         "scope": "disconnected_load_raw_pwm_word1_2000_pilot",
         "sequence_range": "3349..3352",
         "setter_words_uint16": [0, 2000, 0, 0],
@@ -394,7 +394,46 @@
         ],
         "state_fix": "artifact-free preflight failure => aborted_before_hardware/hardware_access false; explicit no-nonzero evidence => set_aborted_before_nonzero; possible or indeterminate setter => restoration lock retained",
         "stale_state_resolution": "updated offline to aborted_before_hardware with hardware_access false and application_tx_bytes 0",
-        "fresh_attempt": "software-justified after new live safety confirmation; not authorization"
+        "fresh_attempt": "completed after new safety confirmations",
+        "live_runs": [
+          {
+            "observation": "positive 5V single-shot trigger did not trigger; invalid for negative polarity",
+            "outer_metadata": "f971c8965913f822ed93e47182f85686c9d97e7c4e57d0c89b6d70a54398ac98",
+            "capture_metadata": "ea0a763ef4b739a6ffea800f6e6d71ec9ea09177d0b131983635e5857abffe01",
+            "adapter_journal": "c9fc15afc3401db02093e0589431eca5b6ee43320c8f29ee23a8c5b2efae1cdd",
+            "binary_usbmon": "0cfeaa47fe557f140463ab9a12880df9ea03a1eb3e22baece8a338cc12b7fa4c"
+          },
+          {
+            "observation": "continuous centered display clearly showed negative waveform",
+            "outer_metadata": "535b94ab096af144bccddba13b965a5d8eb6ce97d0574a94d3220a8e7878e261",
+            "capture_metadata": "c9f2eca2d61bd016bc3f6f8e92940f3f60312b49cd8cb8c6d09e932e1e1121d9",
+            "adapter_journal": "f29693a2c732bf39b37ab043e833a5a8ce8b4565c6353a98b8e0b292e34f44b1",
+            "binary_usbmon": "3c301fe587659f45cfa32cbd71acb417203ef19aac8d14a565910e57830ac114"
+          },
+          {
+            "observation": "negative-edge single shot; manual estimates approximately -11.8V negative excursion, 26.8us pulse width, 15.2kHz repetition; division counts may be slightly inaccurate",
+            "outer_metadata": "e78bc814ff069d7f83381b4243b61a81f87a5d9af79220759f339742aad08e85",
+            "capture_metadata": "951eab6f720b3f2c8142db917924ba42fb1c4be69736c9fdebe51cd233f43196",
+            "adapter_journal": "7bc3a77152fc99a2fc5b30df64b4417be6a8f229c260d0f6f0380718943653dd",
+            "binary_usbmon": "337cd1fdf9bb565d7cde0e376e0093b312aa64766ca144eaefb6814a6630216f"
+          }
+        ],
+        "shared_protocol": "each: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 empty setter; raw80 empty cleanup; exact-zero raw80 final getter",
+        "meaning": "word1 raw2000 has opposite observed negative polarity from corrected word0 raw2000 positive output on same disconnected connector; field/direction/calibrated units unproved"
+      },
+      "connected_word1_2000_profile": {
+        "status": "prepared_not_executed",
+        "scope": "raw_pwm_word1_2000_left_motor_connected_proof",
+        "sequence_range": "3353..3356",
+        "setter_words_uint16": [0, 2000, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 0.25,
+        "maximum_setter_to_cleanup_start_seconds": 0.75,
+        "transcript_sha256": "2bdece99255756fed374341c9d8520eb7e0231c398aa5eb8f1e5da8dc8d58b95",
+        "physical_load": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; encoder harnesses connected; wheels clear",
+        "expectation": "opposite/forward relative to word0 reverse is hypothesis only; operator reports actual direction",
+        "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/correlation; no retry/reconnect",
+        "nonzero_final_getter": "fault and restoration lock without reinterpretation or relaxed policy"
       },
       "newer_drive_meaning": {
         "command": 11,

@@ -49,6 +49,9 @@ STEPS_2000_LEFT_CONNECTED = _steps(3345, WORD0_2000)
 TRANSCRIPT_2000_LEFT_CONNECTED = tuple(STEPS_2000_LEFT_CONNECTED.values())
 STEPS_WORD1_2000 = _steps(3349, WORD1_2000)
 TRANSCRIPT_WORD1_2000 = tuple(STEPS_WORD1_2000.values())
+STEPS_WORD1_2000_LEFT_CONNECTED = _steps(3353, WORD1_2000)
+TRANSCRIPT_WORD1_2000_LEFT_CONNECTED = tuple(
+    STEPS_WORD1_2000_LEFT_CONNECTED.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -59,6 +62,8 @@ SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
 SUCCESS_LEFT_CONNECTED = "raw_pwm_left_motor_connected_proof_complete_unverified"
 SUCCESS_2000_LEFT_CONNECTED = "raw_pwm_2000_left_motor_connected_proof_complete_unverified"
 SUCCESS_WORD1_2000 = "raw_pwm_word1_2000_pilot_complete_unverified"
+SUCCESS_WORD1_2000_LEFT_CONNECTED = (
+    "raw_pwm_word1_2000_left_motor_connected_proof_complete_unverified")
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -106,6 +111,17 @@ PROFILES = {
         "report_key": "raw_pwm_word1_2000_pilot",
         "observation_seconds": 3,
     },
+    consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE: {
+        "steps": STEPS_WORD1_2000_LEFT_CONNECTED,
+        "transcript": TRANSCRIPT_WORD1_2000_LEFT_CONNECTED,
+        "first_sequence": 3353, "value": 2000,
+        "success": SUCCESS_WORD1_2000_LEFT_CONNECTED,
+        "target": "raw-pwm-word1-2000-left-motor-connected-proof",
+        "authorization": (
+            "unvalidated_raw_pwm_word1_2000_left_motor_connected_proof_authorized"),
+        "report_key": "raw_pwm_word1_2000_left_motor_connected_proof",
+        "observation_seconds": 0.250,
+    },
 }
 
 
@@ -122,7 +138,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
     first_sequence = profile["first_sequence"]
     value = profile["value"]
     setter_payload = (
-        WORD1_2000 if scope == consent.RAW_PWM_WORD1_2000_PILOT_SCOPE
+        WORD1_2000 if scope in (
+            consent.RAW_PWM_WORD1_2000_PILOT_SCOPE,
+            consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
         else value.to_bytes(2, "little") + bytes(6))
     expected = (
         (first_sequence, 0x0A, b""),
@@ -146,7 +164,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "required_baseline_payload_hex": ZERO_PWM.hex(),
         "fixed_setter_words_uint16": (
             [0, value, 0, 0]
-            if scope == consent.RAW_PWM_WORD1_2000_PILOT_SCOPE
+            if scope in (
+                consent.RAW_PWM_WORD1_2000_PILOT_SCOPE,
+                consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
             else [value, 0, 0, 0]),
         "fixed_cleanup_words_uint16": [0, 0, 0, 0],
         "observation_seconds": profile["observation_seconds"],
@@ -156,7 +176,8 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             "left_motor_connected_to_robot_right_side_connector_printed_Motor_L"
             if scope in (
                 consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
-                consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE)
+                consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
+                consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE)
             else "both_motor_power_plugs_disconnected"),
         "raw_value_units_or_effective_minimum": "not_established",
         "null_scope_result": "inconclusive_effective_pwm_minimum_and_channel_mapping_unknown",
@@ -274,6 +295,13 @@ class _RawPwm2000LeftConnectedTransport(_RawPwmTransport):
 class _RawPwmWord1Value2000Transport(_RawPwmTransport):
     steps = STEPS_WORD1_2000
     success = SUCCESS_WORD1_2000
+
+
+class _RawPwmWord1Value2000LeftConnectedTransport(_RawPwmTransport):
+    steps = STEPS_WORD1_2000_LEFT_CONNECTED
+    success = SUCCESS_WORD1_2000_LEFT_CONNECTED
+    observation_seconds = 0.250
+    motor_connected = True
 
 
 def _submit(transport, report, step, *, deadline):
@@ -439,6 +467,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         consent.RAW_PWM_LEFT_CONNECTED_SCOPE: _RawPwmLeftConnectedTransport,
         consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE: _RawPwm2000LeftConnectedTransport,
         consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: _RawPwmWord1Value2000Transport,
+        consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE: (
+            _RawPwmWord1Value2000LeftConnectedTransport),
     }[scope]
     output = new_output_path(output)
     root = output.parent

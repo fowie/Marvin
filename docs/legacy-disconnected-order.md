@@ -1038,7 +1038,7 @@ acknowledgment verified the sealed manifest and moved the active state lock to
 bookkeeping based on operator observation and power cycle, not software
 verification or reinterpretation of `0000640000000000`.
 
-### Prepared disconnected raw-PWM word-1/value-2000 discriminator
+### Completed disconnected raw-PWM word-1/value-2000 discriminator
 
 PCTestApp command `0B` parses and serializes four positional `UInt16` textbox
 values in order. The recovered host source does not name those positions as
@@ -1084,7 +1084,7 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --unprivileged-usbmon
 ```
 
-Prepared live invocation (software readiness only, **not live authorization**):
+Exact historical live invocation (completion is **not continuing authorization**):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -1147,6 +1147,107 @@ restoration gate. A separate regression confirms possible-setter evidence still
 locks. A fresh disconnected word-1 attempt is now software-justified after new
 operator safety confirmation and power-on; this is readiness, not live
 authorization.
+
+#### Three completed disconnected word-1 runs
+
+All three sealed evidence trees and every nested manifest entry verify. Each
+run recorded four fully accepted writes / 56 TX bytes, zero uncertain TX
+bytes, and 56 serial RX bytes. Sequence 3349 returned raw `80` with exactly
+eight zero bytes; sequence 3350 `[0,2000,0,0]` returned opaque raw `82` empty;
+sequence 3351 one-time all-zero cleanup returned raw `80` empty; sequence 3352
+returned raw `80` with exactly eight zero bytes. Each run attempted cleanup
+once, reported no cleanup errors, and ended with getter zero-baseline
+reverification.
+
+Each usbmon trace recorded four successful bulk OUT completions / 56 captured
+and completed OUT bytes and four successful payload-bearing bulk IN completions
+/ 56 captured and completed IN bytes. All reported zero unmatched completions,
+endpoint mismatches, submission errors, evictions, retained pending transfers,
+or uncaptured bytes.
+
+| Run | Outer metadata | Capture metadata | Adapter journal | Binary usbmon |
+|---|---|---|---|---|
+| Positive-trigger single shot | `f971c8965913f822ed93e47182f85686c9d97e7c4e57d0c89b6d70a54398ac98` | `ea0a763ef4b739a6ffea800f6e6d71ec9ea09177d0b131983635e5857abffe01` | `c9fc15afc3401db02093e0589431eca5b6ee43320c8f29ee23a8c5b2efae1cdd` | `0cfeaa47fe557f140463ab9a12880df9ea03a1eb3e22baece8a338cc12b7fa4c` |
+| Continuous centered display | `535b94ab096af144bccddba13b965a5d8eb6ce97d0574a94d3220a8e7878e261` | `c9f2eca2d61bd016bc3f6f8e92940f3f60312b49cd8cb8c6d09e932e1e1121d9` | `f29693a2c732bf39b37ab043e833a5a8ce8b4565c6353a98b8e0b292e34f44b1` | `3c301fe587659f45cfa32cbd71acb417203ef19aac8d14a565910e57830ac114` |
+| Negative-edge single shot | `e78bc814ff069d7f83381b4243b61a81f87a5d9af79220759f339742aad08e85` | `951eab6f720b3f2c8142db917924ba42fb1c4be69736c9fdebe51cd233f43196` | `7bc3a77152fc99a2fc5b30df64b4417be6a8f229c260d0f6f0380718943653dd` | `337cd1fdf9bb565d7cde0e376e0093b312aa64766ca144eaefb6814a6630216f` |
+
+The first run used a positive 5 V trigger and did not trigger; that setup was
+invalid for detecting negative polarity and is not a no-waveform result. The
+second continuous centered display clearly showed a negative waveform. The
+third negative-edge single shot repeated it; the operator manually counted
+scope divisions and estimated approximately -11.8 V negative excursion/peak,
+26.8 us pulse width, and 15.2 kHz repetition. The operator called the first
+quantity “Vpp -11.8”; it is recorded as a negative excursion because Vpp is
+unsigned. All three estimates may be slightly inaccurate and are not
+calibrated controller units.
+
+On the same robot-right-side connector printed `Motor L`, corrected-polarity
+word-0/value-2000 evidence was positive while word-1/value-2000 evidence is
+negative. This establishes opposite observed output polarity for these two
+positional words under the tested disconnected setup. It does not prove field
+names, calibrated voltage/duty/frequency, motor direction, loaded torque, or
+bridge topology. The robot was powered OFF after the third run.
+
+### Prepared connected left-motor word-1/value-2000 proof
+
+The connected proof is a separate literal scope: only the physical left motor
+is connected to the robot-right-side controller connector printed `Motor L`;
+the right motor is unplugged, servos isolated, both encoder harnesses
+connected, wheels clear on blocks, and the operator remains at independent
+cutoff. The disconnected negative polarity makes direction opposite/forward
+relative to the prior word-0 reverse motion a hypothesis, not a guarantee; the
+operator must report actual direction.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3353 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes | `53190d0a0000004f1545` |
+| 2 | 3354 | command `0B`; four LE `UInt16` words `[0,2000,0,0]` | `531a0d0b0008000000d00700000000d9cb45` |
+| 3 | 3355 | mandatory command `0B`; exact all-zero cleanup once after setter may reach its syscall | `531b0d0b00080000000000000000007f5a45` |
+| 4 | 3356 | conditional command `0A` verification after clean empty raw-`80` cleanup; require eight zero bytes | `531c0d0a0000004f4045` |
+
+The concatenated transcript SHA-256 is
+`2bdece99255756fed374341c9d8520eb7e0231c398aa5eb8f1e5da8dc8d58b95`.
+Bounds are four writes / 56 TX bytes / 56 expected response bytes and 8192
+serial RX bytes, or three writes / 46 TX bytes if verification is suppressed.
+The clean path keeps the 500 ms strict response/extra-frame boundary followed
+by a fixed 250 ms motion-observation window. Faults skip observation and enter
+the mandatory cleanup immediately. There is no retry or reconnect.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word1-2000-left-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-word1-2000-left-motor-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word1-2000-left-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-word1-2000-left-motor-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+The operator watches the physical left wheel and reports no motion or actual
+direction, visible stop or uncertainty after cleanup, abnormal sound, and
+whether cutoff was used. As before, a clean raw `80` cleanup response does not
+prove stop. If the final getter returns any nonzero word—including a pattern
+like the prior `[0,100,0,0]`—the exact-zero check fails and the state lock
+requires physical confirmation plus power cycle. That policy is unchanged.
 
 ## Proven fixed legacy getter survey
 
