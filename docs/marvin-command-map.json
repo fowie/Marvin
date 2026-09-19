@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "excluded",
+      "live_probe_policy": "blocked_direct_bridge_candidate_missing_value_and_channel_mapping",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -518,7 +518,7 @@
           "meaning": "source field to physical plug mapping and raw82 application meaning remain unknown"
         },
         {
-          "status": "mirrored_right_word_train_prepared_not_executed",
+          "status": "mirrored_right_word_train_completed",
           "scope": "disconnected_load_right_plus_1000_velocity_train",
           "source_field": "PCTestApp rightVel second signed int16 word",
           "payload": "leftVel=0, rightVel=+1000",
@@ -526,8 +526,11 @@
           "train_count": 20,
           "sequence_range": "3307..3328",
           "transcript_sha256": "07d2dec07a7db89cc859ac16f4aeb16390361076385aafa41af1fb563c43ec5d",
+          "protocol": "initial zero raw80, 20 right-word +1000 responses raw82, cleanup zero raw80",
+          "accounting": "22 writes / 308 accepted TX / 0 uncertain TX / 220 RX",
           "operator_scope_target": "disconnected physical plug printed Motor R",
-          "meaning": "does not establish source-field-to-plug or robot-side mapping"
+          "operator_observation": "free-running differential/isolated scope 50ms/div showed no visible output change",
+          "meaning": "tested pairing only; does not establish source-field-to-plug, robot-side mapping, raw82 meaning, or output absence"
         }
       ],
       "newer_drive_meaning": {

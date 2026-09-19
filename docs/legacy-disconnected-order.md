@@ -387,6 +387,87 @@ free-running or correctly triggered before the run, and connected across the
 disconnected physical plug printed `Motor R`; this does not establish the
 source-field-to-plug mapping.
 
+### Completed mirrored `rightVel` train
+
+The separately authorized mirrored run completed all 22 writes: 308 accepted
+TX bytes, zero uncertain TX bytes, and 220 serial RX bytes. Sequence 3307
+initial zero returned raw `80`; all 20 sequence 3308 through 3327 source-named
+`rightVel=+1000` stimuli returned raw `82`; and sequence 3328 mandatory zero
+cleanup completed and returned raw `80`. Usbmon captured all 308 OUT and 220 IN
+payload bytes and reported no unmatched transfers, submission errors, evictions,
+or uncaptured payload bytes. Both manifests verified every listed artifact.
+
+Maximum scheduled-write lateness was 3.555 ms and mean lateness was 0.577 ms.
+The outer manifest file SHA-256 is
+`21662434bc94d1d52197715091d8a7fe7c4e94af3d93638fe1a57f21a7da6c7e`;
+the nested capture manifest file SHA-256 is
+`5e16c73a6cdb71cbcf5a3ea30a510c473acd994505f2b1f9b4291fdf44254886`;
+and the adapter journal SHA-256 is
+`f13bceee624d40a17639c457a5733c7295de70f14a5e2f99f14acf260ec964fa`.
+
+With the differential/isolated scope free-running at 50 ms/div across the
+disconnected physical plug printed `Motor R`, the operator observed **no
+visible output change**. This establishes only the tested source-word/physical-
+plug pairing and observation. It does not establish robot-side naming,
+source-field-to-plug topology, application acknowledgment, absence of pulses
+outside instrument visibility, or physical stop. Raw `82` remains opaque.
+
+## Ranked next motor-output discriminator
+
+The matching PCTestApp source supports the following facts:
+
+- `SetMotorVelocity` parses two signed `Int16` values and serializes source-named
+  `leftVel` then `rightVel`; it provides no percent conversion
+  (`Form1.cs:873-897,995-1019`). The random path chooses each word from
+  `-1000..999` at an explicit 50 ms timer interval
+  (`Form1.cs:978-993`; `Form1.Designer.cs:2247-2250`). The fixed timer has no
+  explicit interval or default textbox values in the supplied source.
+- `SetRawMotorPWM` parses four `UInt16` textboxes and serializes four LE words,
+  admitting `0..65535` by parser type (`Form1.cs:649-674,1032-1057`). Its
+  textboxes have no supplied defaults, examples, labels tying textbox order to
+  a motor/direction, or source-used nonzero values. Its repeating timer has no
+  explicit interval (`Form1.Designer.cs:2252-2258`).
+- Heartbeat display code names four reported fields left-forward, left-reverse,
+  right-forward, and right-reverse (`Form1.cs:512-515`), but the host source
+  does not bind those reported fields to the four command-`0B` setter words.
+  Heartbeat handling only displays telemetry; startup does not enable motors or
+  issue heartbeat, power, reset, mode, or unlock commands.
+- Encoder position, velocity, acceleration, and current are displayed beside
+  the PWM fields (`Form1.cs:501-515`), so closed-loop control is plausible, but
+  the missing legacy handler means it is inference only. The host source does
+  not state an encoder prerequisite or prove that command `11` can remain at
+  zero output because of control state.
+
+Ranked reversible disconnected-load options:
+
+1. **Conditional command `0B SetRawMotorPWM`: strongest conceptual
+   discriminator, presently blocked.** It would bypass the source-named
+   velocity request and more directly test a bridge/PWM path. A rigorous future
+   plan would require the proven command-`0A` eight-zero getter baseline, one
+   source-mapped channel and source-backed nonzero value, exact all-zero cleanup
+   once any setter may reach its syscall, then conditional getter verification.
+   No such nonzero value or setter-channel mapping exists in the supplied
+   legacy source. Raw `1` is merely the smallest parser-admitted integer and may
+   be below an effective PWM threshold; any larger value is arbitrary and
+   higher consequence. The setter response shape is also unproved. Therefore
+   no raw-PWM runner or frame is prepared.
+2. **Larger command `11` velocity: not recommended.** Both source-named words
+   have now received complete `+1000` 20 Hz trains with raw `82` and no visible
+   output change on the separately selected physical plugs. A larger value
+   remains inside captured `-3500..3500` configuration words but does not bypass
+   a possible velocity-control gate and adds consequence without resolving
+   whether those configuration words are active.
+3. **Getter-only repetition: safe but not discriminating.** Command `0A` has
+   already returned eight zero bytes and command `00` exposes raw velocity/PWM
+   telemetry. Without the missing field/handler mapping, another read cannot
+   distinguish bridge disable, closed-loop state, command rejection, or wiring.
+
+The next safe action is offline recovery of the installed legacy command-`0B`
+handler, its response enum, PWM units/effective range, and setter-word mapping,
+or a reviewed original-host capture showing a known nonzero command-`0B`
+payload. Power-state, heartbeat-control, reset, configuration, identity, and
+flash commands remain excluded; no inverse/readback basis was found.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load
