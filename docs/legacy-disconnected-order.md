@@ -817,7 +817,7 @@ current capability. Probe loading, unloaded bridge behavior, trigger/window
 selection, and scope automatic measurement can shape the observations. The
 robot was powered OFF after the repeat.
 
-### Prepared left-motor-connected raw-1000 proof
+### Completed left-motor-connected raw-1000 proof
 
 The smallest connected-load proof is a separate fixed scope. It reconnects
 **only the physical left motor** to the robot-right-side controller connector
@@ -865,7 +865,7 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --unprivileged-usbmon
 ```
 
-Prepared live invocation (software readiness only, **not live authorization**):
+Exact historical live invocation (completion is **not continuing authorization**):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -881,11 +881,106 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --run
 ```
 
-No scope is required concurrently. The operator reports physical outcome
+No scope was required concurrently. The operator reported physical outcome
 separately as `no_motion`, `motion_direction_uncertain`, or a plainly described
 observed direction, plus whether the wheel visibly stopped after cleanup and
 whether cutoff was used. A clean command/getter lifecycle is not a stop proof.
-No hardware execution or authorization follows from this preparation.
+No continuing authorization follows from these completed runs.
+
+#### Two completed connected raw-1000 runs
+
+Both separately authorized runs used only the physical left motor connected to
+the robot-right-side controller connector printed `Motor L`; the right motor
+was unplugged, servos isolated, encoder harnesses connected, wheels clear, and
+the operator was at the cutoff. Both sealed evidence trees and every nested
+manifest entry verify.
+
+Each run recorded four fully accepted writes / 56 TX bytes, zero uncertain TX
+bytes, and 56 serial RX bytes. Sequence 3341 returned raw `80` with exactly
+eight zero bytes; sequence 3342 raw-1000 returned opaque raw `82` empty;
+sequence 3343 mandatory all-zero cleanup returned raw `80` empty; sequence
+3344 returned raw `80` with exactly eight zero bytes. Cleanup was attempted
+once. Its syscall preceded the cleanup journal event and returned roughly 752
+ms after setter prewrite in each run, consistent with the fixed 500 ms
+extra-frame response boundary plus 250 ms motion-observation window and small
+scheduling overhead. Protocol cleanliness and final zero getter evidence do
+not prove physical stop.
+
+Each usbmon trace recorded four successful bulk OUT completions / 56 captured
+and completed OUT bytes and four successful payload-bearing bulk IN completions
+/ 56 captured and completed IN bytes. Both reported zero unmatched
+completions, endpoint mismatches, submission errors, evictions, retained
+pending transfers, or uncaptured bytes.
+
+| Run | Outer metadata | Capture metadata | Adapter journal | Binary usbmon |
+|---|---|---|---|---|
+| Wrong wheel watched | `25a7e315e13f238b567ac37cc1846dd1fc20d34d60e7a1b2e7b356589ab7f378` | `36a201d958eda264a318b2b9a21f661f11b4ae0adb159df1f023bfda58f9ca5e` | `7c11c0754da2a64e8d173f08f68622d7e713e495dd8becb88d137402d5b74a6f` | `5940ab98101d5765708fb236ebdc356b23816795d35bdafdb2bafc7ed5be5d8a` |
+| Physical left wheel watched | `3ed65b40a649cfa79547a2f38d8b4093a5db6d15d894bb26513ff424956d01a2` | `10d9153f0fa06eb2d454bbde88150f445f1ebbcd4b8e8b3e4c1d2ed1eef9ae40` | `a3f76fb7c7ed25c44ddc6acd92790b5f09748947b326a6bf0d22ec49b81ce010` | `bf4f9ba399ae08c91d06b86bb760a61545c699bd0a7335f90515344430dcd197` |
+
+The first run's physical observation is invalid/uncertain because the operator
+watched the wrong wheel; it is **not** a no-motion observation. In the repeat,
+the operator watched the physical left wheel and reported no motion and no
+abnormal behavior. Cleanup completed in both runs. The robot was powered OFF
+afterward. This does not establish that raw-1000 cannot produce torque under
+different conditions or that the software cleanup physically stopped a motor.
+
+### Prepared left-motor-connected raw-2000 escalation
+
+The next immutable scope changes only the raw word-0 value, fixed sequence
+block, and literal authorization from the completed connected raw-1000 proof.
+The physical setup and all gates remain identical. Disconnected testing
+reported 6.5 Vpp for raw-2000 versus 2.11 Vpp for raw-1000, which justifies
+this bounded comparison but does not predict connected torque.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3345 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes | `53110d0a0000004e5d45` |
+| 2 | 3346 | command `0B`; four LE `UInt16` words `[2000,0,0,0]` | `53120d0b000800d0070000000000000dcf45` |
+| 3 | 3347 | mandatory command `0B`; exact all-zero cleanup once after setter may reach its syscall | `53130d0b0008000000000000000000769245` |
+| 4 | 3348 | conditional command `0A` verification after clean empty raw-`80` cleanup; require eight zero bytes | `53140d0a0000004e0845` |
+
+The concatenated transcript SHA-256 is
+`00c4193c533cdcf24d94b280bd866255ceb6d94a9e3fb4e01eb59899749853a8`.
+Bounds remain four writes / 56 TX bytes / 56 expected response bytes and 8192
+serial RX bytes, or three writes / 46 TX bytes if verification is suppressed.
+The clean path retains the 500 ms strict response/extra-frame boundary plus a
+fixed 250 ms observation; any response or evidence fault skips observation
+and enters the one mandatory cleanup immediately. No retry or reconnect exists.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word0-2000-left-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-2000-left-motor-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word0-2000-left-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-2000-left-motor-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+The operator must watch the **physical left wheel**, report direction if any,
+confirm visible stop after cleanup or report uncertainty, and use independent
+cutoff immediately for abnormal motion, sound, direction, or any uncertainty.
+No clean protocol response or zero getter is a physical-stop claim. This is
+software readiness only; no hardware execution or authorization follows.
 
 ## Proven fixed legacy getter survey
 

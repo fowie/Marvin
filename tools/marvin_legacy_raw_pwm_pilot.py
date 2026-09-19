@@ -44,6 +44,8 @@ STEPS_2000 = _steps(3337, WORD0_2000)
 TRANSCRIPT_2000 = tuple(STEPS_2000.values())
 STEPS_LEFT_CONNECTED = _steps(3341, WORD0_1000)
 TRANSCRIPT_LEFT_CONNECTED = tuple(STEPS_LEFT_CONNECTED.values())
+STEPS_2000_LEFT_CONNECTED = _steps(3345, WORD0_2000)
+TRANSCRIPT_2000_LEFT_CONNECTED = tuple(STEPS_2000_LEFT_CONNECTED.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -52,6 +54,7 @@ SUCCESS = "raw_pwm_word0_one_pilot_complete_unverified"
 SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
 SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
 SUCCESS_LEFT_CONNECTED = "raw_pwm_left_motor_connected_proof_complete_unverified"
+SUCCESS_2000_LEFT_CONNECTED = "raw_pwm_2000_left_motor_connected_proof_complete_unverified"
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -78,6 +81,16 @@ PROFILES = {
         "target": "raw-pwm-word0-1000-left-motor-connected-proof",
         "authorization": "unvalidated_raw_pwm_left_motor_connected_proof_authorized",
         "report_key": "raw_pwm_left_motor_connected_proof",
+        "observation_seconds": 0.250,
+    },
+    consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE: {
+        "steps": STEPS_2000_LEFT_CONNECTED,
+        "transcript": TRANSCRIPT_2000_LEFT_CONNECTED,
+        "first_sequence": 3345, "value": 2000,
+        "success": SUCCESS_2000_LEFT_CONNECTED,
+        "target": "raw-pwm-word0-2000-left-motor-connected-proof",
+        "authorization": "unvalidated_raw_pwm_2000_left_motor_connected_proof_authorized",
+        "report_key": "raw_pwm_2000_left_motor_connected_proof",
         "observation_seconds": 0.250,
     },
 }
@@ -120,7 +133,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "word_to_physical_plug_mapping": "not_established",
         "physical_load": (
             "left_motor_connected_to_robot_right_side_connector_printed_Motor_L"
-            if scope == consent.RAW_PWM_LEFT_CONNECTED_SCOPE
+            if scope in (
+                consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
+                consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE)
             else "both_motor_power_plugs_disconnected"),
         "raw_value_units_or_effective_minimum": "not_established",
         "null_scope_result": "inconclusive_effective_pwm_minimum_and_channel_mapping_unknown",
@@ -220,6 +235,13 @@ class _RawPwm2000Transport(_RawPwmTransport):
 class _RawPwmLeftConnectedTransport(_RawPwmTransport):
     steps = STEPS_LEFT_CONNECTED
     success = SUCCESS_LEFT_CONNECTED
+    observation_seconds = 0.250
+    motor_connected = True
+
+
+class _RawPwm2000LeftConnectedTransport(_RawPwmTransport):
+    steps = STEPS_2000_LEFT_CONNECTED
+    success = SUCCESS_2000_LEFT_CONNECTED
     observation_seconds = 0.250
     motor_connected = True
 
@@ -381,6 +403,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         consent.RAW_PWM_1000_PILOT_SCOPE: _RawPwm1000Transport,
         consent.RAW_PWM_2000_PILOT_SCOPE: _RawPwm2000Transport,
         consent.RAW_PWM_LEFT_CONNECTED_SCOPE: _RawPwmLeftConnectedTransport,
+        consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE: _RawPwm2000LeftConnectedTransport,
     }[scope]
     output = new_output_path(output)
     root = output.parent

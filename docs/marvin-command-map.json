@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "raw1_raw1000_raw2000_completed_left_motor_connected_proof_prepared",
+      "live_probe_policy": "disconnected_raw_profiles_and_connected_raw1000_completed_connected_raw2000_prepared",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -278,6 +278,29 @@
           "operator_observations": "triggered width run: 37.6us and displayed 14.9kHz; repeat amplitude run: 6.5Vpp",
           "comparison": "raw1000 positive capture reported 37us and 2.11Vpp; near-equal width and changed amplitude",
           "meaning": "value-dependent unloaded output established; calibrated voltage/duty/frequency and loaded bridge capability unproved"
+        },
+        {
+          "status": "two_connected_raw1000_runs_completed",
+          "scope": "raw_pwm_word0_1000_left_motor_connected_proof",
+          "physical_setup": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; encoder harnesses connected; wheels clear; cutoff operator",
+          "protocol_each": "seq3341 raw80 exact-zero getter; seq3342 raw82 empty setter; seq3343 raw80 empty cleanup; seq3344 raw80 exact-zero getter",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; usbmon 4 successful OUT / 56 bytes and 4 payload-bearing successful IN / 56 bytes",
+          "first_observation": "invalid_or_uncertain_wrong_wheel_watched_not_no_motion",
+          "second_observation": "physical_left_wheel_no_motion_and_no_abnormal_behavior",
+          "powered_off_afterward": true,
+          "wrong_wheel_run_hashes": {
+            "outer_metadata": "25a7e315e13f238b567ac37cc1846dd1fc20d34d60e7a1b2e7b356589ab7f378",
+            "capture_metadata": "36a201d958eda264a318b2b9a21f661f11b4ae0adb159df1f023bfda58f9ca5e",
+            "adapter_journal": "7c11c0754da2a64e8d173f08f68622d7e713e495dd8becb88d137402d5b74a6f",
+            "binary_usbmon": "5940ab98101d5765708fb236ebdc356b23816795d35bdafdb2bafc7ed5be5d8a"
+          },
+          "left_wheel_run_hashes": {
+            "outer_metadata": "3ed65b40a649cfa79547a2f38d8b4093a5db6d15d894bb26513ff424956d01a2",
+            "capture_metadata": "10d9153f0fa06eb2d454bbde88150f445f1ebbcd4b8e8b3e4c1d2ed1eef9ae40",
+            "adapter_journal": "a3f76fb7c7ed25c44ddc6acd92790b5f09748947b326a6bf0d22ec49b81ce010",
+            "binary_usbmon": "bf4f9ba399ae08c91d06b86bb760a61545c699bd0a7335f90515344430dcd197"
+          },
+          "meaning": "raw1000 produced no observed physical-left-wheel motion in the valid run; application status, physical stop, and torque threshold remain unproved"
         }
       ],
       "fixed_profile": {
@@ -302,7 +325,7 @@
         "limitations": "raw2000 is 3.05% numeric full scale, not known duty; width ratio empirical only"
       },
       "next_fixed_profile": {
-        "status": "prepared_not_executed",
+        "status": "completed",
         "scope": "raw_pwm_word0_1000_left_motor_connected_proof",
         "sequence_range": "3341..3344",
         "setter_words_uint16": [1000, 0, 0, 0],
@@ -311,7 +334,20 @@
         "maximum_setter_to_cleanup_start_seconds": 0.75,
         "transcript_sha256": "35c73a4732f7ee75e95f27c291018d7a038172a80c3a9bc9827aabd2d0cac575",
         "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
-        "limitations": "raw82 opaque; motion possible; external cutoff primary; clean cleanup/getter is not physical stop proof"
+        "limitations": "raw82 opaque; first observation invalid due wrong wheel; second observed no physical-left-wheel motion; clean cleanup/getter is not physical stop proof"
+      },
+      "next_connected_profile": {
+        "status": "prepared_not_executed",
+        "scope": "raw_pwm_word0_2000_left_motor_connected_proof",
+        "sequence_range": "3345..3348",
+        "setter_words_uint16": [2000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 0.25,
+        "maximum_setter_to_cleanup_start_seconds": 0.75,
+        "transcript_sha256": "00c4193c533cdcf24d94b280bd866255ceb6d94a9e3fb4e01eb59899749853a8",
+        "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
+        "operator_observation": "watch physical left wheel; report no motion or direction plus visible stop/uncertainty and abnormal sound/cutoff use",
+        "limitations": "unloaded 6.5Vpp versus 2.11Vpp justifies comparison but does not predict connected torque; raw82 opaque; external cutoff primary"
       },
       "newer_drive_meaning": {
         "command": 11,
