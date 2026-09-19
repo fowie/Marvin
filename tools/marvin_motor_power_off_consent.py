@@ -72,12 +72,22 @@ DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+RAW_PWM_PILOT_SCOPE = "disconnected_load_raw_pwm_word0_one_pilot"
+RAW_PWM_PILOT_ONLY_FLAGS = (
+    RAW_PWM_PILOT_SCOPE, "authorize_unvalidated_raw_pwm_word0_one_pilot",
+)
+RAW_PWM_PILOT_FLAGS = (
+    *RAW_PWM_PILOT_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 DISCONNECTED_VELOCITY_TRAIN_SCOPES = (
     DISCONNECTED_VELOCITY_TRAIN_SCOPE, DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE,
 )
 DISCONNECTED_ORDER_SCOPES = (DISCONNECTED_ORDER_SCOPE, DISCONNECTED_PLUS_1000_SCOPE)
 DISCONNECTED_MOTOR_SETTER_SCOPES = (
     *DISCONNECTED_ORDER_SCOPES, *DISCONNECTED_VELOCITY_TRAIN_SCOPES,
+    RAW_PWM_PILOT_SCOPE,
 )
 DISCONNECTED_GET_LOG_SCOPE = "disconnected_load_get_log"
 DISCONNECTED_GET_LOG_ONLY_FLAGS = (DISCONNECTED_GET_LOG_SCOPE,)
@@ -127,6 +137,7 @@ POWERED_TRIAL_SCOPES = {
     DISCONNECTED_PLUS_1000_SCOPE: DISCONNECTED_PLUS_1000_FLAGS,
     DISCONNECTED_VELOCITY_TRAIN_SCOPE: DISCONNECTED_VELOCITY_TRAIN_FLAGS,
     DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: DISCONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS,
+    RAW_PWM_PILOT_SCOPE: RAW_PWM_PILOT_FLAGS,
     DISCONNECTED_GET_LOG_SCOPE: DISCONNECTED_GET_LOG_FLAGS,
     DISCONNECTED_GETTER_SURVEY_SCOPE: DISCONNECTED_GETTER_SURVEY_FLAGS,
     DISCONNECTED_LED_STATE_SCOPE: DISCONNECTED_LED_STATE_FLAGS,
@@ -139,6 +150,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                 *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
                                 *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                *RAW_PWM_PILOT_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
                                 *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                                 *DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -161,6 +173,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_left_plus_1000_velocity_train=False,
              disconnected_load_right_plus_1000_velocity_train=False,
              authorize_unvalidated_right_plus_1000_velocity_train=False,
+             disconnected_load_raw_pwm_word0_one_pilot=False,
+             authorize_unvalidated_raw_pwm_word0_one_pilot=False,
              disconnected_load_get_log=False,
              disconnected_load_legacy_getter_survey=False,
              disconnected_load_led_state_round_trip=False,
@@ -199,6 +213,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      disconnected_load_right_plus_1000_velocity_train),
                  authorize_unvalidated_right_plus_1000_velocity_train=(
                      authorize_unvalidated_right_plus_1000_velocity_train),
+                 disconnected_load_raw_pwm_word0_one_pilot=(
+                     disconnected_load_raw_pwm_word0_one_pilot),
+                 authorize_unvalidated_raw_pwm_word0_one_pilot=(
+                     authorize_unvalidated_raw_pwm_word0_one_pilot),
                  disconnected_load_get_log=disconnected_load_get_log,
                  disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
                  disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
@@ -292,6 +310,7 @@ def add_powered_trial_arguments(parser):
                  *DISCONNECTED_ORDER_ONLY_FLAGS, *DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                  *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
                  *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                 *RAW_PWM_PILOT_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                  *DISCONNECTED_LED_STATE_ONLY_FLAGS, *LED_MAPPING_ONLY_FLAGS,
                  *WHEEL_LED_BLINK_ONLY_FLAGS):
@@ -304,6 +323,7 @@ def powered_trial_arguments(args):
         *DISCONNECTED_PLUS_1000_ONLY_FLAGS, *DISCONNECTED_GET_LOG_ONLY_FLAGS,
         *DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
         *DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+        *RAW_PWM_PILOT_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
         *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS)}
 
@@ -408,6 +428,23 @@ def powered_trial_history(declarations):
                 "reverse_order_exact_blink_then_led_state_once_after_possible_setter_syscall"),
             "restoration_verification": (
                 "getter_only_after_raw80_else_physical_confirmation_and_power_cycle_required"),
+            "host_can_remove_energy": False,
+            "physical_stop": "not_established",
+        }
+    if scope == RAW_PWM_PILOT_SCOPE:
+        return {
+            **encoder_history(declarations),
+            "scope": scope,
+            "load_scope": "MOTOR_POWER_PLUGS_DISCONNECTED",
+            "outcome_meaning": (
+                "raw_pwm_word0_one_protocol_and_scope_observation_separate"),
+            "unvalidated_raw_pwm_word0_one_pilot_authorized": True,
+            "raw_setter_units": "unvalidated_uint16_wire_value_not_duty_cycle",
+            "setter_word_to_physical_plug_mapping": "not_established",
+            "planned_zero_policy": (
+                "one_fixed_all_zero_cleanup_syscall_after_any_possible_nonzero_submission"),
+            "restoration_verification": (
+                "getter_only_after_raw80_cleanup_else_physical_baseline_and_power_cycle_required"),
             "host_can_remove_energy": False,
             "physical_stop": "not_established",
         }

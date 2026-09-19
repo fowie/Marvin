@@ -261,6 +261,8 @@ def run_session(
     authorize_unvalidated_left_plus_1000_velocity_train=False,
     disconnected_load_right_plus_1000_velocity_train=False,
     authorize_unvalidated_right_plus_1000_velocity_train=False,
+    disconnected_load_raw_pwm_word0_one_pilot=False,
+    authorize_unvalidated_raw_pwm_word0_one_pilot=False,
     disconnected_load_get_log=False,
     disconnected_load_legacy_getter_survey=False,
     disconnected_load_led_state_round_trip=False,
@@ -309,6 +311,10 @@ def run_session(
             disconnected_load_right_plus_1000_velocity_train),
         authorize_unvalidated_right_plus_1000_velocity_train=(
             authorize_unvalidated_right_plus_1000_velocity_train),
+        disconnected_load_raw_pwm_word0_one_pilot=(
+            disconnected_load_raw_pwm_word0_one_pilot),
+        authorize_unvalidated_raw_pwm_word0_one_pilot=(
+            authorize_unvalidated_raw_pwm_word0_one_pilot),
         disconnected_load_get_log=disconnected_load_get_log,
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
         disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
@@ -361,6 +367,7 @@ def run_session(
                                         *motor_consent.DISCONNECTED_PLUS_1000_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_PILOT_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GET_LOG_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -398,6 +405,8 @@ def run_session(
             elif scope in motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES:
                 from tools.marvin_legacy_velocity_train import transcript_for_scope
                 TRANSCRIPT = transcript_for_scope(scope)
+            elif scope == motor_consent.RAW_PWM_PILOT_SCOPE:
+                from tools.marvin_legacy_raw_pwm_pilot import TRANSCRIPT
             elif scope == motor_consent.LED_MAPPING_SCOPE:
                 from tools.marvin_legacy_led_mapper import transcript_for
                 TRANSCRIPT = transcript_for(
@@ -418,7 +427,8 @@ def run_session(
                     else 10 if scope in (
                         motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
                         motor_consent.DISCONNECTED_LED_STATE_SCOPE,
-                        *motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES)
+                        *motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES,
+                        motor_consent.RAW_PWM_PILOT_SCOPE)
                     else 5 if powered_trial else 15)
                 or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
                 or dtr is not False or rts is not False
@@ -616,6 +626,8 @@ def run_session(
                             if scope == motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE
                             else "DisconnectedLoadRightPlus1000VelocityTrain"
                             if scope == motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
+                            else "DisconnectedLoadRawPwmWord0OnePilot"
+                            if scope == motor_consent.RAW_PWM_PILOT_SCOPE
                             else "DisconnectedLoadZeroPlus1000OrderDiagnostic"
                             if scope == motor_consent.DISCONNECTED_PLUS_1000_SCOPE
                             else "DisconnectedLoadZeroOneOrderDiagnostic"
@@ -643,6 +655,8 @@ def run_session(
                             scope == motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE),
                         fixed_right_plus_1000_velocity_train_authorized=(
                             scope == motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
+                        fixed_raw_pwm_word0_one_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_PILOT_SCOPE),
                         runtime_derived_setter_policy=led_mapping_runtime_policy,
                         usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; diagnostic uses an unflushed raw tty."

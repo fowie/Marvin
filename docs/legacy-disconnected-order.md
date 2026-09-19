@@ -440,17 +440,14 @@ The matching PCTestApp source supports the following facts:
 
 Ranked reversible disconnected-load options:
 
-1. **Conditional command `0B SetRawMotorPWM`: strongest conceptual
-   discriminator, presently blocked.** It would bypass the source-named
-   velocity request and more directly test a bridge/PWM path. A rigorous future
-   plan would require the proven command-`0A` eight-zero getter baseline, one
-   source-mapped channel and source-backed nonzero value, exact all-zero cleanup
-   once any setter may reach its syscall, then conditional getter verification.
-   No such nonzero value or setter-channel mapping exists in the supplied
-   legacy source. Raw `1` is merely the smallest parser-admitted integer and may
-   be below an effective PWM threshold; any larger value is arbitrary and
-   higher consequence. The setter response shape is also unproved. Therefore
-   no raw-PWM runner or frame is prepared.
+1. **Command `0B SetRawMotorPWM`: strongest conceptual discriminator; one
+   deliberately experimental pilot is prepared below.** It bypasses the
+   source-named velocity request and more directly tests a bridge/PWM path.
+   No source-used nonzero value or setter-channel mapping exists. The fixed
+   pilot therefore uses raw `1`, only because it is the smallest representable
+   nonzero `UInt16`, and labels its units, effective threshold, and physical
+   channel as unknown. A null result is inconclusive. No larger or repeated
+   value is prepared.
 2. **Larger command `11` velocity: not recommended.** Both source-named words
    have now received complete `+1000` 20 Hz trains with raw `82` and no visible
    output change on the separately selected physical plugs. A larger value
@@ -467,6 +464,91 @@ handler, its response enum, PWM units/effective range, and setter-word mapping,
 or a reviewed original-host capture showing a known nonzero command-`0B`
 payload. Power-state, heartbeat-control, reset, configuration, identity, and
 flash commands remain excluded; no inverse/readback basis was found.
+
+### Fixed experimental raw-PWM word-0/value-1 pilot
+
+`tools/marvin_legacy_raw_pwm_pilot.py` is an **unexecuted, deliberately
+experimental** direct-output discriminator. It does not claim source-backed
+units, an effective PWM minimum, duty-cycle meaning, channel binding, or
+source-word-to-physical-plug mapping. It sends one nonzero setter only; the
+PCTestApp source exposes a repeating command-`0B` timer but supplies no explicit
+interval or nonzero example, so repetition would be speculative.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3329 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes | `53010d0a0000004ccd45` |
+| 2 | 3330 | command `0B`; four LE `UInt16` words `[1,0,0,0]` | `53020d0b0008000100000000000000a64f45` |
+| 3 | 3331 | mandatory command `0B`; exact all-zero cleanup once after the setter may reach its syscall | `53030d0b0008000000000000000000674245` |
+| 4 | 3332 | conditional command `0A` verification; only after a clean empty raw-`80` cleanup response; require eight zero bytes | `53040d0a0000004c9845` |
+
+The concatenated transcript SHA-256 is
+`6880718e5a54cf8a8225d3d2afc3cd4cc975f6c0bb6552a8de4161bf4a6b0df8`.
+There are at most four writes / 56 TX bytes and 56 expected response bytes;
+the application RX ceiling remains 8192 bytes. If cleanup is raw `82`, the
+conditional getter is suppressed and the completed path is three writes / 46
+TX bytes. Setter and cleanup accept only a unique correlated CRC-valid
+same-command empty response with opaque raw `80` or `82`. Baseline and
+verification require unique correlated CRC-valid command-`0A` raw `80` with the
+exact eight-zero payload. Every response is tied to the matching immediate
+pre-`os.write` monotonic boundary; prewrite/ambiguous, correlation, CRC,
+framing, extra-frame, identity, USB evidence, partial/uncertain TX, timeout, or
+interruption faults stop progression.
+
+Once the nonzero setter may reach its syscall, exactly one zero cleanup syscall
+is attempted on all fault paths. The cleanup syscall precedes its journal
+event, so a journal failure cannot suppress the write. There is no retry,
+reconnect, value/index/count/cadence option, or ad hoc follow-up. A clean
+raw-`80` cleanup permits the fixed getter verification. Any other cleanup
+status or verification fault leaves a state lock requiring separately recorded
+physical scope-baseline confirmation and power-cycle acknowledgment before a
+later live phase. Protocol status, scope observation, restoration attempt, and
+operator acknowledgment remain separate evidence.
+
+Offline dry run, which performs no device access:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word0-one-pilot \
+  --authorize-unvalidated-raw-pwm-word0-one-pilot \
+  --motor-power-plugs-disconnected \
+  --servos-isolated \
+  --both-encoder-feedback-connected \
+  --robot-secured-on-blocks \
+  --operator-at-external-cutoff \
+  --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+The initial operator-selected target is the disconnected physical plug printed
+`Motor L`; this does not claim word 0 maps to that plug or robot side. Use an
+appropriately rated differential/isolated probe, DC coupling, and a confirmed
+free-running display during the fixed three-second window. Do not connect an
+earth-referenced probe ground to an unverified bridge node. No waveform is
+inconclusive because raw `1` may be below the effective PWM minimum. Any
+correlated waveform would establish a lower-level output path for the tested
+pairing, not channel topology, calibrated duty, application acknowledgment, or
+physical safety.
+
+If the sealed run remains software-unverified, the offline acknowledgment is:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --acknowledge-restoration \
+  --evidence SEALED_EVIDENCE_DIRECTORY \
+  --physical-output-baseline-confirmed \
+  --power-cycle-confirmed
+```
+
+This acknowledgment performs no hardware access and is valid only after the
+operator has separately confirmed both facts.
 
 ## Proven fixed legacy getter survey
 

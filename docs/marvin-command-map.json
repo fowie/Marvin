@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "blocked_direct_bridge_candidate_missing_value_and_channel_mapping",
+      "live_probe_policy": "prepared_experimental_fixed_word0_raw1_with_zero_gate_and_cleanup",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -233,6 +233,16 @@
         }
       ],
       "live_observations": [],
+      "offline_preparation": {
+        "status": "prepared_not_executed",
+        "scope": "disconnected_load_raw_pwm_word0_one_pilot",
+        "sequence_range": "3329..3332",
+        "setter_words_uint16": [1, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 3,
+        "transcript_sha256": "6880718e5a54cf8a8225d3d2afc3cd4cc975f6c0bb6552a8de4161bf4a6b0df8",
+        "limitations": "raw1 units/effective minimum and word-to-plug mapping unknown; null result inconclusive"
+      },
       "newer_drive_meaning": {
         "command": 11,
         "command_hex": "0b",
