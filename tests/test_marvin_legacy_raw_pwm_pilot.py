@@ -22,6 +22,9 @@ FLAGS = ["--" + name.replace("_", "-") for name in consent.RAW_PWM_PILOT_FLAGS]
 DECLARATIONS_1000 = dict.fromkeys(consent.RAW_PWM_1000_PILOT_FLAGS, True)
 FLAGS_1000 = ["--" + name.replace("_", "-")
               for name in consent.RAW_PWM_1000_PILOT_FLAGS]
+DECLARATIONS_2000 = dict.fromkeys(consent.RAW_PWM_2000_PILOT_FLAGS, True)
+FLAGS_2000 = ["--" + name.replace("_", "-")
+              for name in consent.RAW_PWM_2000_PILOT_FLAGS]
 
 
 class _Transport:
@@ -127,6 +130,21 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertEqual(
             pilot.transcript_for_scope(consent.RAW_PWM_1000_PILOT_SCOPE),
             pilot.TRANSCRIPT_1000)
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(pilot.main(FLAGS_2000), 0)
+        plan_2000 = json.loads(stdout.getvalue())
+        self.assertEqual(plan_2000["immutable_application_transcript_hex"], [
+            "53090d0a0000004d8545",
+            "530a0d0b000800d00700000000000015d745",
+            "530b0d0b00080000000000000000006e8a45",
+            "530c0d0a0000004dd045",
+        ])
+        self.assertEqual(
+            plan_2000["transcript_sha256"],
+            "9a3a6fa3110df4769b62391cd289cebbd06bf801b04154117f4a989c1a78d51b")
+        self.assertEqual(plan_2000["fixed_setter_words_uint16"], [2000, 0, 0, 0])
         for knob in ("index", "value", "payload", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -141,6 +159,11 @@ class RawPwmPilotTests(unittest.TestCase):
                 pilot.run_diagnostic(
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     **(DECLARATIONS_1000 | {name: False}))
+        for name in consent.RAW_PWM_2000_PILOT_FLAGS:
+            with self.subTest(value_2000_name=name), self.assertRaises(ValueError):
+                pilot.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(DECLARATIONS_2000 | {name: False}))
 
         harness = session_tests.SessionTests()
         harness.setUp()
@@ -188,6 +211,28 @@ class RawPwmPilotTests(unittest.TestCase):
             self.assertIn(flag, command_1000)
         pilot._validate_capture(runner_1000.call_args.kwargs)
 
+        harness_2000 = session_tests.SessionTests()
+        harness_2000.setUp()
+        self.addCleanup(harness_2000.doCleanups)
+        runner_2000 = Mock(side_effect=harness_2000.capture)
+        result_2000 = harness_2000.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=runner_2000,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **DECLARATIONS_2000)
+        command_2000 = harness_2000.popen.call_args.args[0]
+        self.assertEqual(result_2000["scope"], consent.RAW_PWM_2000_PILOT_SCOPE)
+        self.assertEqual(
+            result_2000["probe_name"], "DisconnectedLoadRawPwmWord0Value2000Pilot")
+        self.assertTrue(result_2000["fixed_raw_pwm_word0_2000_pilot_authorized"])
+        self.assertEqual(
+            result_2000["immutable_application_transcript_hex"],
+            [raw.hex() for raw in pilot.TRANSCRIPT_2000])
+        for flag in FLAGS_2000:
+            self.assertIn(flag, command_2000)
+        pilot._validate_capture(runner_2000.call_args.kwargs)
+
         transport = _Transport()
         report = {}
         with patch.object(pilot, "_response",
@@ -228,6 +273,18 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertEqual(report_1000["status"], pilot.SUCCESS_1000)
         self.assertEqual(transport_1000.attempts,
                          ["baseline", "set", "cleanup", "verify"])
+
+        transport_2000 = _Transport()
+        transport_2000.steps = pilot.STEPS_2000
+        transport_2000.success = pilot.SUCCESS_2000
+        report_2000 = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                redirect_stderr(io.StringIO()):
+            pilot._observe(transport_2000, report_2000, clock=lambda: 0)
+        self.assertEqual(
+            [row["sequence"] for row in report_2000["responses"]],
+            [3337, 3338, 3339, 3340])
+        self.assertEqual(report_2000["status"], pilot.SUCCESS_2000)
 
         faults = (
             (("set", "error"), None),

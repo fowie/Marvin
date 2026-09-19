@@ -24,6 +24,7 @@ from tools.marvin_paths import new_output_path
 ZERO_PWM = bytes(8)
 WORD0_ONE = (1).to_bytes(2, "little") + bytes(6)
 WORD0_1000 = (1000).to_bytes(2, "little") + bytes(6)
+WORD0_2000 = (2000).to_bytes(2, "little") + bytes(6)
 
 
 def _steps(first_sequence, payload):
@@ -39,12 +40,15 @@ STEPS = _steps(3329, WORD0_ONE)
 TRANSCRIPT = tuple(STEPS.values())
 STEPS_1000 = _steps(3333, WORD0_1000)
 TRANSCRIPT_1000 = tuple(STEPS_1000.values())
+STEPS_2000 = _steps(3337, WORD0_2000)
+TRANSCRIPT_2000 = tuple(STEPS_2000.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
 OBSERVATION_SECONDS = 3
 SUCCESS = "raw_pwm_word0_one_pilot_complete_unverified"
 SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
+SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -57,6 +61,12 @@ PROFILES = {
         "value": 1000, "success": SUCCESS_1000, "target": "raw-pwm-word0-1000-pilot",
         "authorization": "unvalidated_raw_pwm_word0_1000_pilot_authorized",
         "report_key": "raw_pwm_word0_1000_pilot",
+    },
+    consent.RAW_PWM_2000_PILOT_SCOPE: {
+        "steps": STEPS_2000, "transcript": TRANSCRIPT_2000, "first_sequence": 3337,
+        "value": 2000, "success": SUCCESS_2000, "target": "raw-pwm-word0-2000-pilot",
+        "authorization": "unvalidated_raw_pwm_word0_2000_pilot_authorized",
+        "report_key": "raw_pwm_word0_2000_pilot",
     },
 }
 
@@ -180,6 +190,11 @@ class _RawPwmTransport(LiveTransport):
 class _RawPwm1000Transport(_RawPwmTransport):
     steps = STEPS_1000
     success = SUCCESS_1000
+
+
+class _RawPwm2000Transport(_RawPwmTransport):
+    steps = STEPS_2000
+    success = SUCCESS_2000
 
 
 def _submit(transport, report, step, *, deadline):
@@ -330,9 +345,11 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     if run is not True or scope not in consent.RAW_PWM_PILOT_SCOPES:
         raise ValueError("Literal --run and one fixed raw-PWM word-0 scope are required.")
     profile = PROFILES[scope]
-    transport_type = (
-        _RawPwm1000Transport if scope == consent.RAW_PWM_1000_PILOT_SCOPE
-        else _RawPwmTransport)
+    transport_type = {
+        consent.RAW_PWM_PILOT_SCOPE: _RawPwmTransport,
+        consent.RAW_PWM_1000_PILOT_SCOPE: _RawPwm1000Transport,
+        consent.RAW_PWM_2000_PILOT_SCOPE: _RawPwm2000Transport,
+    }[scope]
     output = new_output_path(output)
     root = output.parent
     previous = _load_state(root)

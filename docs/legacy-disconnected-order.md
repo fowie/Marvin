@@ -703,13 +703,13 @@ full bridge health.
 
 #### Ranked next reversible tests
 
-1. **Preferred: one fixed second word-0 value with the same disconnected
-   connector and exact zero lifecycle.** A single value such as raw `2000`
+1. **Prepared below: one fixed second word-0 value with the same disconnected
+   connector and exact zero lifecycle.** Raw `2000`
    would preserve direction/word/connector and change only magnitude. Capturing
    pulse width and spacing with fixed manual scope settings could test whether
    width scales with the raw value. It still needs a separately reviewed fixed
    profile, fresh authorization, exact-zero baseline, one setter, one cleanup,
-   conditional zero getter, and the same state lock. No runner is implemented.
+   conditional zero getter, and the same state lock.
 2. **Alternative: repeat raw `1000` only to stabilize period acquisition.**
    This has lower software consequence but adds little value-to-width
    calibration evidence because the commanded value does not change. It is
@@ -725,6 +725,63 @@ full bridge health.
 Do not escalate first to another raw-PWM word, reverse polarity, repeated
 setters, power/heartbeat/reset/configuration writes, or a larger connected-load
 command. Those change more than the value-to-pulse-width question requires.
+
+### Prepared fixed raw-PWM word-0/value-2000 comparison
+
+The existing runner now includes one immutable raw-2000 profile. It changes
+only word 0 and the sequence block; word index, physical connector, one-setter
+lifecycle, three-second observation window, all-zero cleanup, conditional
+getter, response gates, state lock, and evidence bounds remain identical.
+Raw `2000` is 3.05% of the `UInt16` full scale. That percentage is only numeric
+scale context, not duty-cycle or physical-unit calibration.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3337 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes | `53090d0a0000004d8545` |
+| 2 | 3338 | command `0B`; four LE `UInt16` words `[2000,0,0,0]` | `530a0d0b000800d00700000000000015d745` |
+| 3 | 3339 | mandatory command `0B`; exact all-zero cleanup once after the setter may reach its syscall | `530b0d0b00080000000000000000006e8a45` |
+| 4 | 3340 | conditional command `0A` verification after clean empty raw-`80` cleanup; require eight zero bytes | `530c0d0a0000004dd045` |
+
+The concatenated transcript SHA-256 is
+`9a3a6fa3110df4769b62391cd289cebbd06bf801b04154117f4a989c1a78d51b`.
+Bounds remain four writes / 56 TX bytes / 56 expected response bytes and 8192
+serial RX bytes, or three writes / 46 TX bytes if verification is suppressed.
+There is no arbitrary word/value/count/cadence/duration/sequence CLI and no
+retry or reconnect.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word0-2000-pilot \
+  --authorize-unvalidated-raw-pwm-word0-2000-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word0-2000-pilot \
+  --authorize-unvalidated-raw-pwm-word0-2000-pilot \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+The comparison target remains the disconnected robot-right-side connector
+printed `Motor L`, with corrected probe polarity. Use the same CH1 DC coupling,
+10x probe, 2 V/div, and 50 us/div single-shot setup as the proven raw-1000
+detail capture. Record pulse width and Vpp and, only if stable peak-to-peak
+spacing is actually captured, period/repetition rate. Preserve irregular
+spacing/amplitude rather than reducing it to one automatic number. Compare any
+width ratio empirically; do not infer linear duty units from two points. No
+hardware execution or continuing authorization follows from this preparation.
 
 ## Proven fixed legacy getter survey
 

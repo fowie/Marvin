@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "raw1_and_raw1000_completed_second_value_calibration_requires_separate_design",
+      "live_probe_policy": "raw1_and_raw1000_completed_raw2000_comparison_prepared",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -268,6 +268,17 @@
         "observation_seconds": 3,
         "transcript_sha256": "f9fb5e2ae27dbbeb0c8c57b3d9bb1663ca2d34fa16f2c2ae7966e505310e012b",
         "limitations": "raw1000 units/duty and word-to-connector mapping unknown; null result inconclusive"
+      },
+      "next_fixed_profile": {
+        "status": "prepared_not_executed",
+        "scope": "disconnected_load_raw_pwm_word0_2000_pilot",
+        "sequence_range": "3337..3340",
+        "setter_words_uint16": [2000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 3,
+        "transcript_sha256": "9a3a6fa3110df4769b62391cd289cebbd06bf801b04154117f4a989c1a78d51b",
+        "comparison_prompt": "same Motor L-labelled connector and corrected polarity; CH1 DC 10x, 2V/div, 50us/div; record width, Vpp, and stable period only if captured",
+        "limitations": "raw2000 is 3.05% numeric full scale, not known duty; width ratio empirical only"
       },
       "newer_drive_meaning": {
         "command": 11,
