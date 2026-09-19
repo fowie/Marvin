@@ -446,7 +446,7 @@ The matching PCTestApp source supports the following facts:
 Ranked reversible disconnected-load options:
 
 1. **Command `0B SetRawMotorPWM`: strongest conceptual discriminator; the raw-1
-   pilot completed and one raw-1000 escalation is prepared below.** It bypasses the
+   and raw-1000 pilots completed below.** It bypasses the
    source-named velocity request and more directly tests a bridge/PWM path.
    No source-used nonzero value or setter-channel mapping exists. The fixed
    first pilot used raw `1`, only because it is the smallest representable
@@ -516,7 +516,7 @@ Offline dry run, which performs no device access:
 python3 -m tools.marvin_legacy_raw_pwm_pilot
 ```
 
-Prepared live invocation (software readiness only, **not live authorization**):
+Exact historical live invocation (completion is **not continuing authorization**):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -594,7 +594,7 @@ controls the **left motor**. Keep these three descriptions distinct from the
 PCTestApp source fields and raw-PWM word numbers. No mapping between command
 `0B` word 0 and that connector follows from the null observation.
 
-### Prepared fixed raw-PWM word-0/value-1000 escalation
+### Completed fixed raw-PWM word-0/value-1000 escalation
 
 The next profile reuses the same runner and changes only the immutable scope,
 sequence block, and word-0 value. It still sends one setter only and observes
@@ -628,7 +628,7 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --operator-at-external-cutoff --unprivileged-usbmon
 ```
 
-Prepared live invocation (software readiness only, **not live authorization**):
+Exact historical live invocation (completion is **not continuing authorization**):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -642,9 +642,89 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --run
 ```
 
-A waveform would establish a lower-level path only for raw word 0 and the
-tested `Motor L`-labelled connector. No waveform remains inconclusive. This
-profile is unexecuted; no hardware authorization follows from its preparation.
+A waveform establishes a lower-level path only for raw word 0/value 1000 and
+the tested `Motor L`-labelled connector. It does not establish calibrated duty,
+motor motion, the opposite output polarity/direction, complete bridge health,
+or a source-word/channel mapping beyond this tested pairing.
+
+#### Three completed raw-1000 runs
+
+All three separately authorized runs completed with identical application
+accounting and response shapes: four fully accepted writes / 56 TX bytes, zero
+uncertain TX bytes, and 56 serial RX bytes. Sequence 3333 returned raw `80`
+with exactly eight zero bytes; the sequence-3334 `[1000,0,0,0]` setter returned
+opaque raw `82` with no payload; sequence 3335 all-zero cleanup returned raw
+`80` with no payload; and conditional sequence 3336 returned raw `80` with
+exactly eight zero bytes. Cleanup was attempted once and the zero baseline was
+getter-reverified after every physical observation. The robot was powered OFF
+after the third run.
+
+Each usbmon trace recorded four successful bulk OUT completions / 56 captured
+and completed OUT bytes and four payload-bearing successful bulk IN completions
+/ 56 captured and completed IN bytes. Each reported zero unmatched
+completions, unmatched submission errors, endpoint mismatches, evictions,
+retained pending transfers, and uncaptured payload bytes. Every outer and
+nested manifest entry verified.
+
+| Run | Outer manifest | Nested manifest | Adapter journal | Binary usbmon |
+|---|---|---|---|---|
+| First | `6d1376fd3e557fe7430bed12a3c4ea23702ba1802595e05440bb614c9e1dc412` | `b05719b5de6b90e95620b946924936091554064e690a1a818d00bdbdcaf88722` | `857be73085abf3d4a3831253ad89feba23d4cd8c1dccfab32c0219c412074110` | `b34901f0c836664ebe9f7f8c380c3fff3bf82e634ed3a64fa80681de2faa5ca7` |
+| Reversed-polarity capture | `5c978373fe8c01e79b1964b61bd1f9e160ba4a05dbeec59b313f4358c06d0251` | `be4fcdfaed37f1726fb33c4449aed83001bb0cafb28359764fdc34b9483b03bb` | `1f3cffbf431a4e224ef28f5b18ae01e614fd0cc10976f5764f133a8d23494aad` | `ffbbed752974121d77a1ab17a1f4acadc8b85bed85e5a8578c35b4e87e79dce7` |
+| Corrected-polarity capture | `ba0ad9fbd41cfac7e0bf934b5a500c6fac4ba7e030a8e906da11052ab432ddcf` | `70f0d9c488b1337e63a2870571af49189545862311f05f806bacebe65316300f` | `fc20ba9f24354e420bec08d329e6e0eba81ab2c08615bc29ea70214f28886d0c` | `e3703a5990c313a2f547c77699b68f12f5844e5646cd32a4bd9c9fa5ece4aaf3` |
+
+Physical observations, kept separate from opaque protocol status:
+
+1. The first auto-mode observation saw something but did not retain a usable
+   capture; record it as **uncertain**, not a waveform measurement.
+2. The second single-shot run captured a clear waveform with reversed probe
+   polarity, so it displayed negative. The user powered OFF before changing
+   the probe.
+3. After fresh safety confirmation and corrected polarity, the third
+   single-shot run captured a clear positive waveform on the disconnected
+   robot-right-side connector printed `Motor L`, which the operator identifies
+   as controlling the left motor.
+
+The third display used CH1 DC coupling, a 10x probe, and 2 V/div. The operator
+reported `Vpp=2.11 V`, `Vavg=+509 mV`, `Vrms=2.24 V`, and a 37 us pulse width.
+An overview at 200 us/div showed irregular pulse spacing and amplitudes and a
+cursor delta of 588 us / reciprocal 1.70 kHz; a 50 us/div detail showed the
+37 us width and reciprocal 27.0 kHz. These are raw scope observations, not
+calibration. The `Vrms > Vpp` inconsistency and window/trigger dependence make
+the automatic voltage measurements uncertain. The 27.0 kHz display is the
+reciprocal of pulse width, **not an established repetition or PWM frequency**;
+the operator could not obtain a stable actual repetition rate.
+
+This result strongly localizes the prior command-`11` velocity null above or
+outside the direct-output path: raw command-`0B` word 0/value 1000 produced a
+physical waveform where the velocity trains did not show one. It does not
+decode raw `82`, establish why velocity was rejected or ineffective, prove a
+stable PWM period/duty relationship, demonstrate motor motion, or establish
+full bridge health.
+
+#### Ranked next reversible tests
+
+1. **Preferred: one fixed second word-0 value with the same disconnected
+   connector and exact zero lifecycle.** A single value such as raw `2000`
+   would preserve direction/word/connector and change only magnitude. Capturing
+   pulse width and spacing with fixed manual scope settings could test whether
+   width scales with the raw value. It still needs a separately reviewed fixed
+   profile, fresh authorization, exact-zero baseline, one setter, one cleanup,
+   conditional zero getter, and the same state lock. No runner is implemented.
+2. **Alternative: repeat raw `1000` only to stabilize period acquisition.**
+   This has lower software consequence but adds little value-to-width
+   calibration evidence because the commanded value does not change. It is
+   justified only with a predeclared manual timebase/trigger measurement plan,
+   not automatic reciprocal readouts.
+3. **Later and higher consequence: carefully bounded motor-connected proof.**
+   This would test whether the demonstrated disconnected waveform produces
+   controlled torque/motion, but requires a separate physical test plan,
+   current/energy bounds, one-motor topology, motion/stop acceptance criteria,
+   external cutoff, and reviewed cleanup. The present evidence does not
+   authorize or prepare it.
+
+Do not escalate first to another raw-PWM word, reverse polarity, repeated
+setters, power/heartbeat/reset/configuration writes, or a larger connected-load
+command. Those change more than the value-to-pulse-width question requires.
 
 ## Proven fixed legacy getter survey
 

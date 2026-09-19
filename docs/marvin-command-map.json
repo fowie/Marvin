@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "raw1_completed_raw1000_prepared_with_zero_gate_and_cleanup",
+      "live_probe_policy": "raw1_and_raw1000_completed_second_value_calibration_requires_separate_design",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -242,10 +242,25 @@
           "repeat_scope_observation": "1V/div, 500us/div, about 1.5V trigger; no trigger or visible waveform",
           "physical_connector": "robot-right-side connector printed Motor L; operator states it controls left motor",
           "meaning": "raw statuses opaque; null raw1 result inconclusive; no word-to-connector mapping established"
+        },
+        {
+          "status": "three_raw1000_runs_completed",
+          "scope": "disconnected_load_raw_pwm_word0_1000_pilot",
+          "protocol_each": "baseline getter raw80 exact 8 zero bytes; word0 raw1000 setter raw82 empty; all-zero cleanup raw80 empty; final getter raw80 exact 8 zero bytes",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX",
+          "observations": [
+            "uncertain auto-mode observation, no retained capture",
+            "clear waveform with reversed probe polarity",
+            "clear positive waveform after corrected polarity"
+          ],
+          "physical_connector": "robot-right-side connector printed Motor L; operator states it controls left motor",
+          "scope_readings": "CH1 DC 10x 2V/div; 2.11Vpp, +509mV average, 2.24Vrms, 37us width; spacing and amplitude varied",
+          "frequency_limitation": "27.0kHz was reciprocal pulse width, not established repetition frequency; stable actual repetition rate not obtained",
+          "meaning": "physical lower-level output path established for word0/raw1000 and tested connector; raw82, calibrated duty, motion, and full bridge health unproved"
         }
       ],
-      "offline_preparation": {
-        "status": "prepared_not_executed",
+      "fixed_profile": {
+        "status": "completed",
         "scope": "disconnected_load_raw_pwm_word0_1000_pilot",
         "sequence_range": "3333..3336",
         "setter_words_uint16": [1000, 0, 0, 0],
