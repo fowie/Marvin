@@ -472,7 +472,7 @@
       "sample_name": "SetMotorVelocity",
       "request_layout": "left/right LE int16 / 4 bytes; units not live calibrated",
       "sample_effect": "actuation",
-      "live_probe_policy": "excluded",
+      "live_probe_policy": "prepared_fixed_disconnected_load_plus_1000_50ms_train",
       "sample_calls": [
         {
           "method": "setMotorVelocity_btn_Click",
@@ -490,7 +490,19 @@
           "source": "PCTestApp/Form1.cs:1019"
         }
       ],
-      "live_observations": [],
+      "live_observations": [
+        {
+          "status": "prepared_not_executed",
+          "scope": "disconnected_load_left_plus_1000_velocity_train",
+          "payload": "left signed raw +1000, right zero",
+          "cadence_ms": 50,
+          "train_count": 20,
+          "sequence_range": "3285..3306",
+          "bounds": "22 writes / 308 TX bytes / 8192 maximum RX bytes",
+          "cleanup": "exactly one fixed all-zero attempt after any possible nonzero syscall",
+          "meaning": "oscilloscope observation separate from opaque protocol response and physical stop"
+        }
+      ],
       "newer_drive_meaning": {
         "command": 17,
         "command_hex": "11",

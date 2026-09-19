@@ -165,6 +165,84 @@ acknowledgment, or establish physical stop; `physical_stop` remains
 No larger setter, power-state write, heartbeat, reset, or other live command is
 justified by this evidence.
 
+## Prepared fixed 50 ms left `+1000` train
+
+This separately scoped diagnostic tests only the source-backed cadence
+hypothesis. `PCTestApp/Form1.cs:978-993` sends command `11` on each `timer2`
+tick, `Form1.Designer.cs:2247-2250` fixes that timer at 50 ms, and
+`Form1.cs:995-1025` provides a second explicit fixed-value repeating path. The
+diagnostic therefore sends one initial zero, then 20 unique-sequence left
+`+1000`/right-zero requests at 50 ms targets, then exactly one all-zero cleanup.
+It does not add a separate reference pulse: the previous single-shot `+1000`
+trial is the reference, and omitting another pulse avoids an extra nonzero
+exposure and extra zero.
+
+| Sequence | Payload | Exact frame |
+|---:|---|---|
+| 3285 | initial zero | `53d50c11000400000000008eb845` |
+| 3286 | left `+1000`, right zero | `53d60c11000400e8030000bb1745` |
+| 3287 | left `+1000`, right zero | `53d70c11000400e8030000ead245` |
+| 3288 | left `+1000`, right zero | `53d80c11000400e8030000dae245` |
+| 3289 | left `+1000`, right zero | `53d90c11000400e80300008b2745` |
+| 3290 | left `+1000`, right zero | `53da0c11000400e80300007b2845` |
+| 3291 | left `+1000`, right zero | `53db0c11000400e80300002aed45` |
+| 3292 | left `+1000`, right zero | `53dc0c11000400e80300009b3745` |
+| 3293 | left `+1000`, right zero | `53dd0c11000400e8030000caf245` |
+| 3294 | left `+1000`, right zero | `53de0c11000400e80300003afd45` |
+| 3295 | left `+1000`, right zero | `53df0c11000400e80300006b3845` |
+| 3296 | left `+1000`, right zero | `53e00c11000400e80300005bf745` |
+| 3297 | left `+1000`, right zero | `53e10c11000400e80300000a3245` |
+| 3298 | left `+1000`, right zero | `53e20c11000400e8030000fa3d45` |
+| 3299 | left `+1000`, right zero | `53e30c11000400e8030000abf845` |
+| 3300 | left `+1000`, right zero | `53e40c11000400e80300001a2245` |
+| 3301 | left `+1000`, right zero | `53e50c11000400e80300004be745` |
+| 3302 | left `+1000`, right zero | `53e60c11000400e8030000bbe845` |
+| 3303 | left `+1000`, right zero | `53e70c11000400e8030000ea2d45` |
+| 3304 | left `+1000`, right zero | `53e80c11000400e8030000da1d45` |
+| 3305 | left `+1000`, right zero | `53e90c11000400e80300008bd845` |
+| 3306 | mandatory all-zero cleanup | `53ea0c1100040000000000be7745` |
+
+The immutable transcript is 22 writes / 308 TX bytes, with at most 220 expected
+response bytes inside the 8192-byte RX bound. Its SHA-256 is
+`15f8e1754674fbc866b93c812f4438c470db9c7652f94ca9515a1fe451ffd59b`.
+Every request requires one unique correlated CRC-valid empty command-`11`
+response before the next scheduled request. Raw `80` and `82` are both retained
+opaquely and permit the predeclared sequence to continue. Timeout, partial or
+uncertain TX, CRC/framing/correlation/extra-frame, identity, timing, evidence,
+or interruption faults stop the train. Once any nonzero may have reached its
+syscall, the fixed sequence-3306 cleanup syscall is attempted exactly once
+before its journal event, including on those faults. There is no retry,
+reconnect, negative value, larger magnitude, arbitrary value, count, cadence,
+duration, or sequence option.
+
+Exact offline dry-run review, without `--run`:
+
+```sh
+python3 -B -m tools.marvin_legacy_velocity_train \
+  --disconnected-load-left-plus-1000-velocity-train \
+  --authorize-unvalidated-left-plus-1000-velocity-train \
+  --motor-power-plugs-disconnected --servos-isolated \
+  --both-encoder-feedback-connected --robot-secured-on-blocks \
+  --operator-at-external-cutoff --unprivileged-usbmon
+```
+
+This remains software readiness, not live authorization. Any later authorized
+run requires both motor POWER plugs disconnected, servos isolated, both encoder
+harnesses connected, robot secured, operator at the HY1803D cutoff, and
+unprivileged usbmon. For the left-output observation, use appropriately rated
+isolated differential measurement across the disconnected output, DC coupling,
+and a timebase/trigger that can show 50 ms spacing across the approximately
+one-second train. Probe category, differential/common-mode range, isolation,
+and connection method require operator review for the actual instrument. The
+software does not authorize connecting an earth-referenced ground clip to
+either output terminal.
+
+The operator prompt is to report separately whether the scope showed no output,
+a single transient, repeated PWM/enable activity aligned to the 50 ms train, or
+another raw waveform observation, including instrument settings. Software
+completion and raw `80`/`82` responses do not establish physical output,
+application acknowledgment, or stop.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load
