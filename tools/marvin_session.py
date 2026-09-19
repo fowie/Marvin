@@ -368,6 +368,10 @@ def run_session(
     )
     scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
+    if scope == motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
+        raise ValueError(
+            "Connected raw-PWM 2000 is retired after reverse motion and a nonzero "
+            "post-cleanup getter; no further live execution is authorized.")
     led_mapping_runtime_policy = None
     if scope == motor_consent.LED_MAPPING_SCOPE:
         from tools.marvin_legacy_led_mapper import LEFT_ATTENTION_PHOTO, transcript_for

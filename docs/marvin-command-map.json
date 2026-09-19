@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "disconnected_raw_profiles_and_connected_raw1000_completed_connected_raw2000_prepared",
+      "live_probe_policy": "connected_raw2000_retired_after_reverse_motion_and_nonzero_post_cleanup_getter",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -336,8 +336,8 @@
         "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
         "limitations": "raw82 opaque; first observation invalid due wrong wheel; second observed no physical-left-wheel motion; clean cleanup/getter is not physical stop proof"
       },
-      "next_connected_profile": {
-        "status": "prepared_not_executed",
+      "connected_raw2000_live_result": {
+        "status": "failed_retired",
         "scope": "raw_pwm_word0_2000_left_motor_connected_proof",
         "sequence_range": "3345..3348",
         "setter_words_uint16": [2000, 0, 0, 0],
@@ -347,7 +347,19 @@
         "transcript_sha256": "00c4193c533cdcf24d94b280bd866255ceb6d94a9e3fb4e01eb59899749853a8",
         "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
         "operator_observation": "watch physical left wheel; report no motion or direction plus visible stop/uncertainty and abnormal sound/cutoff use",
-        "limitations": "unloaded 6.5Vpp versus 2.11Vpp justifies comparison but does not predict connected torque; raw82 opaque; external cutoff primary"
+        "protocol": "seq3345 raw80 exact-zero baseline; seq3346 raw82 empty setter; seq3347 raw80 empty all-zero cleanup; seq3348 raw80 payload 0000640000000000 / LE words [0,100,0,0]",
+        "accounting": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; usbmon 4 successful OUT / 56 bytes and 4 payload-bearing successful IN / 56 bytes with no pairing faults",
+        "cleanup": "attempted exactly once; no second cleanup; stop cause not established",
+        "physical_observation": "physical left wheel moved in reverse then stopped; external power cut immediately when instructed; software cleanup versus cutoff stop cause unproved",
+        "failure": "conditional post-cleanup getter failed exact-zero gate with unexpected_raw_pwm_payload; baseline was exact zero",
+        "hashes": {
+          "outer_metadata": "863fb1fca170eecbe189983bfc47a9457340caf8c86745ca8bdc07a0480ffc07",
+          "capture_metadata": "84ae0ff7e6df76e2d113c13d83236f975241de41c0630e05949e3e7f421f6bd1",
+          "adapter_journal": "7b7284bb5e93ce9b2dbdcce248cacf2d925520f54bcb4f73a413123d03d04a47",
+          "binary_usbmon": "750ade3bafec6e81e05d48b43da9d84a92c9ac42bf30763e083672ff8c76d108"
+        },
+        "policy": "retired; runner and coordinator reject before hardware access; exact-zero baseline gate unchanged",
+        "limitations": "raw80/raw82 and getter word meanings opaque; nonzero getter may be stale commanded state, another controller value, or incomplete cleanup application; physical stop not established"
       },
       "newer_drive_meaning": {
         "command": 11,

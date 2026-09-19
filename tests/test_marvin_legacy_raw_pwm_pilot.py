@@ -15,6 +15,7 @@ from tools import marvin_legacy_raw_pwm_pilot as pilot
 from tools import marvin_motor_power_off_consent as consent
 from tools import marvin_session as session
 from tools import marvin_usbmon as usbmon
+from tools.marvin_legacy_client import Received
 
 
 DECLARATIONS = dict.fromkeys(consent.RAW_PWM_PILOT_FLAGS, True)
@@ -185,6 +186,15 @@ class RawPwmPilotTests(unittest.TestCase):
             connected_2000_plan["transcript_sha256"],
             "00c4193c533cdcf24d94b280bd866255ceb6d94a9e3fb4e01eb59899749853a8")
         self.assertEqual(connected_2000_plan["fixed_setter_words_uint16"], [2000, 0, 0, 0])
+        self.assertEqual(
+            connected_2000_plan["status"],
+            "retired_after_live_nonzero_post_cleanup_getter")
+        self.assertFalse(connected_2000_plan["live_execution_authorized"])
+        with redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(ValueError, "retired after reverse motion"):
+            pilot.run_diagnostic(
+                self.root / "retired", expected_physical_port="1-3", run=True,
+                **DECLARATIONS_2000_CONNECTED)
         for knob in ("index", "value", "payload", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -306,30 +316,15 @@ class RawPwmPilotTests(unittest.TestCase):
         connected_2000_harness = session_tests.SessionTests()
         connected_2000_harness.setUp()
         self.addCleanup(connected_2000_harness.doCleanups)
-        connected_2000_runner = Mock(side_effect=connected_2000_harness.capture)
-        connected_2000_result = connected_2000_harness.run_capture(
-            seconds=10, baudrate=57600, allow_unknown_command=True,
-            probe_profile="legacy", capture_runner=connected_2000_runner,
-            binary_payload_limit=4096, usb_tail_seconds=5,
-            usb_close_grace_seconds=5, actuators_isolated=False,
-            **DECLARATIONS_2000_CONNECTED)
-        connected_2000_command = connected_2000_harness.popen.call_args.args[0]
-        self.assertEqual(
-            connected_2000_result["scope"], consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE)
-        self.assertEqual(
-            connected_2000_result["probe_name"],
-            "RawPwmWord0Value2000LeftMotorConnectedProof")
-        self.assertTrue(
-            connected_2000_result["fixed_raw_pwm_2000_left_motor_connected_proof_authorized"])
-        self.assertTrue(
-            connected_2000_result[
-                "unvalidated_raw_pwm_2000_left_motor_connected_proof_authorized"])
-        self.assertFalse(
-            connected_2000_result[
-                "unvalidated_raw_pwm_left_motor_connected_proof_authorized"])
-        for flag in FLAGS_2000_CONNECTED:
-            self.assertIn(flag, connected_2000_command)
-        pilot._validate_capture(connected_2000_runner.call_args.kwargs)
+        with redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(ValueError, "retired after reverse motion"):
+            connected_2000_harness.run_capture(
+                seconds=10, baudrate=57600, allow_unknown_command=True,
+                probe_profile="legacy", capture_runner=Mock(),
+                binary_payload_limit=4096, usb_tail_seconds=5,
+                usb_close_grace_seconds=5, actuators_isolated=False,
+                **DECLARATIONS_2000_CONNECTED)
+        connected_2000_harness.preflight.assert_not_called()
 
         transport = _Transport()
         report = {}
@@ -414,6 +409,23 @@ class RawPwmPilotTests(unittest.TestCase):
         connected_2000_transport.wait.assert_called_once_with(.25)
         self.assertEqual(
             connected_2000_report["status"], pilot.SUCCESS_2000_LEFT_CONNECTED)
+
+        live_artifact = bytes.fromhex("53140d0a80080000006400000000002c7045")
+        evidence_transport = Mock(
+            steps=pilot.STEPS_2000_LEFT_CONNECTED,
+            last_write_sequence=3348,
+            last_write_started=1.0,
+            event=Mock())
+
+        def feed_live_artifact(_transport, evidence, **_):
+            evidence.feed(Received(live_artifact, 1.1, 1.2), 1.3)
+
+        with patch.object(pilot.zero, "_observe_response",
+                          side_effect=feed_live_artifact), \
+                self.assertRaisesRegex(OSError, "unexpected_raw_pwm_payload"):
+            pilot._response(
+                evidence_transport, {"responses": []}, "verify",
+                deadline=2.0, clock=lambda: 1.5)
 
         faults = (
             (("set", "error"), None),

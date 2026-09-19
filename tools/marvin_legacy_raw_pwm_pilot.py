@@ -119,8 +119,10 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         if (packet.sequence, packet.command, packet.response_field, packet.payload) != (
                 fields[0], fields[1], 0, fields[2]):
             raise ValueError("Fixed raw-PWM transcript disagrees with the legacy decoder.")
+    retired = scope == consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE
     return {
-        "status": "dry_run",
+        "status": (
+            "retired_after_live_nonzero_post_cleanup_getter" if retired else "dry_run"),
         "name": scope,
         "profile": "marvin-legacy-se",
         "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
@@ -163,6 +165,10 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             "PCTestApp admits four UInt16 words but supplies no nonzero example, "
             "units, effective minimum, channel binding, or explicit repeat interval"),
         "physical_stop": "not_established",
+        "live_execution_authorized": not retired,
+        "retired_reason": (
+            "live reverse motion followed by post-cleanup getter words [0,100,0,0]"
+            if retired else None),
         "required": ["--run", "--expected-physical-port", "--output NEWDIR",
                      *("--" + name.replace("_", "-")
                        for name in consent.POWERED_TRIAL_SCOPES[scope])],
@@ -397,6 +403,10 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
     if run is not True or scope not in PROFILES:
         raise ValueError("Literal --run and one fixed raw-PWM word-0 scope are required.")
+    if scope == consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
+        raise ValueError(
+            "Connected raw-PWM 2000 is retired after reverse motion and a nonzero "
+            "post-cleanup getter; no further live execution is authorized.")
     profile = PROFILES[scope]
     transport_type = {
         consent.RAW_PWM_PILOT_SCOPE: _RawPwmTransport,

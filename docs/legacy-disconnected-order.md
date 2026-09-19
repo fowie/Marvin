@@ -924,9 +924,9 @@ abnormal behavior. Cleanup completed in both runs. The robot was powered OFF
 afterward. This does not establish that raw-1000 cannot produce torque under
 different conditions or that the software cleanup physically stopped a motor.
 
-### Prepared left-motor-connected raw-2000 escalation
+### Completed failed left-motor-connected raw-2000 escalation — retired
 
-The next immutable scope changes only the raw word-0 value, fixed sequence
+This immutable scope changed only the raw word-0 value, fixed sequence
 block, and literal authorization from the completed connected raw-1000 proof.
 The physical setup and all gates remain identical. Disconnected testing
 reported 6.5 Vpp for raw-2000 versus 2.11 Vpp for raw-1000, which justifies
@@ -960,7 +960,7 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --unprivileged-usbmon
 ```
 
-Prepared live invocation (software readiness only, **not live authorization**):
+Historical invocation (**retired; must not be executed again**):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -976,11 +976,60 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --run
 ```
 
-The operator must watch the **physical left wheel**, report direction if any,
-confirm visible stop after cleanup or report uncertainty, and use independent
-cutoff immediately for abnormal motion, sound, direction, or any uncertainty.
-No clean protocol response or zero getter is a physical-stop claim. This is
-software readiness only; no hardware execution or authorization follows.
+#### Live result and exact failure boundary
+
+The sealed evidence tree and all nested manifest entries verify. The run
+accepted all four planned writes / 56 TX bytes with zero uncertain bytes and
+recorded 56 serial RX bytes. usbmon recorded four successful bulk OUT
+completions / 56 captured and completed OUT bytes and four successful
+payload-bearing bulk IN completions / 56 captured and completed IN bytes, with
+zero unmatched completions, endpoint mismatches, submission errors, evictions,
+retained pending transfers, or uncaptured bytes. The recorder's final
+`failed: Observation recorder stopped: signal` status reflects coordinator
+shutdown after the application failure; the four application exchanges were
+fully captured.
+
+| Artifact | SHA-256 |
+|---|---|
+| Outer metadata | `863fb1fca170eecbe189983bfc47a9457340caf8c86745ca8bdc07a0480ffc07` |
+| Capture metadata | `84ae0ff7e6df76e2d113c13d83236f975241de41c0630e05949e3e7f421f6bd1` |
+| Adapter journal | `7b7284bb5e93ce9b2dbdcce248cacf2d925520f54bcb4f73a413123d03d04a47` |
+| Binary usbmon | `750ade3bafec6e81e05d48b43da9d84a92c9ac42bf30763e083672ff8c76d108` |
+
+The exact lifecycle was:
+
+1. Sequence 3345 baseline getter returned CRC-valid correlated raw `80` and
+   exact payload `0000000000000000`.
+2. Sequence 3346 `[2000,0,0,0]` setter was fully accepted and returned
+   CRC-valid correlated opaque raw `82`, empty.
+3. Sequence 3347 mandatory all-zero cleanup was fully accepted once and
+   returned CRC-valid correlated raw `80`, empty. The cleanup syscall returned
+   about 753 ms after setter prewrite. No second cleanup was attempted because
+   the fixed policy permits exactly one.
+4. Sequence 3348 conditional getter was fully accepted and returned CRC-valid
+   correlated raw `80` with payload `0000640000000000`, four little-endian
+   words `[0,100,0,0]`. The strict exact-zero check correctly failed with
+   `unexpected_raw_pwm_payload`.
+
+The mismatch was therefore **post-cleanup verification**, not the baseline.
+It is not a response parser, sequence, CRC, USB-correlation, or prewrite-boundary
+bug. It is controller evidence that the nominal raw-PWM getter exposed a
+nonzero word after the one all-zero setter cleanup. Whether that represents
+stale commanded state, another controller value, or incomplete application is
+unknown because firmware handler semantics remain unavailable. Raw `80` still
+does not prove application success.
+
+The operator watched the physical left wheel and observed it **move in
+reverse, then stop**. The user cut external power immediately when instructed.
+The evidence does not establish whether the stop resulted from software
+cleanup, controller behavior, or external cutoff timing, so no software stop
+claim is made. This is the first connected-load proof that raw word 0/value
+2000 can produce physical left-wheel motion in this setup.
+
+The exact-zero baseline gate remains unchanged. This raw-2000 connected
+profile is now fail-closed and retired in both the runner and coordinator;
+offline review remains available, but another live run is rejected before
+preflight or serial access.
 
 ## Proven fixed legacy getter survey
 
