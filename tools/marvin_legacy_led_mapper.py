@@ -1,4 +1,4 @@
-"""Two-phase legacy LED state mapper and fixed wheel-blink pilot.
+"""Two-phase legacy LED mapper: set one index to 255, then restore its baseline.
 
 Offline by default. This is software readiness, not live authorization.
 """
@@ -32,9 +32,6 @@ RESTORED = "led_mapping_restore_verified"
 RESTORE_REJECTED = "led_mapping_restore_rejected_power_cycle_required"
 LEFT_ATTENTION_PHOTO = "left-attention-photo"
 LEFT_ATTENTION_INDICES = (1, 2, 3, 4, 5)
-WHEEL_LED_BLINK_PILOT = "wheel-led-blink-pilot"
-WHEEL_LED_INDEX = 12
-BLINK_VALUE = 42
 
 
 def _index(value):
@@ -49,27 +46,21 @@ def _frame(sequence, command, payload=b""):
 
 
 def _target(value):
-    return value if value in (LEFT_ATTENTION_PHOTO, WHEEL_LED_BLINK_PILOT) else _index(value)
+    return LEFT_ATTENTION_PHOTO if value == LEFT_ATTENTION_PHOTO else _index(value)
 
 
 def sequences(target):
     target = _target(target)
-    first = (
-        3276 if target == WHEEL_LED_BLINK_PILOT else
-        3272 if target == LEFT_ATTENTION_PHOTO else
-        3200 + 4 * target)
+    first = 3272 if target == LEFT_ATTENTION_PHOTO else 3200 + 4 * target
     return first, first + 1, first + 2, first + 3
 
 
 def test_vector(target, baseline=None):
     target = _target(target)
-    if target in (LEFT_ATTENTION_PHOTO, WHEEL_LED_BLINK_PILOT):
+    if target == LEFT_ATTENTION_PHOTO:
         if type(baseline) is not bytes or len(baseline) != 18:
-            raise ValueError("Fixed LED pattern requires the captured 18-byte baseline.")
+            raise ValueError("Left-attention photo pattern requires the captured 18-byte baseline.")
         payload = bytearray(baseline)
-        if target == WHEEL_LED_BLINK_PILOT:
-            payload[WHEEL_LED_INDEX] = BLINK_VALUE
-            return bytes(payload)
         for index in LEFT_ATTENTION_INDICES:
             payload[index] = 255
         return bytes(payload)
@@ -81,19 +72,6 @@ def test_vector(target, baseline=None):
 def transcript_for(phase, target, baseline=None):
     target = _target(target)
     baseline_sequence, set_sequence, restore_sequence, verify_sequence = sequences(target)
-    if target == WHEEL_LED_BLINK_PILOT:
-        if phase == "set":
-            getters = (_frame(baseline_sequence, 0x17), _frame(set_sequence, 0x19))
-            return getters if baseline is None else (
-                *getters, _frame(restore_sequence, 0x1A, test_vector(target, baseline)))
-        if phase == "restore":
-            if type(baseline) is not bytes or len(baseline) != 18:
-                raise ValueError("Restore requires the exact captured 18-byte baseline.")
-            return (
-                _frame(verify_sequence, 0x1A, baseline),
-                _frame(verify_sequence + 1, 0x19),
-            )
-        raise ValueError("LED mapping phase must be set or restore.")
     if phase == "set":
         getter = _frame(baseline_sequence, 0x17)
         if target == LEFT_ATTENTION_PHOTO and baseline is None:
@@ -117,28 +95,23 @@ def prepare_set(target):
         "name": consent.LED_MAPPING_SCOPE,
         "phase": "set",
         "target": target,
-        "fixed_value": BLINK_VALUE if target == WHEEL_LED_BLINK_PILOT else 255,
+        "fixed_value": 255,
         "profile": "marvin-legacy-se",
         "immutable_application_transcript_hex": (
             [raw.hex() for raw in transcript] if len(transcript) == 2 else [transcript[0].hex()]),
         "transcript_sha256": (
             hashlib.sha256(b"".join(transcript)).hexdigest() if len(transcript) == 2 else None),
         "runtime_derived_setter_policy": (
-            "captured_blink_baseline_with_only_index_12_changed_to_2a"
-            if target == WHEEL_LED_BLINK_PILOT else
             "captured_baseline_with_only_indices_1_2_3_4_5_forced_to_ff"
             if target == LEFT_ATTENTION_PHOTO else None),
-        "maximum_application_bytes": 48 if target == WHEEL_LED_BLINK_PILOT else 38,
-        "maximum_writes": 3 if target == WHEEL_LED_BLINK_PILOT else 2,
+        "maximum_application_bytes": 38,
+        "maximum_writes": 2,
         "max_serial_rx_bytes": 8192,
         "response_fields_recorded": [0x80, 0x82],
         "automatic_retries": False,
         "automatic_reconnect": False,
         "result": "RESTORE_REQUIRED_regardless_of_setter_response",
-        "operator_action": (
-            "observe_wheel_LED_blink_then_run_restore_phase"
-            if target == WHEEL_LED_BLINK_PILOT else
-            "observe_LED_then_run_restore_phase"),
+        "operator_action": "observe_LED_then_run_restore_phase",
         "physical_led_effect": "not_established",
     }
 
@@ -151,7 +124,7 @@ def prepare_restore(target, baseline):
         "name": consent.LED_MAPPING_SCOPE,
         "phase": "restore",
         "target": target,
-        "fixed_value": BLINK_VALUE if target == WHEEL_LED_BLINK_PILOT else 255,
+        "fixed_value": 255,
         "baseline_payload_hex": baseline.hex(),
         "profile": "marvin-legacy-se",
         "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
@@ -337,9 +310,7 @@ def _set_observer(transcript, target, baseline_callback):
         deadline = clock() + SERIAL_SECONDS
         report.update(
             status="not_started", accepted_tx_bytes=0, uncertain_tx_bytes=0,
-            responses=[], target=target,
-            fixed_value=BLINK_VALUE if target == WHEEL_LED_BLINK_PILOT else 255,
-            baseline_payload_hex=None,
+            responses=[], target=target, fixed_value=255, baseline_payload_hex=None,
             setter_may_have_been_submitted=False, restore_required=False,
             operator_led_observation="pending_external_observation",
             physical_led_effect="not_established", physical_stop="not_established",
@@ -349,38 +320,23 @@ def _set_observer(transcript, target, baseline_callback):
             if transport.revalidate(deadline=deadline) != transport.token:
                 raise OSError("Fresh transport identity differs from the pinned connection.")
             _write(transport, report, current_transcript[0], deadline=deadline)
-            first_payload = _response(
+            baseline = _response(
                 transport, report, current_transcript[0], deadline=deadline,
                 accepted_response_fields=(0x80,),
                 clock=clock).payload
-            if target == WHEEL_LED_BLINK_PILOT:
-                if len(first_payload) != 18 or first_payload[WHEEL_LED_INDEX] != 255:
-                    raise OSError("Wheel LED state byte 12 must be FF before the blink pilot.")
-                report["led_state_baseline_payload_hex"] = first_payload.hex()
-                _write(transport, report, current_transcript[1], deadline=deadline)
-                baseline = _response(
-                    transport, report, current_transcript[1], deadline=deadline,
-                    accepted_response_fields=(0x80,), clock=clock).payload
-            else:
-                baseline = first_payload
             if len(baseline) != 18:
-                raise OSError("LED baseline getter must return exactly 18 bytes.")
-            if target == WHEEL_LED_BLINK_PILOT and baseline[WHEEL_LED_INDEX] == BLINK_VALUE:
-                raise OSError("Wheel LED blink byte 12 already equals the fixed pilot value.")
+                raise OSError("GetLedState baseline must be exactly 18 bytes.")
             report["baseline_payload_hex"] = baseline.hex()
             baseline_callback(baseline)
-            if target in (LEFT_ATTENTION_PHOTO, WHEEL_LED_BLINK_PILOT):
+            if target == LEFT_ATTENTION_PHOTO:
                 current_transcript = transcript_for("set", target, baseline)
                 transport.transcript = current_transcript
                 report["derived_setter_payload_hex"] = test_vector(target, baseline).hex()
-                report["preserved_baseline_indices"] = (
-                    [index for index in range(18) if index != WHEEL_LED_INDEX]
-                    if target == WHEEL_LED_BLINK_PILOT else [0, *range(6, 18)])
+                report["preserved_baseline_indices"] = [0, *range(6, 18)]
             report["setter_may_have_been_submitted"] = True
-            setter_request = current_transcript[-1]
-            _write(transport, report, setter_request, deadline=deadline)
+            _write(transport, report, current_transcript[1], deadline=deadline)
             setter = _response(
-                transport, report, setter_request, deadline=deadline,
+                transport, report, current_transcript[1], deadline=deadline,
                 accepted_response_fields=(0x80, 0x82), clock=clock)
             report.update(
                 setter_raw_response_field=setter.response_field,
@@ -392,11 +348,9 @@ def _set_observer(transcript, target, baseline_callback):
             primary = error
             report.update(
                 setter_may_have_been_submitted=(
-                    report["setter_may_have_been_submitted"]
-                    or transport.writes >= (3 if target == WHEEL_LED_BLINK_PILOT else 2)),
+                    report["setter_may_have_been_submitted"] or transport.writes >= 2),
                 restore_required=(
-                    report["setter_may_have_been_submitted"]
-                    or transport.writes >= (3 if target == WHEEL_LED_BLINK_PILOT else 2)),
+                    report["setter_may_have_been_submitted"] or transport.writes >= 2),
                 status="failed", error=f"{type(error).__name__}: {error}"[:1024])
             raise
         finally:
@@ -468,10 +422,7 @@ def _run_live(output, *, phase, target, baseline, observe, declarations,
         output, expected_physical_port=expected_physical_port,
         review=prepare_set(target) if phase == "set" else prepare_restore(target, baseline),
         transport_type=_transport_type(transcript), observe=observe,
-        limits=zero._Limits(
-            first_sequence=sequences(target)[0],
-            max_requests=3 if phase == "set" and target == WHEEL_LED_BLINK_PILOT else 2,
-            interval=0),
+        limits=zero._Limits(first_sequence=sequences(target)[0], max_requests=2, interval=0),
         session_options={
             "actuators_isolated": False,
             "_led_mapping_phase": phase,
@@ -484,10 +435,7 @@ def _run_live(output, *, phase, target, baseline, observe, declarations,
         expected_tx=lambda report: report["accepted_tx_bytes"],
         success_status=f"led_mapping_{phase}_phase_complete_unverified",
         report_key=f"led_mapping_{phase}_phase",
-        authorizations={
-            "unvalidated_led_mapping_phase_authorized": True,
-            "fixed_wheel_led_blink_pilot_authorized": target == WHEEL_LED_BLINK_PILOT,
-        },
+        authorizations={"unvalidated_led_mapping_phase_authorized": True},
         capture_validator=_validate_capture,
         on_failure=consent.notify_powered_trial_fault,
         serial_seconds=SERIAL_SECONDS,
@@ -660,7 +608,7 @@ def main(argv=None):
     parser.add_argument("--phase", choices=("set", "restore", "acknowledge-power-cycle"),
                         required=True)
     parser.add_argument("--index", type=int)
-    parser.add_argument("--pattern", choices=(LEFT_ATTENTION_PHOTO, WHEEL_LED_BLINK_PILOT))
+    parser.add_argument("--pattern", choices=(LEFT_ATTENTION_PHOTO,))
     parser.add_argument("--set-evidence", type=Path)
     parser.add_argument("--confirm-power-cycle-reset", action="store_true")
     parser.add_argument("--led-observation", choices=("changed", "no_change", "uncertain"))
