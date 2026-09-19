@@ -702,7 +702,7 @@
       "sample_name": "SetLedBlink",
       "request_layout": "18 uint8 blink values; timing semantics unconfirmed",
       "sample_effect": "output_setting",
-      "live_probe_policy": "fixed_off_start_reversible_pilot_prepared_offline_unexecuted",
+      "live_probe_policy": "completed_fixed_off_start_reversible_pilot",
       "sample_calls": [
         {
           "method": "setLedBlink_btn_Click",
@@ -720,7 +720,21 @@
           "source": "PCTestApp/Form1.cs:844"
         }
       ],
-      "live_observations": [],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:wheel-led-blink-off-start-20260919",
+          "request_bytes": 28,
+          "reply_bytes": 10,
+          "matched_response_fields": [
+            130
+          ],
+          "matched_payload_sizes": [
+            0
+          ],
+          "physical_observation": "wheel LEDs visibly blinked during the fixed three-second window",
+          "restore_observation": "exact blink restore returned raw 82; visible baseline restoration and power cycle were operator-confirmed separately"
+        }
+      ],
       "newer_drive_meaning": {
         "command": 26,
         "command_hex": "1a",

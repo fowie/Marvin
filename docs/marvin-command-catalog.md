@@ -55,7 +55,7 @@ units remain unknown unless stated.
 | `17` `GetLedState` | Nominal read; empty. `Form1.cs:680` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3085 returned `000000000000000000000000ff0000ff0000`. PCTestApp prints but does not parse this reply. Newer Drive `17` is `SetDriveVelocities`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
 | `18` `SetLedState` | Output setter; 18 `uint8` brightness values. Sites `Form1.cs:714,738,746` set one channel with other entries zero, all channels, or random channels; exact physical channels/ranges are unproved. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the earlier value-1 set/restore and every completed index-at-`FF` set/restore through index 17 | **Proven status and physical-effect behavior, not application semantics.** The earlier index-0 value-1 round had no observed change. In the later interactive rounds, each fully transmitted setter returned raw `82`; all but index 15 produced a visible effect. Each exact-baseline restore also returned raw `82` while visibly restoring state. Raw `82` remains opaque and the physical observations do not establish electrical topology. | **Completed interactive mapping, separately authorized.** The two-phase index-at-255 mechanism preserved the exact live baseline and blocked each next index until an operator-confirmed power-cycle acknowledgment after raw `82`. |
 | `19` `GetLedBlink` | Nominal read; empty. `Form1.cs:850` | **Proven:** `80`, 18 bytes / 28-byte frame | **Proven exchange.** Sequence 3086 returned `0000000000000000000000000000002a0000`. PCTestApp prints but does not parse this reply. Newer Drive/Head `19` is `SetServoRadians`. | **Installed/proven read-only.** Retain raw until legacy field semantics are recovered. |
-| `1A` `SetLedBlink` | Output setter; 18 `uint8` values. `Form1.cs:781-812` zeroes all bytes, parses index `0..17` and value `0..255`, and sets only that index; `Form1.cs:815-844` also sends all-equal or random vectors. Timing semantics remain unknown. | No installed setter response: the earlier pilot stopped before command `1A` | **Fixed OFF-start pilot prepared offline; not executed.** It preserves both exact installed baselines, changes only wheel index 12 to source/installed-backed value `42`, then attempts exact blink and LED-state restores in reverse order. | **Separately authorized fixed pilot only.** Residual application ambiguity is explicit; no generic index/value/payload access. |
+| `1A` `SetLedBlink` | Output setter; 18 `uint8` values. `Form1.cs:781-812` zeroes all bytes, parses index `0..17` and value `0..255`, and sets only that index; `Form1.cs:815-844` also sends all-equal or random vectors. Timing semantics remain unknown. | **Observed:** raw `82`, 0 bytes / 10-byte frame for the fixed wheel-index-12 setter and exact-baseline restore | **Completed fixed OFF-start pilot.** Both baselines returned raw `80`; command `18` enabled wheel state, command `1A` set blink index 12 to `42`, and the wheel LEDs visibly blinked. Exact blink then state restores both returned raw `82`; the operator observed complete visible restoration and then power cycled. | **Completed separately authorized fixed pilot.** Raw `82` remains opaque; visible effect/restoration and power-cycle acknowledgment do not establish application acknowledgment or timing units. |
 | `1B` `GetUnitInfo` | Read with possible telemetry-handshake side effect; empty. `Form1.cs:610` | **Proven:** `80`, 12 bytes / 22-byte frame | **Proven exchange.** Reported words `01020000`, `01020000`, `01020304`; they do not identify a unique image. Separate successor-framed host trial produced OUT but no application RX. | **Catalog-only now.** A future identity read is conditional on source mapping the returned version to the legacy handler; handshake side effect requires separate review. |
 | `1C` `SetUnitInfo` | Identity write; 12 bytes; sample uses alternating `AA`/`55`. `Form1.cs:628` | Unknown legacy response shape | **Source-only; no live test.** Persistence is unknown. | **Catalog-only: identity/configuration write.** |
 | `1D` `GetServoPosition` | Read; empty. `Form1.cs:778` | **Proven:** `80`, 4 bytes / 14-byte frame | **Proven exchange.** Returned raw values 2500 and 2730; not measured angles. This legacy meaning conflicts with newer `GetSensorInfo`. | **Catalog-only for motor rejection:** unrelated returned state; generation-sensitive despite the proved legacy exchange. |
@@ -760,10 +760,10 @@ three-second observation window enters the same mandatory cleanup. This is the
 strongest achievable software cleanup, not proof that an opaque setter or
 restore was applied.
 
-#### Fixed OFF-start wheel LED blink pilot
+#### Completed fixed OFF-start wheel LED blink pilot
 
-**Prepared offline; never executed. This is software readiness, not live
-authorization.** It requires the exact installed OFF-start LED-state baseline
+The separately authorized live run completed with process exit 0. Its fixed
+software still requires the exact installed OFF-start LED-state baseline
 `000000000000000000000000000000ff0000` and exact blink baseline
 `0000000000000000000000000000002a0000`. Any mismatch or non-`80` baseline
 reply stops before a setter.
@@ -785,7 +785,7 @@ The state setter changes only byte 12 from `00` to `FF`. The blink setter
 changes only byte 12 from `00` to `2A`; byte 15 remains the installed baseline
 `2A`. Raw `80` and `82` setter replies are recorded without decoding and the
 pilot continues to its fixed three-second visual observation window. The
-operator should report whether the wheel LEDs visibly blinked.
+operator observation is recorded separately from protocol status.
 
 Before each setter syscall, that component is conservatively marked
 `may_have_applied`. In cleanup, every still-required restore is attempted
@@ -845,6 +845,53 @@ disconnected; no motion or DMM observation is requested. Successful writes,
 CRC-valid frames, visible blinking, restore attempts, and power cycling do not
 decode raw status or prove application acknowledgment, electrical topology, or
 physical safety.
+
+The completed run sent the first six rows only. Both baseline getters returned
+matching CRC-valid raw `80` with their exact required 18-byte payloads:
+
+```text
+53cd0c17801200000000000000000000000000000000ff000006af45
+53ce0c198012000000000000000000000000000000002a00009c2445
+```
+
+The state and blink setters were each fully transmitted and returned matching
+CRC-valid raw `82` with empty payloads:
+
+```text
+53cf0c18820000c47345
+53d00c1a820000c7a445
+```
+
+During the fixed three-second window, the operator observed the wheel LEDs
+visibly **blinking**. Automatic cleanup then fully transmitted the exact blink
+baseline restore followed by the exact LED-state baseline restore. Both
+returned matching CRC-valid raw `82` with empty payloads:
+
+```text
+53d10c1a820000c67545
+53d20c18820000c7fe45
+```
+
+Because both restore responses were raw `82`, neither conditional verification
+getter was sent. Software therefore records
+`restore_attempts_completed_but_application_unverified`, not verified
+restoration. There were no cleanup errors. The operator separately confirmed
+that the wheel LEDs were OFF and the original bottom-bar/baseline visible state
+was fully restored, then powered the robot OFF. The evidence-bound offline
+acknowledgment subsequently recorded both physical restoration and power-cycle
+confirmation with `hardware_access=false`; this cleared the state lock but is
+not software verification.
+
+Accounting was 6 application submissions, 132 accepted TX bytes, 96 serial RX
+bytes, and zero uncertain TX bytes. Usbmon independently retained six
+successful bulk OUT completions totaling 132 bytes and six successful bulk IN
+completions totaling 96 bytes, with no unmatched transfers, dropped events,
+queued events, or uncaptured payload bytes. All 13 outer manifest entries and
+all 11 nested capture-manifest entries verified. The outer manifest digest
+bound into the acknowledged state was
+`019217a4c5b089683ae19639cc5c1112bc91e0971e7a2bad3038b87d52da6b1d`.
+The immutable eight-frame transcript SHA-256 remains
+`82cbf5777ce410e9f71426c8114bf577cf174266294f76c67c6b3da322e3d260`.
 
 #### Fixed left-attention photo pattern
 
