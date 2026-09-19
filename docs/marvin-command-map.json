@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "raw1_and_raw1000_completed_raw2000_comparison_prepared",
+      "live_probe_policy": "raw1_raw1000_raw2000_completed_left_motor_connected_proof_prepared",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -257,6 +257,27 @@
           "scope_readings": "CH1 DC 10x 2V/div; 2.11Vpp, +509mV average, 2.24Vrms, 37us width; spacing and amplitude varied",
           "frequency_limitation": "27.0kHz was reciprocal pulse width, not established repetition frequency; stable actual repetition rate not obtained",
           "meaning": "physical lower-level output path established for word0/raw1000 and tested connector; raw82, calibrated duty, motion, and full bridge health unproved"
+        },
+        {
+          "status": "two_raw2000_runs_completed",
+          "scope": "disconnected_load_raw_pwm_word0_2000_pilot",
+          "protocol_each": "baseline getter raw80 exact 8 zero bytes; word0 raw2000 setter raw82 empty; all-zero cleanup raw80 empty; final getter raw80 exact 8 zero bytes",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX",
+          "width_run_hashes": {
+            "outer_manifest": "32f9b89a497ac3316337ca3d191f114a7ef96f69ce326305fcb39964093fca09",
+            "nested_manifest": "af50926558be59b99a7fa1e753cd9fc3f9ce6c065e204b0c5f9f6d174f6057d5",
+            "adapter_journal": "604bf054c23657c43e810057f8211bd2f0990a0ae566a1a2c15b93efcd8676d6",
+            "binary_usbmon": "6fa8ae516d94be51255683497cbe1e4705343db2a646f377a3e54c3543297d7c"
+          },
+          "amplitude_run_hashes": {
+            "outer_manifest": "2cd7129aa137fdb4c9f4cf8f9ca9f7e91a11eafecd080d0f02413c3a862f43bb",
+            "nested_manifest": "9f655a5038ffdb698ff519f82f66e6b0e2caa59b2d93e22f5ad3d0c57ece96a2",
+            "adapter_journal": "cc4cfa909bd7a7fd5207a59311662585b04168aa8de815f739b746de80a251da",
+            "binary_usbmon": "e2b2525adfef3deb48183e793b5911a2c5bfc11289c7430606f217910f77b14e"
+          },
+          "operator_observations": "triggered width run: 37.6us and displayed 14.9kHz; repeat amplitude run: 6.5Vpp",
+          "comparison": "raw1000 positive capture reported 37us and 2.11Vpp; near-equal width and changed amplitude",
+          "meaning": "value-dependent unloaded output established; calibrated voltage/duty/frequency and loaded bridge capability unproved"
         }
       ],
       "fixed_profile": {
@@ -269,8 +290,8 @@
         "transcript_sha256": "f9fb5e2ae27dbbeb0c8c57b3d9bb1663ca2d34fa16f2c2ae7966e505310e012b",
         "limitations": "raw1000 units/duty and word-to-connector mapping unknown; null result inconclusive"
       },
-      "next_fixed_profile": {
-        "status": "prepared_not_executed",
+      "completed_comparison_profile": {
+        "status": "completed",
         "scope": "disconnected_load_raw_pwm_word0_2000_pilot",
         "sequence_range": "3337..3340",
         "setter_words_uint16": [2000, 0, 0, 0],
@@ -279,6 +300,18 @@
         "transcript_sha256": "9a3a6fa3110df4769b62391cd289cebbd06bf801b04154117f4a989c1a78d51b",
         "comparison_prompt": "same Motor L-labelled connector and corrected polarity; CH1 DC 10x, 2V/div, 50us/div; record width, Vpp, and stable period only if captured",
         "limitations": "raw2000 is 3.05% numeric full scale, not known duty; width ratio empirical only"
+      },
+      "next_fixed_profile": {
+        "status": "prepared_not_executed",
+        "scope": "raw_pwm_word0_1000_left_motor_connected_proof",
+        "sequence_range": "3341..3344",
+        "setter_words_uint16": [1000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 0.25,
+        "maximum_setter_to_cleanup_start_seconds": 0.75,
+        "transcript_sha256": "35c73a4732f7ee75e95f27c291018d7a038172a80c3a9bc9827aabd2d0cac575",
+        "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
+        "limitations": "raw82 opaque; motion possible; external cutoff primary; clean cleanup/getter is not physical stop proof"
       },
       "newer_drive_meaning": {
         "command": 11,

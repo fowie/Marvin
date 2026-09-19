@@ -726,7 +726,7 @@ Do not escalate first to another raw-PWM word, reverse polarity, repeated
 setters, power/heartbeat/reset/configuration writes, or a larger connected-load
 command. Those change more than the value-to-pulse-width question requires.
 
-### Prepared fixed raw-PWM word-0/value-2000 comparison
+### Completed fixed raw-PWM word-0/value-2000 comparison
 
 The existing runner now includes one immutable raw-2000 profile. It changes
 only word 0 and the sequence block; word index, physical connector, one-setter
@@ -760,7 +760,7 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --operator-at-external-cutoff --unprivileged-usbmon
 ```
 
-Prepared live invocation (software readiness only, **not live authorization**):
+Exact historical live invocation (completion is **not continuing authorization**):
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -774,14 +774,118 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --run
 ```
 
-The comparison target remains the disconnected robot-right-side connector
+The comparison target was the disconnected robot-right-side connector
 printed `Motor L`, with corrected probe polarity. Use the same CH1 DC coupling,
 10x probe, 2 V/div, and 50 us/div single-shot setup as the proven raw-1000
 detail capture. Record pulse width and Vpp and, only if stable peak-to-peak
 spacing is actually captured, period/repetition rate. Preserve irregular
 spacing/amplitude rather than reducing it to one automatic number. Compare any
 width ratio empirically; do not infer linear duty units from two points. No
-hardware execution or continuing authorization follows from this preparation.
+continuing authorization follows from these completed runs.
+
+#### Two completed raw-2000 runs
+
+Both separately authorized runs completed with identical application
+accounting: four fully accepted writes / 56 TX bytes, zero uncertain TX bytes,
+and 56 serial RX bytes. Sequence 3337 returned raw `80` with exactly eight zero
+bytes; sequence 3338 `[2000,0,0,0]` returned opaque raw `82` with no payload;
+sequence 3339 all-zero cleanup returned raw `80` with no payload; and sequence
+3340 returned raw `80` with exactly eight zero bytes. Cleanup was attempted
+once and the zero baseline was getter-reverified in both runs.
+
+Each usbmon trace recorded four successful bulk OUT completions / 56 captured
+and completed OUT bytes and four payload-bearing successful bulk IN completions
+/ 56 captured and completed IN bytes. Both reported zero unmatched
+completions, submission errors, endpoint mismatches, evictions, retained
+pending transfers, and uncaptured payload bytes. Every outer and nested
+manifest entry verified.
+
+| Run | Outer manifest | Nested manifest | Adapter journal | Binary usbmon |
+|---|---|---|---|---|
+| Width | `32f9b89a497ac3316337ca3d191f114a7ef96f69ce326305fcb39964093fca09` | `af50926558be59b99a7fa1e753cd9fc3f9ce6c065e204b0c5f9f6d174f6057d5` | `604bf054c23657c43e810057f8211bd2f0990a0ae566a1a2c15b93efcd8676d6` | `6fa8ae516d94be51255683497cbe1e4705343db2a646f377a3e54c3543297d7c` |
+| Amplitude | `2cd7129aa137fdb4c9f4cf8f9ca9f7e91a11eafecd080d0f02413c3a862f43bb` | `9f655a5038ffdb698ff519f82f66e6b0e2caa59b2d93e22f5ad3d0c57ece96a2` | `cc4cfa909bd7a7fd5207a59311662585b04168aa8de815f739b746de80a251da` | `e2b2525adfef3deb48183e793b5911a2c5bfc11289c7430606f217910f77b14e` |
+
+The first single-shot triggered; the operator reported 37.6 us pulse width and
+a displayed 14.9 kHz frequency. The repeat reported 6.5 Vpp. Treat those as
+raw operator observations: no stable period trace was supplied, so the
+displayed frequency is not calibrated or established. Compared with raw
+1000's 37 us and 2.11 Vpp positive capture, the reported pulse widths are
+nearly equal while amplitude changed. This establishes value-dependent
+unloaded output for the tested word/connector, but does not establish linear
+voltage scaling, duty units, stable frequency, loaded voltage, or bridge
+current capability. Probe loading, unloaded bridge behavior, trigger/window
+selection, and scope automatic measurement can shape the observations. The
+robot was powered OFF after the repeat.
+
+### Prepared left-motor-connected raw-1000 proof
+
+The smallest connected-load proof is a separate fixed scope. It reconnects
+**only the physical left motor** to the robot-right-side controller connector
+printed `Motor L`; the right motor remains unplugged, servos isolated, both
+encoder harnesses connected, robot secured on blocks with wheels clear, and an
+operator remains at the external cutoff. It does not authorize any other
+connector, motor, word, value, duration, cadence, or repeated command.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3341 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes | `530d0d0a0000004c0145` |
+| 2 | 3342 | command `0B`; four LE `UInt16` words `[1000,0,0,0]` | `530e0d0b000800e803000000000000576145` |
+| 3 | 3343 | mandatory command `0B`; exact all-zero cleanup once after the setter may reach its syscall | `530f0d0b00080000000000000000006b4e45` |
+| 4 | 3344 | conditional command `0A` verification after clean empty raw-`80` cleanup; require eight zero bytes | `53100d0a0000004f8c45` |
+
+The concatenated transcript SHA-256 is
+`35c73a4732f7ee75e95f27c291018d7a038172a80c3a9bc9827aabd2d0cac575`.
+Bounds remain four writes / 56 TX bytes / 56 expected response bytes and 8192
+serial RX bytes, or three writes / 46 TX bytes if verification is suppressed.
+The motion observation window is fixed at 250 ms after a clean correlated
+setter response. The response budget is 500 ms from the immediate
+pre-`os.write` boundary, so cleanup starts within at most approximately 750 ms
+of that boundary on the planned clean path; response timeout/fault enters
+cleanup immediately instead of opening the observation window.
+
+Once the setter may reach its syscall, exactly one all-zero cleanup syscall is
+attempted across raw `80`, raw `82`, timeout, correlation/CRC/framing/extra
+frame, partial/uncertain write, evidence/journal fault, identity fault, or
+interruption. The cleanup syscall precedes its journal event. There is no retry
+or reconnect. The external cutoff is primary because software cannot prove
+torque removal, motion stop, or application acceptance; raw `82` remains
+opaque. Any abnormal motion or sound, unexpected direction, evidence fault, or
+operator uncertainty requires immediate independent cutoff.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word0-1000-left-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-left-motor-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-word0-1000-left-motor-connected-proof \
+  --authorize-unvalidated-raw-pwm-left-motor-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --motor-left-connected --motor-right-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+No scope is required concurrently. The operator reports physical outcome
+separately as `no_motion`, `motion_direction_uncertain`, or a plainly described
+observed direction, plus whether the wheel visibly stopped after cleanup and
+whether cutoff was used. A clean command/getter lifecycle is not a stop proof.
+No hardware execution or authorization follows from this preparation.
 
 ## Proven fixed legacy getter survey
 

@@ -42,6 +42,8 @@ STEPS_1000 = _steps(3333, WORD0_1000)
 TRANSCRIPT_1000 = tuple(STEPS_1000.values())
 STEPS_2000 = _steps(3337, WORD0_2000)
 TRANSCRIPT_2000 = tuple(STEPS_2000.values())
+STEPS_LEFT_CONNECTED = _steps(3341, WORD0_1000)
+TRANSCRIPT_LEFT_CONNECTED = tuple(STEPS_LEFT_CONNECTED.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -49,24 +51,34 @@ OBSERVATION_SECONDS = 3
 SUCCESS = "raw_pwm_word0_one_pilot_complete_unverified"
 SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
 SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
+SUCCESS_LEFT_CONNECTED = "raw_pwm_left_motor_connected_proof_complete_unverified"
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
         "value": 1, "success": SUCCESS, "target": "raw-pwm-word0-one-pilot",
         "authorization": "unvalidated_raw_pwm_word0_one_pilot_authorized",
-        "report_key": "raw_pwm_word0_one_pilot",
+        "report_key": "raw_pwm_word0_one_pilot", "observation_seconds": 3,
     },
     consent.RAW_PWM_1000_PILOT_SCOPE: {
         "steps": STEPS_1000, "transcript": TRANSCRIPT_1000, "first_sequence": 3333,
         "value": 1000, "success": SUCCESS_1000, "target": "raw-pwm-word0-1000-pilot",
         "authorization": "unvalidated_raw_pwm_word0_1000_pilot_authorized",
-        "report_key": "raw_pwm_word0_1000_pilot",
+        "report_key": "raw_pwm_word0_1000_pilot", "observation_seconds": 3,
     },
     consent.RAW_PWM_2000_PILOT_SCOPE: {
         "steps": STEPS_2000, "transcript": TRANSCRIPT_2000, "first_sequence": 3337,
         "value": 2000, "success": SUCCESS_2000, "target": "raw-pwm-word0-2000-pilot",
         "authorization": "unvalidated_raw_pwm_word0_2000_pilot_authorized",
-        "report_key": "raw_pwm_word0_2000_pilot",
+        "report_key": "raw_pwm_word0_2000_pilot", "observation_seconds": 3,
+    },
+    consent.RAW_PWM_LEFT_CONNECTED_SCOPE: {
+        "steps": STEPS_LEFT_CONNECTED, "transcript": TRANSCRIPT_LEFT_CONNECTED,
+        "first_sequence": 3341, "value": 1000,
+        "success": SUCCESS_LEFT_CONNECTED,
+        "target": "raw-pwm-word0-1000-left-motor-connected-proof",
+        "authorization": "unvalidated_raw_pwm_left_motor_connected_proof_authorized",
+        "report_key": "raw_pwm_left_motor_connected_proof",
+        "observation_seconds": 0.250,
     },
 }
 
@@ -103,9 +115,13 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "required_baseline_payload_hex": ZERO_PWM.hex(),
         "fixed_setter_words_uint16": [value, 0, 0, 0],
         "fixed_cleanup_words_uint16": [0, 0, 0, 0],
-        "observation_seconds": OBSERVATION_SECONDS,
+        "observation_seconds": profile["observation_seconds"],
         "operator_selected_physical_plug_label": "Motor L",
         "word_to_physical_plug_mapping": "not_established",
+        "physical_load": (
+            "left_motor_connected_to_robot_right_side_connector_printed_Motor_L"
+            if scope == consent.RAW_PWM_LEFT_CONNECTED_SCOPE
+            else "both_motor_power_plugs_disconnected"),
         "raw_value_units_or_effective_minimum": "not_established",
         "null_scope_result": "inconclusive_effective_pwm_minimum_and_channel_mapping_unknown",
         "waveform_result": "evidence_of_lower_level_path_not_channel_topology",
@@ -126,6 +142,8 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "automatic_retries": False,
         "automatic_reconnect": False,
         "fixed_cadence": None,
+        "maximum_setter_to_cleanup_start_seconds": (
+            RESPONSE_SECONDS + profile["observation_seconds"]),
         "source_limitations": (
             "PCTestApp admits four UInt16 words but supplies no nonzero example, "
             "units, effective minimum, channel binding, or explicit repeat interval"),
@@ -139,6 +157,8 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
 class _RawPwmTransport(LiveTransport):
     steps = STEPS
     success = SUCCESS
+    observation_seconds = OBSERVATION_SECONDS
+    motor_connected = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -195,6 +215,13 @@ class _RawPwm1000Transport(_RawPwmTransport):
 class _RawPwm2000Transport(_RawPwmTransport):
     steps = STEPS_2000
     success = SUCCESS_2000
+
+
+class _RawPwmLeftConnectedTransport(_RawPwmTransport):
+    steps = STEPS_LEFT_CONNECTED
+    success = SUCCESS_LEFT_CONNECTED
+    observation_seconds = 0.250
+    motor_connected = True
 
 
 def _submit(transport, report, step, *, deadline):
@@ -273,10 +300,14 @@ def _observe(transport, report, *, clock=time.monotonic):
         packet = _response(transport, report, "set", deadline=deadline, clock=clock)
         report["setter_raw_response_field"] = packet.response_field
         print(
-            f"OBSERVE_MOTOR_L_SCOPE_NOW: fixed {OBSERVATION_SECONDS}-second window; "
-            "word-to-plug mapping is unproved; mandatory zero cleanup follows.",
+            ("OBSERVE_LEFT_MOTOR_NOW: report no_motion/motion_direction_uncertain/"
+             "motion_direction_observed; external cutoff is primary"
+             if transport.motor_connected else
+             "OBSERVE_MOTOR_L_SCOPE_NOW: word-to-plug mapping is unproved")
+            + f"; fixed {transport.observation_seconds}-second window; "
+            "mandatory zero cleanup follows.",
             file=sys.stderr, flush=True)
-        transport.wait(OBSERVATION_SECONDS)
+        transport.wait(transport.observation_seconds)
     except BaseException as error:
         primary = error
         report.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
@@ -335,20 +366,21 @@ def _validate_capture(options):
     declarations = {name: options.get(name, False) for name in consent.ALL_FLAGS}
     if consent.classify(
             actuators_isolated=options.get("actuators_isolated", False),
-            **declarations) not in consent.RAW_PWM_PILOT_SCOPES:
+            **declarations) not in PROFILES:
         raise ValueError("Raw-PWM pilot requires its complete literal scope.")
 
 
 def run_diagnostic(output, *, expected_physical_port, run=False,
                    actuators_isolated=False, **declarations):
     scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
-    if run is not True or scope not in consent.RAW_PWM_PILOT_SCOPES:
+    if run is not True or scope not in PROFILES:
         raise ValueError("Literal --run and one fixed raw-PWM word-0 scope are required.")
     profile = PROFILES[scope]
     transport_type = {
         consent.RAW_PWM_PILOT_SCOPE: _RawPwmTransport,
         consent.RAW_PWM_1000_PILOT_SCOPE: _RawPwm1000Transport,
         consent.RAW_PWM_2000_PILOT_SCOPE: _RawPwm2000Transport,
+        consent.RAW_PWM_LEFT_CONNECTED_SCOPE: _RawPwmLeftConnectedTransport,
     }[scope]
     output = new_output_path(output)
     root = output.parent
