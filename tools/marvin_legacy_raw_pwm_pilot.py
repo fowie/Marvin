@@ -1,4 +1,4 @@
-"""Fixed experimental raw-PWM word-0 pilots with mandatory zero cleanup.
+"""Fixed experimental raw-PWM pilots with mandatory zero cleanup.
 
 Offline by default. This is software readiness, not live authorization.
 """
@@ -25,6 +25,7 @@ ZERO_PWM = bytes(8)
 WORD0_ONE = (1).to_bytes(2, "little") + bytes(6)
 WORD0_1000 = (1000).to_bytes(2, "little") + bytes(6)
 WORD0_2000 = (2000).to_bytes(2, "little") + bytes(6)
+WORD1_2000 = bytes(2) + (2000).to_bytes(2, "little") + bytes(4)
 
 
 def _steps(first_sequence, payload):
@@ -46,6 +47,8 @@ STEPS_LEFT_CONNECTED = _steps(3341, WORD0_1000)
 TRANSCRIPT_LEFT_CONNECTED = tuple(STEPS_LEFT_CONNECTED.values())
 STEPS_2000_LEFT_CONNECTED = _steps(3345, WORD0_2000)
 TRANSCRIPT_2000_LEFT_CONNECTED = tuple(STEPS_2000_LEFT_CONNECTED.values())
+STEPS_WORD1_2000 = _steps(3349, WORD1_2000)
+TRANSCRIPT_WORD1_2000 = tuple(STEPS_WORD1_2000.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -55,6 +58,7 @@ SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
 SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
 SUCCESS_LEFT_CONNECTED = "raw_pwm_left_motor_connected_proof_complete_unverified"
 SUCCESS_2000_LEFT_CONNECTED = "raw_pwm_2000_left_motor_connected_proof_complete_unverified"
+SUCCESS_WORD1_2000 = "raw_pwm_word1_2000_pilot_complete_unverified"
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -93,6 +97,15 @@ PROFILES = {
         "report_key": "raw_pwm_2000_left_motor_connected_proof",
         "observation_seconds": 0.250,
     },
+    consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: {
+        "steps": STEPS_WORD1_2000, "transcript": TRANSCRIPT_WORD1_2000,
+        "first_sequence": 3349, "value": 2000,
+        "success": SUCCESS_WORD1_2000,
+        "target": "raw-pwm-word1-2000-pilot",
+        "authorization": "unvalidated_raw_pwm_word1_2000_pilot_authorized",
+        "report_key": "raw_pwm_word1_2000_pilot",
+        "observation_seconds": 3,
+    },
 }
 
 
@@ -108,9 +121,12 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
     transcript = profile["transcript"]
     first_sequence = profile["first_sequence"]
     value = profile["value"]
+    setter_payload = (
+        WORD1_2000 if scope == consent.RAW_PWM_WORD1_2000_PILOT_SCOPE
+        else value.to_bytes(2, "little") + bytes(6))
     expected = (
         (first_sequence, 0x0A, b""),
-        (first_sequence + 1, 0x0B, value.to_bytes(2, "little") + bytes(6)),
+        (first_sequence + 1, 0x0B, setter_payload),
         (first_sequence + 2, 0x0B, ZERO_PWM),
         (first_sequence + 3, 0x0A, b""),
     )
@@ -128,7 +144,10 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
         "transcript_sha256": hashlib.sha256(b"".join(transcript)).hexdigest(),
         "required_baseline_payload_hex": ZERO_PWM.hex(),
-        "fixed_setter_words_uint16": [value, 0, 0, 0],
+        "fixed_setter_words_uint16": (
+            [0, value, 0, 0]
+            if scope == consent.RAW_PWM_WORD1_2000_PILOT_SCOPE
+            else [value, 0, 0, 0]),
         "fixed_cleanup_words_uint16": [0, 0, 0, 0],
         "observation_seconds": profile["observation_seconds"],
         "operator_selected_physical_plug_label": "Motor L",
@@ -250,6 +269,11 @@ class _RawPwm2000LeftConnectedTransport(_RawPwmTransport):
     success = SUCCESS_2000_LEFT_CONNECTED
     observation_seconds = 0.250
     motor_connected = True
+
+
+class _RawPwmWord1Value2000Transport(_RawPwmTransport):
+    steps = STEPS_WORD1_2000
+    success = SUCCESS_WORD1_2000
 
 
 def _submit(transport, report, step, *, deadline):
@@ -414,6 +438,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         consent.RAW_PWM_2000_PILOT_SCOPE: _RawPwm2000Transport,
         consent.RAW_PWM_LEFT_CONNECTED_SCOPE: _RawPwmLeftConnectedTransport,
         consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE: _RawPwm2000LeftConnectedTransport,
+        consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: _RawPwmWord1Value2000Transport,
     }[scope]
     output = new_output_path(output)
     root = output.parent

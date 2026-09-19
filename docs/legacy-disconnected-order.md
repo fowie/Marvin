@@ -1031,6 +1031,83 @@ profile is now fail-closed and retired in both the runner and coordinator;
 offline review remains available, but another live run is rejected before
 preflight or serial access.
 
+After the operator explicitly confirmed that the physical left wheel had
+stopped and that robot power was cut, the existing evidence-bound offline
+acknowledgment verified the sealed manifest and moved the active state lock to
+`power_cycle_reset_confirmed` with `hardware_access: false`. This is
+bookkeeping based on operator observation and power cycle, not software
+verification or reinterpretation of `0000640000000000`.
+
+### Prepared disconnected raw-PWM word-1/value-2000 discriminator
+
+PCTestApp command `0B` parses and serializes four positional `UInt16` textbox
+values in order. The recovered host source does not name those positions as
+motor, direction, bridge leg, duty, or channel. The post-cleanup getter words
+`[0,100,0,0]` therefore do not prove that word 1 is the complementary direction
+for word 0. Dynamic controller output, braking, closed-loop behavior, stale
+command state, or another field meaning remain possible and undecoded.
+
+The smallest safe discriminator returns to disconnected load and changes only
+word 1. Both motor power plugs must be disconnected; servos isolated; encoder
+harnesses connected; robot secured; operator at cutoff; and unprivileged
+usbmon active. The differential/isolated scope remains across the
+robot-right-side controller connector printed `Motor L`. The operator compares
+waveform polarity with the prior disconnected word-0/value-2000 capture. No
+connected word-1 profile exists.
+
+| Step | Sequence | Fixed operation | Exact request |
+|---:|---:|---|---|
+| 1 | 3349 | command `0A` baseline getter; require raw `80` and exactly eight zero payload bytes after fresh boot | `53150d0a0000004fd945` |
+| 2 | 3350 | command `0B`; four LE `UInt16` words `[0,2000,0,0]` | `53160d0b0008000000d00700000000d5c745` |
+| 3 | 3351 | mandatory command `0B`; exact all-zero cleanup once after setter may reach its syscall | `53170d0b0008000000000000000000735645` |
+| 4 | 3352 | conditional command `0A` verification after clean empty raw-`80` cleanup; require eight zero bytes | `53180d0a0000004ec445` |
+
+The concatenated transcript SHA-256 is
+`41b8589d900c4e071e8c5510a70411d43561bf2059314537b63b7b7d20dc5d27`.
+Bounds are four writes / 56 TX bytes / 56 expected response bytes and 8192
+serial RX bytes, or three writes / 46 TX bytes if verification is suppressed.
+There is one setter, no cadence, a fixed three-second observation, exactly one
+zero cleanup after any possible nonzero submission, and no retry or reconnect.
+The 500 ms strict response/extra-frame boundary, immediate pre-`os.write`
+timestamp, CRC/sequence/command/shape/extra-frame/USB gates, state lock, and
+exact-zero getter policy are unchanged.
+
+Exact offline dry run:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word1-2000-pilot \
+  --authorize-unvalidated-raw-pwm-word1-2000-pilot \
+  --motor-power-plugs-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon
+```
+
+Prepared live invocation (software readiness only, **not live authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --disconnected-load-raw-pwm-word1-2000-pilot \
+  --authorize-unvalidated-raw-pwm-word1-2000-pilot \
+  --motor-power-plugs-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon \
+  --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY \
+  --run
+```
+
+Use the same differential/isolated probe polarity and scope settings as the
+word-0/value-2000 capture. Record whether a waveform exists and, if so, whether
+its observed polarity is same, opposite, or uncertain relative to word 0.
+Amplitude/width/spacing remain raw observations, not calibrated motor-control
+units. A null waveform is inconclusive. A nonzero post-cleanup getter fails and
+locks exactly as it did in the connected raw-2000 run. Disconnected results
+and clean restoration evidence are prerequisites to considering any connected
+word-1 test.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load

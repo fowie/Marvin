@@ -99,6 +99,16 @@ RAW_PWM_2000_PILOT_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+RAW_PWM_WORD1_2000_PILOT_SCOPE = "disconnected_load_raw_pwm_word1_2000_pilot"
+RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS = (
+    RAW_PWM_WORD1_2000_PILOT_SCOPE,
+    "authorize_unvalidated_raw_pwm_word1_2000_pilot",
+)
+RAW_PWM_WORD1_2000_PILOT_FLAGS = (
+    *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 RAW_PWM_PILOT_SCOPES = (
     RAW_PWM_PILOT_SCOPE, RAW_PWM_1000_PILOT_SCOPE, RAW_PWM_2000_PILOT_SCOPE,
 )
@@ -131,7 +141,7 @@ DISCONNECTED_VELOCITY_TRAIN_SCOPES = (
 DISCONNECTED_ORDER_SCOPES = (DISCONNECTED_ORDER_SCOPE, DISCONNECTED_PLUS_1000_SCOPE)
 DISCONNECTED_MOTOR_SETTER_SCOPES = (
     *DISCONNECTED_ORDER_SCOPES, *DISCONNECTED_VELOCITY_TRAIN_SCOPES,
-    *RAW_PWM_PILOT_SCOPES,
+    *RAW_PWM_PILOT_SCOPES, RAW_PWM_WORD1_2000_PILOT_SCOPE,
 )
 DISCONNECTED_GET_LOG_SCOPE = "disconnected_load_get_log"
 DISCONNECTED_GET_LOG_ONLY_FLAGS = (DISCONNECTED_GET_LOG_SCOPE,)
@@ -184,6 +194,7 @@ POWERED_TRIAL_SCOPES = {
     RAW_PWM_PILOT_SCOPE: RAW_PWM_PILOT_FLAGS,
     RAW_PWM_1000_PILOT_SCOPE: RAW_PWM_1000_PILOT_FLAGS,
     RAW_PWM_2000_PILOT_SCOPE: RAW_PWM_2000_PILOT_FLAGS,
+    RAW_PWM_WORD1_2000_PILOT_SCOPE: RAW_PWM_WORD1_2000_PILOT_FLAGS,
     RAW_PWM_LEFT_CONNECTED_SCOPE: RAW_PWM_LEFT_CONNECTED_FLAGS,
     RAW_PWM_2000_LEFT_CONNECTED_SCOPE: RAW_PWM_2000_LEFT_CONNECTED_FLAGS,
     DISCONNECTED_GET_LOG_SCOPE: DISCONNECTED_GET_LOG_FLAGS,
@@ -201,6 +212,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *RAW_PWM_PILOT_ONLY_FLAGS,
                                 *RAW_PWM_1000_PILOT_ONLY_FLAGS,
                                 *RAW_PWM_2000_PILOT_ONLY_FLAGS,
+                                *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
                                 *RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
                                 *RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
@@ -231,6 +243,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_raw_pwm_word0_1000_pilot=False,
              disconnected_load_raw_pwm_word0_2000_pilot=False,
              authorize_unvalidated_raw_pwm_word0_2000_pilot=False,
+             disconnected_load_raw_pwm_word1_2000_pilot=False,
+             authorize_unvalidated_raw_pwm_word1_2000_pilot=False,
              raw_pwm_word0_1000_left_motor_connected_proof=False,
              authorize_unvalidated_raw_pwm_left_motor_connected_proof=False,
              physical_left_motor_connected_to_robot_right_motor_l_connector=False,
@@ -286,6 +300,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      disconnected_load_raw_pwm_word0_2000_pilot),
                  authorize_unvalidated_raw_pwm_word0_2000_pilot=(
                      authorize_unvalidated_raw_pwm_word0_2000_pilot),
+                 disconnected_load_raw_pwm_word1_2000_pilot=(
+                     disconnected_load_raw_pwm_word1_2000_pilot),
+                 authorize_unvalidated_raw_pwm_word1_2000_pilot=(
+                     authorize_unvalidated_raw_pwm_word1_2000_pilot),
                  raw_pwm_word0_1000_left_motor_connected_proof=(
                      raw_pwm_word0_1000_left_motor_connected_proof),
                  authorize_unvalidated_raw_pwm_left_motor_connected_proof=(
@@ -392,6 +410,7 @@ def add_powered_trial_arguments(parser):
                  *RAW_PWM_PILOT_ONLY_FLAGS,
                  *RAW_PWM_1000_PILOT_ONLY_FLAGS,
                  *RAW_PWM_2000_PILOT_ONLY_FLAGS,
+                 *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
                  *RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
                  *RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
@@ -409,6 +428,7 @@ def powered_trial_arguments(args):
         *RAW_PWM_PILOT_ONLY_FLAGS,
         *RAW_PWM_1000_PILOT_ONLY_FLAGS,
         *RAW_PWM_2000_PILOT_ONLY_FLAGS,
+        *RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
         *RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
         *RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -518,9 +538,10 @@ def powered_trial_history(declarations):
             "host_can_remove_energy": False,
             "physical_stop": "not_established",
         }
-    if scope in RAW_PWM_PILOT_SCOPES:
+    if scope in (*RAW_PWM_PILOT_SCOPES, RAW_PWM_WORD1_2000_PILOT_SCOPE):
         value = (
-            2000 if scope == RAW_PWM_2000_PILOT_SCOPE
+            2000 if scope in (
+                RAW_PWM_2000_PILOT_SCOPE, RAW_PWM_WORD1_2000_PILOT_SCOPE)
             else 1000 if scope == RAW_PWM_1000_PILOT_SCOPE
             else 1)
         return {
@@ -528,8 +549,11 @@ def powered_trial_history(declarations):
             "scope": scope,
             "load_scope": "MOTOR_POWER_PLUGS_DISCONNECTED",
             "outcome_meaning": (
-                f"raw_pwm_word0_{value}_protocol_and_scope_observation_separate"),
-            f"unvalidated_raw_pwm_word0_{value}_pilot_authorized": True,
+                f"raw_pwm_{'word1' if scope == RAW_PWM_WORD1_2000_PILOT_SCOPE else 'word0'}"
+                f"_{value}_protocol_and_scope_observation_separate"),
+            ("unvalidated_raw_pwm_word1_2000_pilot_authorized"
+             if scope == RAW_PWM_WORD1_2000_PILOT_SCOPE
+             else f"unvalidated_raw_pwm_word0_{value}_pilot_authorized"): True,
             "raw_setter_units": "unvalidated_uint16_wire_value_not_duty_cycle",
             "setter_word_to_physical_plug_mapping": "not_established",
             "planned_zero_policy": (

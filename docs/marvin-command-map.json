@@ -361,6 +361,22 @@
         "policy": "retired; runner and coordinator reject before hardware access; exact-zero baseline gate unchanged",
         "limitations": "raw80/raw82 and getter word meanings opaque; nonzero getter may be stale commanded state, another controller value, or incomplete cleanup application; physical stop not established"
       },
+      "word1_2000_disconnected_profile": {
+        "status": "prepared_not_executed",
+        "scope": "disconnected_load_raw_pwm_word1_2000_pilot",
+        "sequence_range": "3349..3352",
+        "setter_words_uint16": [0, 2000, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 3,
+        "maximum_setter_to_cleanup_start_seconds": 3.5,
+        "transcript_sha256": "41b8589d900c4e071e8c5510a70411d43561bf2059314537b63b7b7d20dc5d27",
+        "physical_load": "both motor power plugs disconnected; differential isolated scope on robot-right-side connector printed Motor L",
+        "operator_observation": "compare waveform polarity to disconnected word0 raw2000 as same/opposite/uncertain; record width/amplitude/spacing without calibrated-unit claims",
+        "source_basis": "PCTestApp serializes four positional UInt16 words but does not name motor/direction/bridge semantics",
+        "hypothesis": "word1 may be complementary direction for the same tested connector; inference only",
+        "gates": "fresh-boot exact-zero cmd0A baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict prewrite/USB/correlation; no retry/reconnect",
+        "connected_followup": "not implemented; requires disconnected waveform and cleanup-state evidence first"
+      },
       "newer_drive_meaning": {
         "command": 11,
         "command_hex": "0b",

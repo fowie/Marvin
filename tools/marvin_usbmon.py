@@ -739,6 +739,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             authorize_unvalidated_raw_pwm_word0_1000_pilot=False,
             disconnected_load_raw_pwm_word0_2000_pilot=False,
             authorize_unvalidated_raw_pwm_word0_2000_pilot=False,
+            disconnected_load_raw_pwm_word1_2000_pilot=False,
+            authorize_unvalidated_raw_pwm_word1_2000_pilot=False,
             raw_pwm_word0_1000_left_motor_connected_proof=False,
             authorize_unvalidated_raw_pwm_left_motor_connected_proof=False,
             physical_left_motor_connected_to_robot_right_motor_l_connector=False,
@@ -794,6 +796,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             disconnected_load_raw_pwm_word0_2000_pilot),
         authorize_unvalidated_raw_pwm_word0_2000_pilot=(
             authorize_unvalidated_raw_pwm_word0_2000_pilot),
+        disconnected_load_raw_pwm_word1_2000_pilot=(
+            disconnected_load_raw_pwm_word1_2000_pilot),
+        authorize_unvalidated_raw_pwm_word1_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word1_2000_pilot),
         raw_pwm_word0_1000_left_motor_connected_proof=(
             raw_pwm_word0_1000_left_motor_connected_proof),
         authorize_unvalidated_raw_pwm_left_motor_connected_proof=(
@@ -849,6 +855,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                     motor_consent.DISCONNECTED_LED_STATE_SCOPE,
                     *motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPES,
                     *motor_consent.RAW_PWM_PILOT_SCOPES,
+                    motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE,
                     motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE,
                     motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE)
                 else 15 if powered_trial else 45 if encoder_feedback_observation else 13)

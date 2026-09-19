@@ -26,6 +26,10 @@ FLAGS_1000 = ["--" + name.replace("_", "-")
 DECLARATIONS_2000 = dict.fromkeys(consent.RAW_PWM_2000_PILOT_FLAGS, True)
 FLAGS_2000 = ["--" + name.replace("_", "-")
               for name in consent.RAW_PWM_2000_PILOT_FLAGS]
+DECLARATIONS_WORD1_2000 = dict.fromkeys(
+    consent.RAW_PWM_WORD1_2000_PILOT_FLAGS, True)
+FLAGS_WORD1_2000 = ["--" + name.replace("_", "-")
+                    for name in consent.RAW_PWM_WORD1_2000_PILOT_FLAGS]
 DECLARATIONS_CONNECTED = dict.fromkeys(consent.RAW_PWM_LEFT_CONNECTED_FLAGS, True)
 FLAGS_CONNECTED = ["--" + name.replace("_", "-")
                    for name in consent.RAW_PWM_LEFT_CONNECTED_FLAGS]
@@ -195,6 +199,22 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot.run_diagnostic(
                 self.root / "retired", expected_physical_port="1-3", run=True,
                 **DECLARATIONS_2000_CONNECTED)
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(pilot.main(FLAGS_WORD1_2000), 0)
+        word1_plan = json.loads(stdout.getvalue())
+        self.assertEqual(word1_plan["immutable_application_transcript_hex"], [
+            "53150d0a0000004fd945",
+            "53160d0b0008000000d00700000000d5c745",
+            "53170d0b0008000000000000000000735645",
+            "53180d0a0000004ec445",
+        ])
+        self.assertEqual(
+            word1_plan["transcript_sha256"],
+            "41b8589d900c4e071e8c5510a70411d43561bf2059314537b63b7b7d20dc5d27")
+        self.assertEqual(word1_plan["fixed_setter_words_uint16"], [0, 2000, 0, 0])
+        self.assertEqual(word1_plan["observation_seconds"], 3)
         for knob in ("index", "value", "payload", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -214,6 +234,11 @@ class RawPwmPilotTests(unittest.TestCase):
                 pilot.run_diagnostic(
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     **(DECLARATIONS_2000 | {name: False}))
+        for name in consent.RAW_PWM_WORD1_2000_PILOT_FLAGS:
+            with self.subTest(word1_2000_name=name), self.assertRaises(ValueError):
+                pilot.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(DECLARATIONS_WORD1_2000 | {name: False}))
         for name in consent.RAW_PWM_LEFT_CONNECTED_FLAGS:
             with self.subTest(connected_name=name), self.assertRaises(ValueError):
                 pilot.run_diagnostic(
@@ -292,6 +317,26 @@ class RawPwmPilotTests(unittest.TestCase):
         for flag in FLAGS_2000:
             self.assertIn(flag, command_2000)
         pilot._validate_capture(runner_2000.call_args.kwargs)
+
+        word1_harness = session_tests.SessionTests()
+        word1_harness.setUp()
+        self.addCleanup(word1_harness.doCleanups)
+        word1_runner = Mock(side_effect=word1_harness.capture)
+        word1_result = word1_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=word1_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **DECLARATIONS_WORD1_2000)
+        word1_command = word1_harness.popen.call_args.args[0]
+        self.assertEqual(
+            word1_result["scope"], consent.RAW_PWM_WORD1_2000_PILOT_SCOPE)
+        self.assertEqual(
+            word1_result["probe_name"], "DisconnectedLoadRawPwmWord1Value2000Pilot")
+        self.assertTrue(word1_result["fixed_raw_pwm_word1_2000_pilot_authorized"])
+        for flag in FLAGS_WORD1_2000:
+            self.assertIn(flag, word1_command)
+        pilot._validate_capture(word1_runner.call_args.kwargs)
 
         connected_harness = session_tests.SessionTests()
         connected_harness.setUp()
@@ -378,6 +423,19 @@ class RawPwmPilotTests(unittest.TestCase):
             [row["sequence"] for row in report_2000["responses"]],
             [3337, 3338, 3339, 3340])
         self.assertEqual(report_2000["status"], pilot.SUCCESS_2000)
+
+        word1_transport = _Transport()
+        word1_transport.steps = pilot.STEPS_WORD1_2000
+        word1_transport.success = pilot.SUCCESS_WORD1_2000
+        word1_report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                redirect_stderr(io.StringIO()):
+            pilot._observe(word1_transport, word1_report, clock=lambda: 0)
+        self.assertEqual(
+            [row["sequence"] for row in word1_report["responses"]],
+            [3349, 3350, 3351, 3352])
+        word1_transport.wait.assert_called_once_with(3)
+        self.assertEqual(word1_report["status"], pilot.SUCCESS_WORD1_2000)
 
         connected_transport = _Transport()
         connected_transport.steps = pilot.STEPS_LEFT_CONNECTED
