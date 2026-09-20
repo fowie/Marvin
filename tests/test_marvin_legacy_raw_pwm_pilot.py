@@ -48,6 +48,11 @@ DECLARATIONS_WORD3_2000_RIGHT_CONNECTED = dict.fromkeys(
 FLAGS_WORD3_2000_RIGHT_CONNECTED = [
     "--" + name.replace("_", "-")
     for name in consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_FLAGS]
+DECLARATIONS_DUAL_FORWARD_CONNECTED = dict.fromkeys(
+    consent.RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS, True)
+FLAGS_DUAL_FORWARD_CONNECTED = [
+    "--" + name.replace("_", "-")
+    for name in consent.RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS]
 DECLARATIONS_CONNECTED = dict.fromkeys(consent.RAW_PWM_LEFT_CONNECTED_FLAGS, True)
 FLAGS_CONNECTED = ["--" + name.replace("_", "-")
                    for name in consent.RAW_PWM_LEFT_CONNECTED_FLAGS]
@@ -308,6 +313,23 @@ class RawPwmPilotTests(unittest.TestCase):
             self.assertEqual(
                 connected_right_plan["physical_load"],
                 "right_motor_connected_to_robot_left_side_connector_printed_Motor_R")
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(pilot.main(FLAGS_DUAL_FORWARD_CONNECTED), 0)
+        dual_plan = json.loads(stdout.getvalue())
+        self.assertEqual(dual_plan["immutable_application_transcript_hex"], [
+            "533b0d0a000000499745",
+            "533c0d0b0008000000d0070000d007e22f45",
+            "533d0d0b000800000000000000000058bc45",
+            "533e0d0a00000049c245",
+        ])
+        self.assertEqual(
+            dual_plan["transcript_sha256"],
+            "efc78618ca4c6f208886a61628f2b38e475250c45abbb5d08dea12f5624b24d0")
+        self.assertEqual(dual_plan["fixed_setter_words_uint16"], [0, 2000, 0, 2000])
+        self.assertEqual(
+            dual_plan["operator_selected_physical_plug_label"], "Motor L and Motor R")
         for knob in ("index", "value", "payload", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -346,6 +368,11 @@ class RawPwmPilotTests(unittest.TestCase):
                     pilot.run_diagnostic(
                         self.root / "unused", expected_physical_port="1-3", run=True,
                         **(declarations | {name: False}))
+        for name in consent.RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS:
+            with self.subTest(dual_name=name), self.assertRaises(ValueError):
+                pilot.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(DECLARATIONS_DUAL_FORWARD_CONNECTED | {name: False}))
         for name in consent.RAW_PWM_LEFT_CONNECTED_FLAGS:
             with self.subTest(connected_name=name), self.assertRaises(ValueError):
                 pilot.run_diagnostic(
@@ -414,6 +441,26 @@ class RawPwmPilotTests(unittest.TestCase):
                     redirect_stdout(io.StringIO()):
                 self.assertEqual(usbmon.main(command[2:]), 0)
             pilot._validate_capture(capture.call_args.kwargs)
+        dual_harness = session_tests.SessionTests()
+        dual_harness.setUp()
+        self.addCleanup(dual_harness.doCleanups)
+        dual_runner = Mock(side_effect=dual_harness.capture)
+        dual_result = dual_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=dual_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **DECLARATIONS_DUAL_FORWARD_CONNECTED)
+        dual_command = dual_harness.popen.call_args.args[0]
+        self.assertEqual(
+            dual_result["scope"], consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE)
+        self.assertEqual(
+            dual_result["probe_name"], "RawPwmDualMotorForwardValue2000ConnectedProof")
+        self.assertTrue(
+            dual_result["fixed_raw_pwm_dual_motor_forward_2000_connected_proof_authorized"])
+        for flag in FLAGS_DUAL_FORWARD_CONNECTED:
+            self.assertIn(flag, dual_command)
+        pilot._validate_capture(dual_runner.call_args.kwargs)
 
         harness_1000 = session_tests.SessionTests()
         harness_1000.setUp()
@@ -675,6 +722,21 @@ class RawPwmPilotTests(unittest.TestCase):
                 sequences)
             connected_right_transport.wait.assert_called_once_with(.25)
             self.assertEqual(connected_right_report["status"], success)
+        dual_transport = _Transport()
+        dual_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_CONNECTED
+        dual_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED
+        dual_transport.motor_connected = True
+        dual_transport.physical_motor_label = "BOTH"
+        dual_transport.observation_seconds = .25
+        dual_report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                redirect_stderr(io.StringIO()) as stderr:
+            pilot._observe(dual_transport, dual_report, clock=lambda: 0)
+        self.assertIn("OBSERVE_BOTH_MOTOR_NOW", stderr.getvalue())
+        self.assertEqual(
+            [row["sequence"] for row in dual_report["responses"]],
+            [3387, 3388, 3389, 3390])
+        self.assertEqual(dual_report["status"], pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED)
 
         connected_word1_transport = _Transport()
         connected_word1_transport.steps = pilot.STEPS_WORD1_2000_LEFT_CONNECTED

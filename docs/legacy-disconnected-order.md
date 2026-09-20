@@ -1553,6 +1553,72 @@ python3 -m tools.marvin_legacy_velocity_train \
 
 This is software readiness, not live authorization.
 
+#### Completed connected-right cadence result
+
+The sealed `velocity-right-connected-20260919T1924` tree and nested manifest
+verify. The run exited zero with seven accepted writes / 98 TX bytes, zero
+uncertain TX, and 70 RX bytes. Initial zero returned raw `80`; all five
+source-`rightVel=+1000` frames returned opaque raw `82`; the one zero cleanup
+returned raw `80`. Cleanup prewrite was 246.623 ms after first nonzero, within
+the 250 ms bound. usbmon recorded seven successful OUT / 98 bytes and seven
+successful payload-bearing IN / 70 bytes without correlation faults.
+
+Hashes are outer
+`71c99c77c20d7ef844789c46eab44a1208b6849ee6cf51eff553c932b58b42ce`,
+capture
+`ddb65a8bc94925c1afb4ce899678997b05740d80b822c22cab7305f2ea6cfd7d`,
+journal
+`fbfa382df182c1c9eed8842187bc36ec70789638d152c92df83906f4f55c7e5a`,
+and binary usbmon
+`111f84b4a0943a91339caf1c9332179c6ed06e706ed89e5077d059f529ae8436`.
+With only the correctly connected physical right motor, the operator observed
+**no motion**; cleanup completed and the robot was powered OFF.
+
+Together, correct connected left and right paths showed no motion under their
+respective source-field `+1000`, five-update, 50 ms cadence tests, while direct
+raw PWM moved both motors. This is a bounded empirical difference, not evidence
+of a particular enable, prerequisite, mode, or interpretation of raw `82`.
+
+### Prepared dual-motor raw-PWM forward proof
+
+Both physical motors are connected to their correctly labelled opposite-side
+controller connectors; servos remain isolated, both encoders connected, wheels
+clear, and the cutoff operator present. The one immutable setter is the proven
+forward pair `[0,2000,0,2000]`: word 1 for the physical left motor and word 3
+for the physical right motor. The operator reports each wheel independently:
+forward/other/no motion, visible stop/uncertainty, abnormal behavior, and cutoff.
+
+| Step | Sequence | Exact request |
+|---:|---:|---|
+| exact-zero `0A` baseline | 3387 | `533b0d0a000000499745` |
+| one dual-forward `0B` setter | 3388 | `533c0d0b0008000000d0070000d007e22f45` |
+| one mandatory all-zero `0B` cleanup | 3389 | `533d0d0b000800000000000000000058bc45` |
+| conditional exact-zero `0A` getter | 3390 | `533e0d0a00000049c245` |
+
+Transcript SHA-256:
+`efc78618ca4c6f208886a61628f2b38e475250c45abbb5d08dea12f5624b24d0`.
+Bounds are four writes / 56 TX / 56 expected RX / 8192 maximum RX, or three
+writes / 46 TX if verification is suppressed. The setter has one fixed 250 ms
+observation after its clean response, then exactly one cleanup. Strict 500 ms
+prewrite response, USB, and evidence gates remain; no retry or reconnect.
+The final getter runs only after a clean raw-`80` cleanup response. Any nonzero
+payload faults and retains the state lock; it never triggers a second cleanup.
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-dual-motor-forward-2000-connected-proof \
+  --authorize-unvalidated-raw-pwm-dual-motor-forward-2000-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-left-connected --motor-right-connected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+This is software readiness, not live authorization.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load

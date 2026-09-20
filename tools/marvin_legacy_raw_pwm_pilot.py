@@ -28,6 +28,9 @@ WORD0_2000 = (2000).to_bytes(2, "little") + bytes(6)
 WORD1_2000 = bytes(2) + (2000).to_bytes(2, "little") + bytes(4)
 WORD2_2000 = bytes(4) + (2000).to_bytes(2, "little") + bytes(2)
 WORD3_2000 = bytes(6) + (2000).to_bytes(2, "little")
+DUAL_FORWARD_2000 = (
+    bytes(2) + (2000).to_bytes(2, "little")
+    + bytes(2) + (2000).to_bytes(2, "little"))
 
 
 def _steps(first_sequence, payload):
@@ -64,6 +67,9 @@ TRANSCRIPT_WORD2_2000_RIGHT_CONNECTED = tuple(
 STEPS_WORD3_2000_RIGHT_CONNECTED = _steps(3369, WORD3_2000)
 TRANSCRIPT_WORD3_2000_RIGHT_CONNECTED = tuple(
     STEPS_WORD3_2000_RIGHT_CONNECTED.values())
+STEPS_DUAL_FORWARD_2000_CONNECTED = _steps(3387, DUAL_FORWARD_2000)
+TRANSCRIPT_DUAL_FORWARD_2000_CONNECTED = tuple(
+    STEPS_DUAL_FORWARD_2000_CONNECTED.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -82,6 +88,8 @@ SUCCESS_WORD2_2000_RIGHT_CONNECTED = (
     "raw_pwm_word2_2000_right_motor_connected_proof_complete_unverified")
 SUCCESS_WORD3_2000_RIGHT_CONNECTED = (
     "raw_pwm_word3_2000_right_motor_connected_proof_complete_unverified")
+SUCCESS_DUAL_FORWARD_2000_CONNECTED = (
+    "raw_pwm_dual_motor_forward_2000_connected_proof_complete_unverified")
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -176,6 +184,17 @@ PROFILES = {
         "report_key": "raw_pwm_word3_2000_right_motor_connected_proof",
         "observation_seconds": 0.250,
     },
+    consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE: {
+        "steps": STEPS_DUAL_FORWARD_2000_CONNECTED,
+        "transcript": TRANSCRIPT_DUAL_FORWARD_2000_CONNECTED,
+        "first_sequence": 3387, "value": 2000,
+        "success": SUCCESS_DUAL_FORWARD_2000_CONNECTED,
+        "target": "raw-pwm-dual-motor-forward-2000-connected-proof",
+        "authorization": (
+            "unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof_authorized"),
+        "report_key": "raw_pwm_dual_motor_forward_2000_connected_proof",
+        "observation_seconds": 0.250,
+    },
 }
 SETTER_PAYLOADS = {
     consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: WORD1_2000,
@@ -184,6 +203,7 @@ SETTER_PAYLOADS = {
     consent.RAW_PWM_WORD3_2000_PILOT_SCOPE: WORD3_2000,
     consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE: WORD2_2000,
     consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE: WORD3_2000,
+    consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE: DUAL_FORWARD_2000,
 }
 
 
@@ -228,7 +248,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "fixed_cleanup_words_uint16": [0, 0, 0, 0],
         "observation_seconds": profile["observation_seconds"],
         "operator_selected_physical_plug_label": (
-            "Motor R" if scope in (
+            "Motor L and Motor R"
+            if scope == consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE
+            else "Motor R" if scope in (
                 consent.RAW_PWM_WORD2_2000_PILOT_SCOPE,
                 consent.RAW_PWM_WORD3_2000_PILOT_SCOPE,
                 consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE,
@@ -245,6 +267,8 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             if scope in (
                 consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE,
                 consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE)
+            else "both_motors_connected_to_correctly_labelled_opposite_side_connectors"
+            if scope == consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE
             else "both_motor_power_plugs_disconnected"),
         "raw_value_units_or_effective_minimum": "not_established",
         "null_scope_result": "inconclusive_effective_pwm_minimum_and_channel_mapping_unknown",
@@ -401,6 +425,15 @@ class _RawPwmWord3Value2000RightConnectedTransport(_RawPwmTransport):
     motor_connected = True
     physical_plug_label = "Motor R"
     physical_motor_label = "RIGHT"
+
+
+class _RawPwmDualForward2000ConnectedTransport(_RawPwmTransport):
+    steps = STEPS_DUAL_FORWARD_2000_CONNECTED
+    success = SUCCESS_DUAL_FORWARD_2000_CONNECTED
+    observation_seconds = 0.250
+    motor_connected = True
+    physical_plug_label = "Motor L and Motor R"
+    physical_motor_label = "BOTH"
 
 
 def _submit(transport, report, step, *, deadline):
@@ -576,6 +609,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             _RawPwmWord2Value2000RightConnectedTransport),
         consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE: (
             _RawPwmWord3Value2000RightConnectedTransport),
+        consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE: (
+            _RawPwmDualForward2000ConnectedTransport),
     }[scope]
     output = new_output_path(output)
     root = output.parent
