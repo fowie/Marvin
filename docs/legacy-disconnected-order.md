@@ -1609,6 +1609,59 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
 B substitutes `right` for `left` in the two literal scope/authorization flags
 and must not run until A evidence and physical restoration are resolved.
 
+#### Completed both-connected single-channel results
+
+Both evidence trees and nested manifests verify. Left-only exited zero with
+four accepted writes / 56 TX, zero uncertain TX, and 56 RX: exact-zero
+raw-`80` baseline, raw-`82` `[0,2000,0,0]` setter, one raw-`80` cleanup, and
+exact-zero raw-`80` final getter. The physical left wheel moved forward, the
+right stayed still, and both stopped. Hashes are outer
+`b64bba814aa3a69e9872ee639e3ce8672234eb450f6a578bf2984f2f36faab75`,
+capture
+`11cd2c550860d60f08a30b8ece6e49ccedbf3c71f7ff100572748fc1bd4d3b09`,
+journal
+`7327723d466232ad9df4e0037c28e3f22af2514a900a6a40743a855d88982637`,
+and binary usbmon
+`aac252344ac5c277e884223d9aa0ea978081f16d9eee33665c1ee067f2ab94e0`.
+
+Right-only fully transmitted all four requests: exact-zero raw-`80` baseline,
+raw-`82` `[0,0,0,2000]` setter, one raw-`80` cleanup, then CRC-valid raw-`80`
+getter payload `0000000064000000`, words `[0,0,100,0]`. That nonzero getter
+caused the exit-one failure and no second cleanup was attempted. Accounting
+was four writes / 56 accepted TX / zero uncertain / 56 RX; usbmon independently
+captured four successful OUT / 56 and four successful payload-bearing IN / 56.
+The physical right wheel moved forward, left stayed still, and both stopped;
+the operator then cut power. Hashes are outer
+`7dd3f9bc7542f646940faf57574b929a72884ea2c77a8c7842e78536e04e6e9a`,
+capture
+`e19f91e97d7ec9060290fc8b117687ba3e5cb750f947ccdb6e103f5d62a65c83`,
+journal
+`47a363192e80267d1a4f66c60b107af64da801e885a7d4090995dc189145da59`,
+and binary usbmon
+`68a2c8ec4fae6b45d06ffe1cff27a35ff8937127c20bb66858b9daa2b100e811`.
+
+The exact right-only state lock was acknowledged offline against manifest
+`431164e5778d24fdab34a716bf0a18fcb667c5f2306fc82de0181510f138ea17`
+after physical-stop and power-cycle confirmation, with
+`hardware_access:false`. This does not reinterpret the nonzero getter or
+attribute either observed stop to software cleanup.
+
+These results show that merely connecting both motors does not suppress each
+independent output channel. The unchanged simultaneous dual-forward profile
+previously moved neither wheel. The supply was set to 12.4 V with a 1.5 A
+current limit, but the operator did not observe the CC indicator, voltage, or
+current during that dual attempt. A leading but unproved explanation is supply
+current limiting/voltage collapse; controller multiword interaction remains
+another possibility.
+
+The evidence lock is cleared for one separately authorized repeat of the
+**unchanged** dual-forward profile. No new runner is needed. During its fixed
+250 ms window the external operator should watch and record, independently:
+HY1803D CC indicator state, displayed voltage, displayed current, left wheel,
+right wheel, stop/uncertainty, abnormal behavior, and cutoff use. The existing
+dual invocation above remains the exact command. This is software readiness,
+not live authorization.
+
 #### Completed connected-right cadence result
 
 The sealed `velocity-right-connected-20260919T1924` tree and nested manifest
