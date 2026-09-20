@@ -103,6 +103,7 @@ SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
 OBSERVATION_SECONDS = 3
+ONE_SECOND_CLEANUP_BOUND_SECONDS = 1.750
 SUCCESS = "raw_pwm_word0_one_pilot_complete_unverified"
 SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
 SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
@@ -301,6 +302,7 @@ PROFILES = {
             "unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_authorized"),
         "report_key": "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof",
         "observation_seconds": 1.0,
+        "absolute_cleanup_bound_seconds": ONE_SECOND_CLEANUP_BOUND_SECONDS,
     },
 }
 SETTER_PAYLOADS = {
@@ -420,7 +422,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "automatic_reconnect": False,
         "fixed_cadence": None,
         "maximum_setter_to_cleanup_start_seconds": (
-            RESPONSE_SECONDS + profile["observation_seconds"]),
+            profile.get(
+                "absolute_cleanup_bound_seconds",
+                RESPONSE_SECONDS + profile["observation_seconds"])),
         "source_limitations": (
             "PCTestApp admits four UInt16 words but supplies no nonzero example, "
             "units, effective minimum, channel binding, or explicit repeat interval"),
@@ -605,7 +609,7 @@ class _RawPwmDualForward2000OneSecondTransport(
     steps = STEPS_DUAL_FORWARD_2000_ONE_SECOND
     success = SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
     observation_seconds = 1.0
-    absolute_cleanup_bound_seconds = 1.5
+    absolute_cleanup_bound_seconds = ONE_SECOND_CLEANUP_BOUND_SECONDS
 
 
 def _submit(transport, report, step, *, deadline):
@@ -669,7 +673,9 @@ def _attempt_cleanup(transport, report, *, clock=time.monotonic):
             - report["setter_prewrite_monotonic"])
         report["setter_to_cleanup_start_seconds"] = elapsed
         if elapsed > transport.absolute_cleanup_bound_seconds:
-            raise OSError("Cleanup syscall started after the absolute 1.5-second bound.")
+            raise OSError(
+                "Cleanup syscall started after the absolute "
+                f"{transport.absolute_cleanup_bound_seconds:.2f}-second bound.")
 
 
 def _wait_until(transport, target, deadline, *, clock=time.monotonic,

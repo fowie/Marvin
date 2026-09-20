@@ -928,6 +928,7 @@ def powered_trial_history(declarations):
             RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
             RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
             RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
+            RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE,
             RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
             RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE)
         right = scope in (
@@ -1015,7 +1016,8 @@ def powered_trial_history(declarations):
             "planned_zero_policy": (
                 "one_fixed_all_zero_cleanup_syscall_after_any_possible_nonzero_submission"),
             "cleanup_start_bound": (
-                "after_correlated_response_plus_1s_or_immediately_after_500ms_response_timeout"
+                "one_second_after_correlated_response; hard_1.75s_from_setter_prewrite; "
+                "immediate_on_lateness_or_fault"
                 if scope == RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE
                 else "after_correlated_response_plus_250ms_or_immediately_after_500ms_response_timeout"),
             "host_can_remove_energy": False,

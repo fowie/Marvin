@@ -579,7 +579,7 @@
         "conclusion": "requested opposite wheel directions established on blocks; observed stops do not prove cleanup causation; robot yaw and ground driving remain unproved"
       },
       "sustained_dual_forward_on_blocks_profile": {
-        "status": "prepared_not_executed",
+        "status": "first_attempt_scheduler_fault_repeat_prepared",
         "scope": "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof",
         "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear on blocks",
         "sequence_range": "3411..3414",
@@ -587,8 +587,18 @@
         "observation_seconds": 1.0,
         "transcript_sha256": "e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7",
         "frames_hex": ["53530d0a000000417f45", "53540d0b0008000000d0070000d0078b8745", "53550d0b0008000000000000000000311445", "53560d0a000000412a45"],
-        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup no later than 1.5s after setter prewrite",
-        "gates": "exact-zero baseline; one setter; fixed 1.0s observation only when it fits the absolute deadline; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; immediate cleanup on lateness/fault/interruption; measured cleanup prewrite overrun fails closed; no retry/reconnect",
+        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup no later than 1.75s after setter prewrite",
+        "gates": "exact-zero baseline; one setter; fixed 1.0s observation after the 500ms unique-response window; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; immediate cleanup on lateness/fault/interruption; measured cleanup prewrite overrun fails closed; no retry/reconnect",
+        "first_live_attempt": {
+          "status": "failed_runner_admission_after_clean_setter_response",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "timing": "setter prewrite 359725.578315799; cleanup prewrite 359726.080694749; elapsed 0.502378950s; intended 1.0s dwell did not occur",
+          "operator_observation": "both wheels moved forward then stopped; no abnormal sound; external cutoff used; stop cause not established",
+          "hashes": ["85eb9425a4649ddffa14f7a776d423d29a6372c62241f0e8dfab66b74d8a2a4d", "d911ea10f246acf608abed31b37e9c3a89312e6e83ed223290b89a1b861ccc7f", "9befe082146cb58b45cf2138f30fdd80d4b3d37a7ba85e8bf392fc4caa780a0c", "81093d7cab0944fb2b65f121c47de82dbd850ea9a549a36630ea7d5b24bcf53b"],
+          "metadata_limitation": "sealed top-level load_scope/physical_connection incorrectly describe left-only due to omitted both-connected tuple membership; literal declarations and scope record both motors; code and regression corrected for repeat",
+          "restoration_acknowledgment": "exact evidence lock acknowledged offline after operator physical-stop and power-cycle confirmation; hardware_access false; no stop attribution"
+        },
+        "scheduler_fix": "hard setter-prewrite bound increased from 1.5s to 1.75s to include validation/scheduler margin without changing the 500ms response gate or 1.0s dwell",
         "operator_observation": "continuous forward rotation of each wheel; HY1803D CC/display behavior; abnormal sound/behavior; simultaneous stop or uncertainty",
         "operating_surface": "on blocks only; no ground-drive authorization",
         "authorization": "software readiness only; not live authorization"

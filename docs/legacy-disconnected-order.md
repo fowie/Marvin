@@ -1801,7 +1801,7 @@ These results establish the requested wheel directions on blocks, not robot
 yaw or ground-driving behavior. Each observed stop remains separate from
 cleanup and raw-status semantics.
 
-### Prepared sustained dual-forward on-blocks proof
+### Sustained dual-forward on-blocks proof
 
 This distinct immutable scope reuses `[0,2000,0,2000]` with both motors
 correctly connected, servos isolated, both encoders connected, wheels clear,
@@ -1811,6 +1811,48 @@ the absolute cleanup deadline, then makes exactly one mandatory all-zero
 cleanup attempt. A late response faults and skips the remaining observation
 rather than delaying cleanup. It is on-blocks only and does not authorize
 ground-driving.
+
+The first live attempt exited one on a software scheduling admission fault:
+`One-second observation cannot fit before cleanup deadline`. Both sealed
+manifests verify. It still recorded four accepted writes / 56 TX, zero
+uncertain TX, and 56 RX: exact-zero raw-`80` baseline, opaque raw-`82`
+`[0,2000,0,2000]` setter, one raw-`80` cleanup, and exact-zero raw-`80` final
+getter. usbmon independently recorded four successful OUT / 56 bytes and four
+successful payload-bearing IN / 56 bytes. Setter prewrite was
+`359725.578315799`; cleanup prewrite was `359726.080694749`, 0.502378950
+seconds later. Thus cleanup and verification succeeded, but the intended
+one-second dwell did not occur. The operator separately observed both wheels
+move forward and stop with no abnormal sound; the external cutoff was used
+immediately when prompted.
+The evidence does not establish whether cleanup or cutoff caused the stop.
+Hashes are outer
+`85eb9425a4649ddffa14f7a776d423d29a6372c62241f0e8dfab66b74d8a2a4d`,
+capture manifest
+`d911ea10f246acf608abed31b37e9c3a89312e6e83ed223290b89a1b861ccc7f`,
+serial journal
+`9befe082146cb58b45cf2138f30fdd80d4b3d37a7ba85e8bf392fc4caa780a0c`,
+and binary usbmon
+`81093d7cab0944fb2b65f121c47de82dbd850ea9a549a36630ea7d5b24bcf53b`.
+The exact evidence lock was acknowledged offline after the operator's physical
+stop and power-cycle confirmation with `hardware_access:false`; this does not
+reinterpret raw statuses or prove software restoration.
+
+The sealed top-level metadata incorrectly labels `load_scope` as left-only and
+names only the left physical connection. Its literal declarations still record
+both motors connected, both physical connector confirmations, the sustained
+dual scope, and `[0,2000,0,2000]`. Root cause was omission of this new scope
+from the existing `both_connected` metadata tuple. The tuple and regression
+are fixed for a repeat; the sealed historical artifact remains unchanged and
+the operator's actual both-connected setup is recorded separately.
+
+Root cause was the 1.5-second hard bound allowing exactly 500 ms response
+observation plus 1.0 second dwell with no scheduler/validation margin. The
+unique-response observer intentionally consumes the response window even when
+the frame arrives early. The fixed scope now retains the 500 ms response gate
+and 1.0-second dwell but uses a 1.75-second hard setter-prewrite bound. Any
+response fault, lateness, interruption, wait fault, or hard-bound overrun still
+enters the same one-time cleanup immediately. The actual cleanup prewrite
+interval remains recorded and enforced.
 
 | Step | Sequence | Exact request |
 |---:|---:|---|
@@ -1823,9 +1865,9 @@ Transcript SHA-256:
 `e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7`.
 Bounds are four writes / 56 TX / 56 expected RX / 8192 maximum RX, or three
 writes / 46 TX if verification is suppressed. Cleanup starts no later than
-1.5 seconds after setter prewrite: after the strict 500 ms response gate plus
-the fixed 1.0-second observation when it fits, or immediately on response
-lateness, a response fault, interruption, or wait fault. The actual
+1.75 seconds after setter prewrite: after the strict 500 ms response gate plus
+the fixed 1.0-second observation, or immediately on response lateness, a
+response fault, interruption, or wait fault. The actual
 setter-to-cleanup prewrite interval is recorded and an overrun fails closed
 after cleanup response handling. Existing prewrite, USB, unique correlation,
 no-retry, no-reconnect, cutoff, and restoration-state gates remain. The
@@ -1846,7 +1888,9 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
-This is software readiness, not live authorization or ground-drive permission.
+The scheduling fault is fixed and a repeat is software-justified after fresh
+operator safety confirmations. This is software readiness, not live
+authorization or ground-drive permission.
 
 #### Completed connected-right cadence result
 

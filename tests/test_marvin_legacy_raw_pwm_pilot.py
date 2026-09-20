@@ -404,9 +404,18 @@ class RawPwmPilotTests(unittest.TestCase):
             sustained_plan["transcript_sha256"],
             "e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7")
         self.assertEqual(sustained_plan["observation_seconds"], 1.0)
-        self.assertEqual(sustained_plan["maximum_setter_to_cleanup_start_seconds"], 1.5)
+        self.assertEqual(sustained_plan["maximum_setter_to_cleanup_start_seconds"], 1.75)
         self.assertFalse(sustained_plan["ground_drive_authorized"])
         self.assertEqual(sustained_plan["operating_surface"], "on_blocks_only")
+        sustained_history = consent.powered_trial_history(
+            DECLARATIONS_DUAL_FORWARD_ONE_SECOND)
+        self.assertEqual(
+            sustained_history["load_scope"], "BOTH_MOTORS_CONNECTED_SERVOS_ISOLATED")
+        self.assertEqual(
+            sustained_history["physical_connection"],
+            "both_motors_to_correctly_labelled_opposite_side_connectors")
+        self.assertEqual(
+            sustained_history["fixed_raw_pwm_words_uint16"], [0, 2000, 0, 2000])
         for declarations, frames, digest, words in (
             (DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD, [
                 "533f0d0a000000481345",
@@ -958,15 +967,15 @@ class RawPwmPilotTests(unittest.TestCase):
         sustained_transport.motor_connected = True
         sustained_transport.physical_motor_label = "BOTH"
         sustained_transport.observation_seconds = 1.0
-        sustained_transport.absolute_cleanup_bound_seconds = 1.5
+        sustained_transport.absolute_cleanup_bound_seconds = 1.75
         sustained_transport.last_write_started = 0
         sustained_report = {}
         with patch.object(pilot, "_response", side_effect=self.response()), \
                 patch.object(pilot, "_wait_until") as wait_until, \
                 redirect_stderr(io.StringIO()):
-            pilot._observe(sustained_transport, sustained_report, clock=lambda: 0)
+            pilot._observe(sustained_transport, sustained_report, clock=lambda: 0.5)
         wait_until.assert_called_once_with(
-            sustained_transport, 1.0, 1.5, clock=ANY)
+            sustained_transport, 1.5, 1.75, clock=ANY)
         self.assertEqual(
             [row["sequence"] for row in sustained_report["responses"]],
             [3411, 3412, 3413, 3414])
@@ -974,13 +983,13 @@ class RawPwmPilotTests(unittest.TestCase):
             sustained_report["status"], pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND)
         self.assertEqual(sustained_report["setter_to_cleanup_start_seconds"], 0)
         with self.assertRaisesRegex(OSError, "cannot fit"):
-            pilot._wait_until(Mock(), 1.6, 1.5, clock=lambda: 0)
+            pilot._wait_until(Mock(), 1.76, 1.75, clock=lambda: 0)
         interrupted_transport = _Transport()
         interrupted_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND
         interrupted_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
         interrupted_transport.motor_connected = True
         interrupted_transport.observation_seconds = 1.0
-        interrupted_transport.absolute_cleanup_bound_seconds = 1.5
+        interrupted_transport.absolute_cleanup_bound_seconds = 1.75
         interrupted_transport.last_write_started = 0
         with patch.object(pilot, "_response", side_effect=self.response()), \
                 patch.object(pilot, "_wait_until", side_effect=InterruptedError("stop")), \
@@ -995,13 +1004,13 @@ class RawPwmPilotTests(unittest.TestCase):
         late_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
         late_transport.motor_connected = True
         late_transport.observation_seconds = 1.0
-        late_transport.absolute_cleanup_bound_seconds = 1.5
+        late_transport.absolute_cleanup_bound_seconds = 1.75
         original_submit = late_transport.submit
 
         def submit_late(step, *, deadline):
             count = original_submit(step, deadline=deadline)
             if step == "cleanup":
-                late_transport.last_write_started = 1.6
+                late_transport.last_write_started = 1.76
             return count
 
         late_transport.submit = submit_late
@@ -1011,7 +1020,7 @@ class RawPwmPilotTests(unittest.TestCase):
                 redirect_stderr(io.StringIO()), \
                 self.assertRaisesRegex(OSError, "after the absolute"):
             pilot._observe(late_transport, late_report, clock=lambda: 0)
-        self.assertEqual(late_report["setter_to_cleanup_start_seconds"], 1.6)
+        self.assertEqual(late_report["setter_to_cleanup_start_seconds"], 1.76)
         self.assertEqual(
             late_transport.attempts, ["baseline", "set", "cleanup", "verify"])
 
