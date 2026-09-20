@@ -27,6 +27,10 @@ CONNECTED_DECLARATIONS = dict.fromkeys(
     consent.CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS, True)
 CONNECTED_FLAGS = ["--" + name.replace("_", "-")
                    for name in consent.CONNECTED_LEFT_VELOCITY_TRAIN_FLAGS]
+CONNECTED_RIGHT_DECLARATIONS = dict.fromkeys(
+    consent.CONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS, True)
+CONNECTED_RIGHT_FLAGS = ["--" + name.replace("_", "-")
+                         for name in consent.CONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS]
 
 
 class _Transport:
@@ -171,6 +175,26 @@ class VelocityTrainTests(unittest.TestCase):
              connected_plan["maximum_application_bytes"],
              connected_plan["maximum_expected_response_bytes"]),
             (5, .2, .25, 98, 70))
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(train.main(CONNECTED_RIGHT_FLAGS), 0)
+        connected_right_plan = json.loads(stdout.getvalue())
+        self.assertEqual(connected_right_plan["immutable_application_transcript_hex"], [
+            "53340d1100040000000000d6bb45",
+            "53350d110004000000e803897f45",
+            "53360d110004000000e803797045",
+            "53370d110004000000e80328b545",
+            "53380d110004000000e803188545",
+            "53390d110004000000e803494045",
+            "533a0d1100040000000000b74e45",
+        ])
+        self.assertEqual(
+            connected_right_plan["transcript_sha256"],
+            "563fb24134a3935d7037a6bfcfe40ba2506e2885ade85b3c578dab6b516f2639")
+        self.assertEqual(
+            connected_right_plan["scope_observation"],
+            "observe_connected_physical_right_wheel_motion_direction_and_stop")
         for knob in ("value", "duration", "sequence", "retry", "count", "cadence"):
             with self.subTest(knob=knob), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit):
@@ -190,6 +214,11 @@ class VelocityTrainTests(unittest.TestCase):
                 train.run_diagnostic(
                     self.root / "unused", expected_physical_port="1-3", run=True,
                     **(CONNECTED_DECLARATIONS | {name: False}))
+        for name in consent.CONNECTED_RIGHT_VELOCITY_TRAIN_FLAGS:
+            with self.subTest(connected_right_name=name), self.assertRaises(ValueError):
+                train.run_diagnostic(
+                    self.root / "unused", expected_physical_port="1-3", run=True,
+                    **(CONNECTED_RIGHT_DECLARATIONS | {name: False}))
 
         harness = session_tests.SessionTests()
         harness.setUp()
@@ -214,6 +243,33 @@ class VelocityTrainTests(unittest.TestCase):
         with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(usbmon.main(command[2:]), 0)
+        train._validate_capture(capture.call_args.kwargs)
+
+        connected_right_harness = session_tests.SessionTests()
+        connected_right_harness.setUp()
+        self.addCleanup(connected_right_harness.doCleanups)
+        connected_right_runner = Mock(side_effect=connected_right_harness.capture)
+        connected_right_result = connected_right_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=connected_right_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **CONNECTED_RIGHT_DECLARATIONS)
+        connected_right_command = connected_right_harness.popen.call_args.args[0]
+        self.assertEqual(
+            connected_right_result["scope"],
+            consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE)
+        self.assertEqual(
+            connected_right_result["probe_name"], "ConnectedRightPlus1000VelocityTrain")
+        self.assertTrue(
+            connected_right_result[
+                "fixed_connected_right_plus_1000_velocity_train_authorized"])
+        for flag in CONNECTED_RIGHT_FLAGS:
+            self.assertIn(flag, connected_right_command)
+        train._validate_capture(connected_right_runner.call_args.kwargs)
+        with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(usbmon.main(connected_right_command[2:]), 0)
         train._validate_capture(capture.call_args.kwargs)
 
         right_harness = session_tests.SessionTests()
@@ -318,6 +374,20 @@ class VelocityTrainTests(unittest.TestCase):
         self.assertAlmostEqual(
             connected_report["cleanup_prewrite_elapsed_seconds"], .24)
         self.assertEqual(connected_report["status"], train.CONNECTED_LEFT_SUCCESS)
+
+        connected_right_transport = _Transport()
+        connected_right_transport.transcript = train.CONNECTED_RIGHT_TRANSCRIPT
+        connected_right_transport.success = train.CONNECTED_RIGHT_SUCCESS
+        connected_right_transport.train_count = train.CONNECTED_TRAIN_COUNT
+        connected_right_transport.cleanup_immediately_after_train = True
+        connected_right_transport.motor_connected = True
+        connected_right_transport.physical_motor_label = "RIGHT"
+        with patch.object(train, "_response", side_effect=self.response), \
+                patch.object(train, "_wait_until", return_value=0), \
+                redirect_stderr(io.StringIO()) as stderr:
+            train._observe(connected_right_transport, {}, clock=lambda: 100)
+        self.assertIn("OBSERVE_RIGHT_MOTOR_NOW", stderr.getvalue())
+        self.assertNotIn("OBSERVE_LEFT_MOTOR_NOW", stderr.getvalue())
 
         late_transport = _Transport()
         late_transport.transcript = train.CONNECTED_LEFT_TRANSCRIPT

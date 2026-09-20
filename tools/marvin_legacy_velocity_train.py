@@ -23,6 +23,7 @@ from tools.marvin_legacy_protocol import decode_packet
 FIRST_SEQUENCE = 3285
 RIGHT_FIRST_SEQUENCE = 3307
 CONNECTED_LEFT_FIRST_SEQUENCE = 3373
+CONNECTED_RIGHT_FIRST_SEQUENCE = 3380
 TRAIN_COUNT = 20
 CONNECTED_TRAIN_COUNT = 5
 CADENCE_SECONDS = 0.050
@@ -52,6 +53,16 @@ CONNECTED_LEFT_CLEANUP_ZERO = _frame(
     CONNECTED_LEFT_FIRST_SEQUENCE + 1 + CONNECTED_TRAIN_COUNT, 0x11, ALL_ZERO)
 CONNECTED_LEFT_TRANSCRIPT = (
     CONNECTED_LEFT_INITIAL_ZERO, *CONNECTED_LEFT_TRAIN, CONNECTED_LEFT_CLEANUP_ZERO)
+CONNECTED_RIGHT_INITIAL_ZERO = _frame(CONNECTED_RIGHT_FIRST_SEQUENCE, 0x11, ALL_ZERO)
+CONNECTED_RIGHT_TRAIN = tuple(
+    _frame(CONNECTED_RIGHT_FIRST_SEQUENCE + 1 + index, 0x11, RIGHT_PLUS_1000)
+    for index in range(CONNECTED_TRAIN_COUNT)
+)
+CONNECTED_RIGHT_CLEANUP_ZERO = _frame(
+    CONNECTED_RIGHT_FIRST_SEQUENCE + 1 + CONNECTED_TRAIN_COUNT, 0x11, ALL_ZERO)
+CONNECTED_RIGHT_TRANSCRIPT = (
+    CONNECTED_RIGHT_INITIAL_ZERO, *CONNECTED_RIGHT_TRAIN,
+    CONNECTED_RIGHT_CLEANUP_ZERO)
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.040
@@ -59,6 +70,8 @@ SUCCESS = "disconnected_load_left_plus_1000_velocity_train_complete_unverified"
 RIGHT_SUCCESS = "disconnected_load_right_plus_1000_velocity_train_complete_unverified"
 CONNECTED_LEFT_SUCCESS = (
     "connected_left_plus_1000_velocity_train_complete_unverified")
+CONNECTED_RIGHT_SUCCESS = (
+    "connected_right_plus_1000_velocity_train_complete_unverified")
 PROFILES = {
     consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE: {
         "transcript": TRANSCRIPT,
@@ -96,6 +109,19 @@ PROFILES = {
         "report_key": "connected_left_plus_1000_velocity_train_observation",
         "authorization": "unvalidated_connected_left_plus_1000_velocity_train_authorized",
         "physical_plug": "Motor L",
+        "train_count": CONNECTED_TRAIN_COUNT,
+        "motor_connected": True,
+    },
+    consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: {
+        "transcript": CONNECTED_RIGHT_TRANSCRIPT,
+        "first_sequence": CONNECTED_RIGHT_FIRST_SEQUENCE,
+        "commanded_field": "PCTestApp rightVel second signed int16 word",
+        "fixed_left_raw_value": 0,
+        "fixed_right_raw_value": 1000,
+        "success": CONNECTED_RIGHT_SUCCESS,
+        "report_key": "connected_right_plus_1000_velocity_train_observation",
+        "authorization": "unvalidated_connected_right_plus_1000_velocity_train_authorized",
+        "physical_plug": "Motor R",
         "train_count": CONNECTED_TRAIN_COUNT,
         "motor_connected": True,
     },
@@ -155,7 +181,8 @@ def prepare(scope=consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE):
         "automatic_retries": False,
         "automatic_reconnect": False,
         "scope_observation": (
-            "observe_connected_physical_left_wheel_motion_direction_and_stop"
+            f"observe_connected_physical_{'right' if profile['fixed_right_raw_value'] else 'left'}"
+            "_wheel_motion_direction_and_stop"
             if profile["motor_connected"] else
             f"observe_disconnected_physical_{profile['physical_plug'].replace(' ', '_')}_plug_"
             "without_inferring_source_field_mapping"),
@@ -176,6 +203,7 @@ class _VelocityTrainTransport(LiveTransport):
     train_count = TRAIN_COUNT
     cleanup_immediately_after_train = False
     motor_connected = False
+    physical_motor_label = "LEFT"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -219,6 +247,12 @@ class _ConnectedLeftVelocityTrainTransport(_VelocityTrainTransport):
     train_count = CONNECTED_TRAIN_COUNT
     cleanup_immediately_after_train = True
     motor_connected = True
+
+
+class _ConnectedRightVelocityTrainTransport(_ConnectedLeftVelocityTrainTransport):
+    transcript = CONNECTED_RIGHT_TRANSCRIPT
+    success = CONNECTED_RIGHT_SUCCESS
+    physical_motor_label = "RIGHT"
 
 
 def _submit(transport, report, index, *, deadline, cleanup=False):
@@ -308,7 +342,8 @@ def _observe(transport, report, *, clock=time.monotonic, sleeper=time.sleep):
         _response(transport, report, 0, deadline=deadline, clock=clock)
         if transport.motor_connected:
             print(
-                "OBSERVE_LEFT_MOTOR_NOW: report motion/no_motion, actual direction, "
+                f"OBSERVE_{getattr(transport, 'physical_motor_label', 'LEFT')}_MOTOR_NOW: "
+                "report motion/no_motion, actual direction, "
                 "visible stop/uncertainty, abnormal sound, and cutoff use",
                 file=sys.stderr, flush=True)
         train_start = clock()
@@ -389,6 +424,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: _RightVelocityTrainTransport,
             consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE: (
                 _ConnectedLeftVelocityTrainTransport),
+            consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE: (
+                _ConnectedRightVelocityTrainTransport),
         }[scope]
         return zero._run_diagnostic(
             output, expected_physical_port=expected_physical_port, review=prepare(scope),

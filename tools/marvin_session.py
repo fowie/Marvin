@@ -263,6 +263,8 @@ def run_session(
     authorize_unvalidated_right_plus_1000_velocity_train=False,
     left_motor_connected_left_plus_1000_velocity_train=False,
     authorize_unvalidated_connected_left_plus_1000_velocity_train=False,
+    right_motor_connected_right_plus_1000_velocity_train=False,
+    authorize_unvalidated_connected_right_plus_1000_velocity_train=False,
     disconnected_load_raw_pwm_word0_one_pilot=False,
     authorize_unvalidated_raw_pwm_word0_one_pilot=False,
     disconnected_load_raw_pwm_word0_1000_pilot=False,
@@ -339,6 +341,10 @@ def run_session(
             left_motor_connected_left_plus_1000_velocity_train),
         authorize_unvalidated_connected_left_plus_1000_velocity_train=(
             authorize_unvalidated_connected_left_plus_1000_velocity_train),
+        right_motor_connected_right_plus_1000_velocity_train=(
+            right_motor_connected_right_plus_1000_velocity_train),
+        authorize_unvalidated_connected_right_plus_1000_velocity_train=(
+            authorize_unvalidated_connected_right_plus_1000_velocity_train),
         disconnected_load_raw_pwm_word0_one_pilot=(
             disconnected_load_raw_pwm_word0_one_pilot),
         authorize_unvalidated_raw_pwm_word0_one_pilot=(
@@ -444,6 +450,7 @@ def run_session(
                                         *motor_consent.DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
                                         *motor_consent.CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                        *motor_consent.CONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_PILOT_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_1000_PILOT_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_2000_PILOT_ONLY_FLAGS,
@@ -719,6 +726,8 @@ def run_session(
                             if scope == motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
                             else "ConnectedLeftPlus1000VelocityTrain"
                             if scope == motor_consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE
+                            else "ConnectedRightPlus1000VelocityTrain"
+                            if scope == motor_consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
                             else "DisconnectedLoadRawPwmWord0OnePilot"
                             if scope == motor_consent.RAW_PWM_PILOT_SCOPE
                             else "DisconnectedLoadRawPwmWord0Value1000Pilot"
@@ -770,6 +779,8 @@ def run_session(
                             scope == motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
                         fixed_connected_left_plus_1000_velocity_train_authorized=(
                             scope == motor_consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE),
+                        fixed_connected_right_plus_1000_velocity_train_authorized=(
+                            scope == motor_consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
                         fixed_raw_pwm_word0_one_pilot_authorized=(
                             scope == motor_consent.RAW_PWM_PILOT_SCOPE),
                         fixed_raw_pwm_word0_1000_pilot_authorized=(

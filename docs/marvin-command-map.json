@@ -809,7 +809,7 @@
           "meaning": "not evidence about actual Motor R-labelled connector; does not establish source-field-to-connector, robot-side mapping, raw82 meaning, or output absence"
         },
         {
-          "status": "prepared_not_executed",
+          "status": "completed_no_motion",
           "scope": "left_motor_connected_left_plus_1000_velocity_train",
           "physical_load": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; both encoders connected; wheels clear",
           "payload": "source leftVel=+1000, rightVel=0",
@@ -823,7 +823,23 @@
           "response_policy": "initial zero requires unique correlated CRC-valid empty raw80; nonzero and cleanup require unique correlated CRC-valid empty raw80/raw82",
           "cleanup": "immediately after fifth planned response or any fault; exactly one zero syscall; no retry/reconnect",
           "getters": "none; no getter may delay cleanup and raw getter state is not physical stop proof",
-          "operator_observation": "physical left wheel motion/no-motion, actual direction, visible stop/uncertainty, abnormal sound, cutoff use"
+          "operator_observation": "no physical-left-wheel motion; external HY1803D cutoff used after immediate clarification; final state powered off",
+          "protocol": "7 writes / 98 accepted TX / 0 uncertain TX / 70 RX; initial zero raw80; five nonzero raw82; cleanup raw80",
+          "cleanup_prewrite_elapsed_seconds": 0.24642485805088654,
+          "hashes": ["99e1d27460daf6bb8680898a0c70e29b78536c1a712f19dbcdebe24c3d8c7140", "2e4e504df920b0225c3c37e9645ff0cc2ce6afbaf27b58978ddea3d3d217e3f1", "c0360c333b3234c385fd3177e0fd72a25ba88a1a5e05fd8ad55a212e2ff51d5b", "2a3b1f17ce4578de83e0baf93417e025b87164568b10263bb167ee1563a8e44c"]
+        },
+        {
+          "status": "prepared_not_executed",
+          "scope": "right_motor_connected_right_plus_1000_velocity_train",
+          "physical_load": "only physical right motor connected to robot-left-side connector printed Motor R; left motor unplugged; servos isolated; both encoders connected; wheels clear",
+          "payload": "source leftVel=0, rightVel=+1000",
+          "sequence_range": "3380..3386",
+          "train_count": 5,
+          "cadence_ms": 50,
+          "maximum_first_nonzero_to_cleanup_prewrite_ms": 250,
+          "transcript_sha256": "563fb24134a3935d7037a6bfcfe40ba2506e2885ade85b3c578dab6b516f2639",
+          "bounds": "7 writes / 98 TX bytes / 70 expected RX bytes / 8192 maximum RX bytes",
+          "reason": "earlier disconnected rightVel scope used misidentified printed Motor L connector; actual connected right path remains untested"
         }
       ],
       "newer_drive_meaning": {

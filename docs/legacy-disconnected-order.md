@@ -1485,6 +1485,74 @@ python3 -m tools.marvin_legacy_velocity_train \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
+#### Completed connected-left cadence result
+
+The sealed `velocity-left-connected-20260919T1254` evidence tree and nested
+manifest verify. The run exited zero with seven accepted writes / 98 TX bytes,
+zero uncertain TX, and 70 RX bytes. Sequence 3373 initial zero returned raw
+`80`; all five sequences 3374..3378 returned opaque raw `82`; sequence 3379
+one-time cleanup returned raw `80`. All responses were CRC-valid, empty, and
+uniquely correlated. Cleanup prewrite occurred 246.425 ms after the first
+nonzero prewrite, within the 250 ms bound; write lateness values were
+approximately 0.004, 0.208, 1.744, 0.110, and 1.150 ms. usbmon recorded seven
+successful bulk OUT / 98 bytes and seven successful payload-bearing bulk IN /
+70 bytes, without correlation faults.
+
+Hashes are outer metadata
+`99e1d27460daf6bb8680898a0c70e29b78536c1a712f19dbcdebe24c3d8c7140`,
+capture metadata
+`2e4e504df920b0225c3c37e9645ff0cc2ce6afbaf27b58978ddea3d3d217e3f1`,
+adapter journal
+`c0360c333b3234c385fd3177e0fd72a25ba88a1a5e05fd8ad55a212e2ff51d5b`,
+and binary usbmon
+`2a3b1f17ce4578de83e0baf93417e025b87164568b10263bb167ee1563a8e44c`.
+With only the physical left motor connected, the operator observed **no
+motion**. The user initially selected unable-to-power-off, then immediately
+clarified that they used the external HY1803D cutoff and confirmed power cut.
+The final state is powered OFF; this does not imply cutoff failure.
+
+### Prepared connected-right `SetMotorVelocity` cadence discriminator
+
+The symmetric profile tests the actual connected physical right path: only
+the right motor is connected to the robot-left-side connector printed
+`Motor R`; left motor and servos are isolated, both encoders connected, wheels
+clear, and the operator remains at cutoff. This is necessary because the
+earlier disconnected source-`rightVel` scope was actually placed on printed
+`Motor L`.
+
+It sends initial zero, five unique source `leftVel=0/rightVel=+1000` frames at
+absolute 0/50/100/150/200 ms targets, then one mandatory zero cleanup with the
+same <=250 ms prewrite bound and 40 ms response gates. No getter delays
+cleanup; no retry or reconnect.
+
+| Step | Sequence | Exact request |
+|---:|---:|---|
+| initial zero | 3380 | `53340d1100040000000000d6bb45` |
+| nonzero 1 | 3381 | `53350d110004000000e803897f45` |
+| nonzero 2 | 3382 | `53360d110004000000e803797045` |
+| nonzero 3 | 3383 | `53370d110004000000e80328b545` |
+| nonzero 4 | 3384 | `53380d110004000000e803188545` |
+| nonzero 5 | 3385 | `53390d110004000000e803494045` |
+| cleanup zero | 3386 | `533a0d1100040000000000b74e45` |
+
+Transcript SHA-256:
+`563fb24134a3935d7037a6bfcfe40ba2506e2885ade85b3c578dab6b516f2639`.
+Bounds remain seven writes / 98 TX / 70 expected RX / 8192 maximum RX.
+
+```bash
+python3 -m tools.marvin_legacy_velocity_train \
+  --right-motor-connected-right-plus-1000-velocity-train \
+  --authorize-unvalidated-connected-right-plus-1000-velocity-train \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-right-connected --motor-left-disconnected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+This is software readiness, not live authorization.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load
