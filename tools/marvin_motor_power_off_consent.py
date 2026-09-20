@@ -244,6 +244,20 @@ RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS = (
     "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE = (
+    "raw_pwm_dual_motor_reverse_2000_connected_proof")
+RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS = (
+    RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
+    "authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof",
+)
+RAW_PWM_DUAL_REVERSE_CONNECTED_FLAGS = (
+    *RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS,
+    "physical_left_motor_connected_to_robot_right_motor_l_connector",
+    "physical_right_motor_connected_to_robot_left_motor_r_connector",
+    "motor_left_connected", "motor_right_connected", "servos_isolated",
+    "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE = (
     "raw_pwm_both_connected_left_forward_2000_proof")
 RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS = (
@@ -274,6 +288,7 @@ RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_FLAGS = (
 )
 RAW_PWM_CONNECTED_SCOPES += (
     RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+    RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
     RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
     RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE,
 )
@@ -351,6 +366,7 @@ POWERED_TRIAL_SCOPES = {
     RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE: RAW_PWM_WORD2_2000_RIGHT_CONNECTED_FLAGS,
     RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE: RAW_PWM_WORD3_2000_RIGHT_CONNECTED_FLAGS,
     RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE: RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS,
+    RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE: RAW_PWM_DUAL_REVERSE_CONNECTED_FLAGS,
     RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE: (
         RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_FLAGS),
     RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE: (
@@ -381,6 +397,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *RAW_PWM_WORD2_2000_RIGHT_CONNECTED_ONLY_FLAGS,
                                 *RAW_PWM_WORD3_2000_RIGHT_CONNECTED_ONLY_FLAGS,
                                 *RAW_PWM_DUAL_FORWARD_CONNECTED_ONLY_FLAGS,
+                                *RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS,
                                 *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
                                 *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
@@ -435,6 +452,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              physical_right_motor_connected_to_robot_left_motor_r_connector=False,
              raw_pwm_dual_motor_forward_2000_connected_proof=False,
              authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=False,
+             raw_pwm_dual_motor_reverse_2000_connected_proof=False,
+             authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof=False,
              raw_pwm_both_connected_left_forward_2000_proof=False,
              authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
              raw_pwm_both_connected_right_forward_2000_proof=False,
@@ -537,6 +556,10 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      raw_pwm_dual_motor_forward_2000_connected_proof),
                  authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=(
                      authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof),
+                 raw_pwm_dual_motor_reverse_2000_connected_proof=(
+                     raw_pwm_dual_motor_reverse_2000_connected_proof),
+                 authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof=(
+                     authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof),
                  raw_pwm_both_connected_left_forward_2000_proof=(
                      raw_pwm_both_connected_left_forward_2000_proof),
                  authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
@@ -652,6 +675,7 @@ def add_powered_trial_arguments(parser):
                  *RAW_PWM_WORD2_2000_RIGHT_CONNECTED_ONLY_FLAGS,
                  *RAW_PWM_WORD3_2000_RIGHT_CONNECTED_ONLY_FLAGS,
                  *RAW_PWM_DUAL_FORWARD_CONNECTED_ONLY_FLAGS,
+                 *RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS,
                  *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
                  *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
@@ -680,6 +704,7 @@ def powered_trial_arguments(args):
         *RAW_PWM_WORD2_2000_RIGHT_CONNECTED_ONLY_FLAGS,
         *RAW_PWM_WORD3_2000_RIGHT_CONNECTED_ONLY_FLAGS,
         *RAW_PWM_DUAL_FORWARD_CONNECTED_ONLY_FLAGS,
+        *RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS,
         *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
         *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -817,9 +842,12 @@ def powered_trial_history(declarations):
             "physical_stop": "not_established",
         }
     if scope in RAW_PWM_CONNECTED_SCOPES:
-        dual = scope == RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE
+        dual = scope in (
+            RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+            RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE)
         both_connected = scope in (
             RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+            RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
             RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
             RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE)
         right = scope in (
@@ -845,7 +873,8 @@ def powered_trial_history(declarations):
                 "left_motor_to_robot_right_side_controller_connector_printed_Motor_L"),
             "outcome_meaning": (
                 f"bounded_raw_pwm_{
-                    'dual_forward' if dual
+                    'dual_forward' if scope == RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE
+                    else 'dual_reverse' if scope == RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE
                     else 'both_connected_left_forward'
                     if scope == RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE
                     else 'both_connected_right_forward'
@@ -863,13 +892,19 @@ def powered_trial_history(declarations):
                 scope == RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE),
             "unvalidated_raw_pwm_word3_2000_right_motor_connected_proof_authorized": (
                 scope == RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE),
-            "unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof_authorized": dual,
+            "unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof_authorized": (
+                scope == RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE),
+            "unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof_authorized": (
+                scope == RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE),
             "unvalidated_raw_pwm_both_connected_left_forward_2000_proof_authorized": (
                 scope == RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE),
             "unvalidated_raw_pwm_both_connected_right_forward_2000_proof_authorized": (
                 scope == RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE),
             **({"fixed_raw_pwm_words_uint16": (
-                    [0, 2000, 0, 2000] if dual
+                    [0, 2000, 0, 2000]
+                    if scope == RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE
+                    else [2000, 0, 2000, 0]
+                    if scope == RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE
                     else [0, 2000, 0, 0]
                     if scope == RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE
                     else [0, 0, 0, 2000])}

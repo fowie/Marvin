@@ -53,6 +53,8 @@ DECLARATIONS_DUAL_FORWARD_CONNECTED = dict.fromkeys(
 FLAGS_DUAL_FORWARD_CONNECTED = [
     "--" + name.replace("_", "-")
     for name in consent.RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS]
+DECLARATIONS_DUAL_REVERSE_CONNECTED = dict.fromkeys(
+    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_FLAGS, True)
 DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD = dict.fromkeys(
     consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_FLAGS, True)
 DECLARATIONS_BOTH_CONNECTED_RIGHT_FORWARD = dict.fromkeys(
@@ -334,6 +336,24 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertEqual(dual_plan["fixed_setter_words_uint16"], [0, 2000, 0, 2000])
         self.assertEqual(
             dual_plan["operator_selected_physical_plug_label"], "Motor L and Motor R")
+        reverse_flags = [
+            "--" + name.replace("_", "-")
+            for name in consent.RAW_PWM_DUAL_REVERSE_CONNECTED_FLAGS]
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(pilot.main(reverse_flags), 0)
+        reverse_plan = json.loads(stdout.getvalue())
+        self.assertEqual(reverse_plan["immutable_application_transcript_hex"], [
+            "53470d0a000000426b45",
+            "53480d0b000800d0070000d0070000de9445",
+            "53490d0b00080000000000000000002cc845",
+            "534a0d0a000000437645",
+        ])
+        self.assertEqual(
+            reverse_plan["transcript_sha256"],
+            "01062cff9b64d2334d9b7fb023db002723444922eb4f291d7ddf5dcc569de9bd")
+        self.assertEqual(reverse_plan["fixed_setter_words_uint16"], [2000, 0, 2000, 0])
         for declarations, frames, digest, words in (
             (DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD, [
                 "533f0d0a000000481345",
@@ -397,11 +417,14 @@ class RawPwmPilotTests(unittest.TestCase):
                     pilot.run_diagnostic(
                         self.root / "unused", expected_physical_port="1-3", run=True,
                         **(declarations | {name: False}))
-        for name in consent.RAW_PWM_DUAL_FORWARD_CONNECTED_FLAGS:
-            with self.subTest(dual_name=name), self.assertRaises(ValueError):
-                pilot.run_diagnostic(
-                    self.root / "unused", expected_physical_port="1-3", run=True,
-                    **(DECLARATIONS_DUAL_FORWARD_CONNECTED | {name: False}))
+        for declarations in (
+                DECLARATIONS_DUAL_FORWARD_CONNECTED,
+                DECLARATIONS_DUAL_REVERSE_CONNECTED):
+            for name in declarations:
+                with self.subTest(dual_name=name), self.assertRaises(ValueError):
+                    pilot.run_diagnostic(
+                        self.root / "unused", expected_physical_port="1-3", run=True,
+                        **(declarations | {name: False}))
         for declarations in (
                 DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD,
                 DECLARATIONS_BOTH_CONNECTED_RIGHT_FORWARD):
@@ -498,6 +521,28 @@ class RawPwmPilotTests(unittest.TestCase):
         for flag in FLAGS_DUAL_FORWARD_CONNECTED:
             self.assertIn(flag, dual_command)
         pilot._validate_capture(dual_runner.call_args.kwargs)
+        reverse_harness = session_tests.SessionTests()
+        reverse_harness.setUp()
+        self.addCleanup(reverse_harness.doCleanups)
+        reverse_runner = Mock(side_effect=reverse_harness.capture)
+        reverse_result = reverse_harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=reverse_runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **DECLARATIONS_DUAL_REVERSE_CONNECTED)
+        reverse_command = reverse_harness.popen.call_args.args[0]
+        self.assertEqual(
+            reverse_result["scope"], consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE)
+        self.assertEqual(
+            reverse_result["probe_name"], "RawPwmDualMotorReverseValue2000ConnectedProof")
+        self.assertTrue(
+            reverse_result["fixed_raw_pwm_dual_motor_reverse_2000_connected_proof_authorized"])
+        pilot._validate_capture(reverse_runner.call_args.kwargs)
+        with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(usbmon.main(reverse_command[2:]), 0)
+        pilot._validate_capture(capture.call_args.kwargs)
         for declarations, scope, probe, authorization in (
             (DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD,
              consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,

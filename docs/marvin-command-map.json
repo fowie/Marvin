@@ -510,7 +510,7 @@
         "established_direction_map": "raw2000/250ms: left word0 reverse, left word1 forward, right word2 backward, right word3 forward; raw82 opaque and stop causation unproved"
       },
       "dual_motor_forward_connected_profile": {
-        "status": "completed_no_motion",
+        "status": "completed_conflicting_physical_observations",
         "scope": "raw_pwm_dual_motor_forward_2000_connected_proof",
         "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
         "sequence_range": "3387..3390",
@@ -520,9 +520,32 @@
         "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed",
         "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
         "nonzero_final_getter": "fault and restoration lock; no second cleanup",
-        "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",
-        "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
-        "hashes": ["4527d255552ece1c215b6aca16a39da921b18a14bb8d79fdb41381b2e647b16a", "4a552b557709d5b2c2aeb6eb732d1fafba4c4ac72c48de1f35ba34c9f3b3a57b", "3694b9db0433ae48d83201c602817051448cc3f42cd3a68e3c5f7056dab6e7e3", "9d9b756fc072d9cc9802efbc9d69fbdb5b5863c30c9c6c9932f37f997558f550"]
+        "protocol": "both runs: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+        "runs": [
+          {
+            "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",
+            "hashes": ["4527d255552ece1c215b6aca16a39da921b18a14bb8d79fdb41381b2e647b16a", "4a552b557709d5b2c2aeb6eb732d1fafba4c4ac72c48de1f35ba34c9f3b3a57b", "3694b9db0433ae48d83201c602817051448cc3f42cd3a68e3c5f7056dab6e7e3", "9d9b756fc072d9cc9802efbc9d69fbdb5b5863c30c9c6c9932f37f997558f550"]
+          },
+          {
+            "operator_observation": "at unchanged 12.4V/1.5A, supply fine/no CC issue; both wheels moved forward and stopped; robot powered off",
+            "hashes": ["d299d64cb08cbfe8a132261f8300b43eb6294416085d2c6b7d9abd6e1517577c", "c072b22c494d186ed3d3982ccee5486ead28cd717dc3d81e6a2398333b3eda37", "c1f8f4b3ea45dc7c18a8cc9e2340ce6f54ec57b571b37db6ef5fb97edf31de87", "317adffe0dab1b3a851d2fd16494296bc8388f2257197af81947a6515409e834"]
+          }
+        ],
+        "conclusion": "conflicting operator observations from separate protocol-valid runs; neither outcome is deterministic evidence and stop cause remains unproved"
+      },
+      "dual_motor_reverse_connected_profile": {
+        "status": "prepared_not_executed",
+        "scope": "raw_pwm_dual_motor_reverse_2000_connected_proof",
+        "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
+        "sequence_range": "3399..3402",
+        "setter_words_uint16": [2000, 0, 2000, 0],
+        "observation_seconds": 0.25,
+        "transcript_sha256": "01062cff9b64d2334d9b7fb023db002723444922eb4f291d7ddf5dcc569de9bd",
+        "frames_hex": ["53470d0a000000426b45", "53480d0b000800d0070000d0070000de9445", "53490d0b00080000000000000000002cc845", "534a0d0a000000437645"],
+        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup by 750ms after setter prewrite",
+        "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
+        "operator_observation": "report left and right wheels independently: reverse/backward, mismatch, crosstalk, no motion, stop/uncertainty, abnormal behavior, and cutoff",
+        "authorization": "software readiness only; not live authorization"
       },
       "both_connected_single_channel_profiles": {
         "status": "completed",
@@ -547,9 +570,8 @@
           "hashes": ["7dd3f9bc7542f646940faf57574b929a72884ea2c77a8c7842e78536e04e6e9a", "e19f91e97d7ec9060290fc8b117687ba3e5cb750f947ccdb6e103f5d62a65c83", "47a363192e80267d1a4f66c60b107af64da801e885a7d4090995dc189145da59", "68a2c8ec4fae6b45d06ffe1cff27a35ff8937127c20bb66858b9daa2b100e811"]
         },
         "gates": "separate runs; exact-zero baseline; one setter; 250ms observation; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
-        "conclusion": "both connected does not suppress independent channels; simultaneous dual interaction remains",
-        "dual_repeat_observation": "unchanged profile; record HY1803D CC indicator, voltage, current, both wheels, stop/uncertainty, abnormal behavior, and cutoff",
-        "hypotheses": "12.4V/1.5A supply current limit or voltage collapse is leading but unproved; controller multiword interaction also unproved"
+        "conclusion": "both connected does not suppress independent channels; dual-forward repeat moved both wheels, conflicting with the earlier no-motion observation",
+        "hypotheses": "repeat showed no CC or supply issue, so current limiting is not supported by that observation; earlier no-motion result and controller multiword behavior remain unexplained"
       },
       "newer_drive_meaning": {
         "command": 11,

@@ -1555,12 +1555,15 @@ This is software readiness, not live authorization.
 
 #### Completed dual-forward result
 
-The sealed `raw-pwm-dual-forward-20260919T1926` tree and nested manifest
-verify. The run exited zero with four accepted writes / 56 TX bytes, zero
+The sealed `raw-pwm-dual-forward-20260919T1926` and
+`raw-pwm-dual-forward-supply-observation-20260919T1938` trees and nested
+manifests verify. Both runs exited zero with four accepted writes / 56 TX
+bytes, zero
 uncertain TX, and 56 RX bytes: exact-zero raw-`80` baseline, opaque raw-`82`
 `[0,2000,0,2000]` setter, one raw-`80` all-zero cleanup, and exact-zero
 raw-`80` final getter. usbmon recorded four successful OUT / 56 bytes and four
-successful payload-bearing IN / 56 bytes without correlation faults.
+successful payload-bearing IN / 56 bytes without correlation faults in each
+run.
 
 Hashes are outer
 `4527d255552ece1c215b6aca16a39da921b18a14bb8d79fdb41381b2e647b16a`,
@@ -1570,9 +1573,22 @@ journal
 `3694b9db0433ae48d83201c602817051448cc3f42cd3a68e3c5f7056dab6e7e3`,
 and binary usbmon
 `9d9b756fc072d9cc9802efbc9d69fbdb5b5863c30c9c6c9932f37f997558f550`.
-With both motors correctly connected, neither wheel moved and there was no
-abnormal behavior. Cleanup completed and the robot was powered OFF. The clean
-protocol does not make raw `82` an application acknowledgment.
+The repeat hashes are outer
+`d299d64cb08cbfe8a132261f8300b43eb6294416085d2c6b7d9abd6e1517577c`,
+capture
+`c072b22c494d186ed3d3982ccee5486ead28cd717dc3d81e6a2398333b3eda37`,
+journal
+`c1f8f4b3ea45dc7c18a8cc9e2340ce6f54ec57b571b37db6ef5fb97edf31de87`,
+and binary usbmon
+`317adffe0dab1b3a851d2fd16494296bc8388f2257197af81947a6515409e834`.
+With both motors correctly connected, the first run's operator observed
+neither wheel moving. During the supply-observation repeat at the unchanged
+12.4 V / 1.5 A setting, the operator observed no CC indication or supply
+problem, both wheels moving forward, and both stopping; the robot was then
+powered OFF. These are conflicting physical observations from separate,
+protocol-valid runs. Neither establishes deterministic dual-forward behavior,
+and the clean protocol does not make raw `82` an application acknowledgment or
+attribute either observed stop to cleanup.
 
 ### Prepared both-connected single-channel raw-PWM discriminators
 
@@ -1647,20 +1663,52 @@ after physical-stop and power-cycle confirmation, with
 attribute either observed stop to software cleanup.
 
 These results show that merely connecting both motors does not suppress each
-independent output channel. The unchanged simultaneous dual-forward profile
-previously moved neither wheel. The supply was set to 12.4 V with a 1.5 A
-current limit, but the operator did not observe the CC indicator, voltage, or
-current during that dual attempt. A leading but unproved explanation is supply
-current limiting/voltage collapse; controller multiword interaction remains
-another possibility.
+independent output channel. The completed dual-forward repeat did not show a
+CC indication or supply issue, so supply current limiting is not supported by
+that observation. The earlier no-motion result remains unexplained; controller
+multiword interaction is also unproved.
 
-The evidence lock is cleared for one separately authorized repeat of the
-**unchanged** dual-forward profile. No new runner is needed. During its fixed
-250 ms window the external operator should watch and record, independently:
-HY1803D CC indicator state, displayed voltage, displayed current, left wheel,
-right wheel, stop/uncertainty, abnormal behavior, and cutoff use. The existing
-dual invocation above remains the exact command. This is software readiness,
-not live authorization.
+### Prepared dual-motor raw-PWM reverse proof
+
+This independent immutable scope uses the established reverse/backward pair
+`[2000,0,2000,0]`: word 0 for the physical left motor and word 2 for the
+physical right motor. Both motors are connected to their correctly labelled
+opposite-side connectors; servos are isolated, both encoders connected, wheels
+clear, and the cutoff operator present. The operator reports each wheel
+separately: reverse/backward, other direction, no motion, crosstalk, visible
+stop/uncertainty, abnormal behavior, and cutoff use.
+
+| Step | Sequence | Exact request |
+|---:|---:|---|
+| exact-zero `0A` baseline | 3399 | `53470d0a000000426b45` |
+| one dual-reverse `0B` setter | 3400 | `53480d0b000800d0070000d0070000de9445` |
+| one mandatory all-zero `0B` cleanup | 3401 | `53490d0b00080000000000000000002cc845` |
+| conditional exact-zero `0A` getter | 3402 | `534a0d0a000000437645` |
+
+Transcript SHA-256:
+`01062cff9b64d2334d9b7fb023db002723444922eb4f291d7ddf5dcc569de9bd`.
+Bounds are four writes / 56 TX / 56 expected RX / 8192 maximum RX, or three
+writes / 46 TX if verification is suppressed. The fixed observation is 250 ms
+after a clean setter response; cleanup starts by 750 ms after setter prewrite,
+or immediately on any fault. The existing strict prewrite, USB, unique
+correlation, 500 ms response, no-retry, no-reconnect, and restoration-state
+gates are unchanged. A nonzero final getter faults and locks without a second
+cleanup.
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-dual-motor-reverse-2000-connected-proof \
+  --authorize-unvalidated-raw-pwm-dual-motor-reverse-2000-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-left-connected --motor-right-connected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+This is software readiness, not live authorization.
 
 #### Completed connected-right cadence result
 

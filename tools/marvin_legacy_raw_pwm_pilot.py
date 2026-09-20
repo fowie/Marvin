@@ -31,6 +31,9 @@ WORD3_2000 = bytes(6) + (2000).to_bytes(2, "little")
 DUAL_FORWARD_2000 = (
     bytes(2) + (2000).to_bytes(2, "little")
     + bytes(2) + (2000).to_bytes(2, "little"))
+DUAL_REVERSE_2000 = (
+    (2000).to_bytes(2, "little") + bytes(2)
+    + (2000).to_bytes(2, "little") + bytes(2))
 
 
 def _steps(first_sequence, payload):
@@ -76,6 +79,9 @@ TRANSCRIPT_BOTH_CONNECTED_LEFT_FORWARD_2000 = tuple(
 STEPS_BOTH_CONNECTED_RIGHT_FORWARD_2000 = _steps(3395, WORD3_2000)
 TRANSCRIPT_BOTH_CONNECTED_RIGHT_FORWARD_2000 = tuple(
     STEPS_BOTH_CONNECTED_RIGHT_FORWARD_2000.values())
+STEPS_DUAL_REVERSE_2000_CONNECTED = _steps(3399, DUAL_REVERSE_2000)
+TRANSCRIPT_DUAL_REVERSE_2000_CONNECTED = tuple(
+    STEPS_DUAL_REVERSE_2000_CONNECTED.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -100,6 +106,8 @@ SUCCESS_BOTH_CONNECTED_LEFT_FORWARD_2000 = (
     "raw_pwm_both_connected_left_forward_2000_proof_complete_unverified")
 SUCCESS_BOTH_CONNECTED_RIGHT_FORWARD_2000 = (
     "raw_pwm_both_connected_right_forward_2000_proof_complete_unverified")
+SUCCESS_DUAL_REVERSE_2000_CONNECTED = (
+    "raw_pwm_dual_motor_reverse_2000_connected_proof_complete_unverified")
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -227,6 +235,17 @@ PROFILES = {
         "report_key": "raw_pwm_both_connected_right_forward_2000_proof",
         "observation_seconds": 0.250,
     },
+    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE: {
+        "steps": STEPS_DUAL_REVERSE_2000_CONNECTED,
+        "transcript": TRANSCRIPT_DUAL_REVERSE_2000_CONNECTED,
+        "first_sequence": 3399, "value": 2000,
+        "success": SUCCESS_DUAL_REVERSE_2000_CONNECTED,
+        "target": "raw-pwm-dual-motor-reverse-2000-connected-proof",
+        "authorization": (
+            "unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof_authorized"),
+        "report_key": "raw_pwm_dual_motor_reverse_2000_connected_proof",
+        "observation_seconds": 0.250,
+    },
 }
 SETTER_PAYLOADS = {
     consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: WORD1_2000,
@@ -238,6 +257,7 @@ SETTER_PAYLOADS = {
     consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE: DUAL_FORWARD_2000,
     consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE: WORD1_2000,
     consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE: WORD3_2000,
+    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE: DUAL_REVERSE_2000,
 }
 
 
@@ -285,6 +305,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             "Motor L and Motor R"
             if scope in (
                 consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+                consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE)
             else "Motor R" if scope in (
@@ -307,6 +328,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             else "both_motors_connected_to_correctly_labelled_opposite_side_connectors"
             if scope in (
                 consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+                consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE)
             else "both_motor_power_plugs_disconnected"),
@@ -488,6 +510,12 @@ class _RawPwmBothConnectedRightForward2000Transport(
     success = SUCCESS_BOTH_CONNECTED_RIGHT_FORWARD_2000
 
 
+class _RawPwmDualReverse2000ConnectedTransport(
+        _RawPwmDualForward2000ConnectedTransport):
+    steps = STEPS_DUAL_REVERSE_2000_CONNECTED
+    success = SUCCESS_DUAL_REVERSE_2000_CONNECTED
+
+
 def _submit(transport, report, step, *, deadline):
     raw = transport.steps[step]
     report["uncertain_tx_bytes"] += len(raw)
@@ -667,6 +695,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             _RawPwmBothConnectedLeftForward2000Transport),
         consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE: (
             _RawPwmBothConnectedRightForward2000Transport),
+        consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE: (
+            _RawPwmDualReverse2000ConnectedTransport),
     }[scope]
     output = new_output_path(output)
     root = output.parent
