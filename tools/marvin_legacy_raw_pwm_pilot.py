@@ -96,6 +96,9 @@ STEPS_LEFT_FORWARD_RIGHT_BACKWARD_2000 = _steps(
     3407, LEFT_FORWARD_RIGHT_BACKWARD_2000)
 TRANSCRIPT_LEFT_FORWARD_RIGHT_BACKWARD_2000 = tuple(
     STEPS_LEFT_FORWARD_RIGHT_BACKWARD_2000.values())
+STEPS_DUAL_FORWARD_2000_ONE_SECOND = _steps(3411, DUAL_FORWARD_2000)
+TRANSCRIPT_DUAL_FORWARD_2000_ONE_SECOND = tuple(
+    STEPS_DUAL_FORWARD_2000_ONE_SECOND.values())
 SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
@@ -126,6 +129,8 @@ SUCCESS_LEFT_REVERSE_RIGHT_FORWARD_2000 = (
     "raw_pwm_left_reverse_right_forward_2000_connected_proof_complete_unverified")
 SUCCESS_LEFT_FORWARD_RIGHT_BACKWARD_2000 = (
     "raw_pwm_left_forward_right_backward_2000_connected_proof_complete_unverified")
+SUCCESS_DUAL_FORWARD_2000_ONE_SECOND = (
+    "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_complete_unverified")
 PROFILES = {
     consent.RAW_PWM_PILOT_SCOPE: {
         "steps": STEPS, "transcript": TRANSCRIPT, "first_sequence": 3329,
@@ -286,6 +291,17 @@ PROFILES = {
         "report_key": "raw_pwm_left_forward_right_backward_2000_connected_proof",
         "observation_seconds": 0.250,
     },
+    consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: {
+        "steps": STEPS_DUAL_FORWARD_2000_ONE_SECOND,
+        "transcript": TRANSCRIPT_DUAL_FORWARD_2000_ONE_SECOND,
+        "first_sequence": 3411, "value": 2000,
+        "success": SUCCESS_DUAL_FORWARD_2000_ONE_SECOND,
+        "target": "raw-pwm-dual-motor-forward-2000-one-second-on-blocks-proof",
+        "authorization": (
+            "unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_authorized"),
+        "report_key": "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof",
+        "observation_seconds": 1.0,
+    },
 }
 SETTER_PAYLOADS = {
     consent.RAW_PWM_WORD1_2000_PILOT_SCOPE: WORD1_2000,
@@ -302,6 +318,7 @@ SETTER_PAYLOADS = {
         LEFT_REVERSE_RIGHT_FORWARD_2000),
     consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE: (
         LEFT_FORWARD_RIGHT_BACKWARD_2000),
+    consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: DUAL_FORWARD_2000,
 }
 
 
@@ -352,6 +369,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
                 consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
                 consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
                 consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
+                consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE)
             else "Motor R" if scope in (
@@ -377,6 +395,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
                 consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
                 consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
                 consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
+                consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
                 consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE)
             else "both_motor_power_plugs_disconnected"),
@@ -406,6 +425,11 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             "PCTestApp admits four UInt16 words but supplies no nonzero example, "
             "units, effective minimum, channel binding, or explicit repeat interval"),
         "physical_stop": "not_established",
+        "ground_drive_authorized": False,
+        "operating_surface": (
+            "on_blocks_only"
+            if scope == consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE
+            else "not_established"),
         "live_execution_authorized": not retired,
         "retired_reason": (
             "live reverse motion followed by post-cleanup getter words [0,100,0,0]"
@@ -576,6 +600,14 @@ class _RawPwmLeftForwardRightBackward2000Transport(
     success = SUCCESS_LEFT_FORWARD_RIGHT_BACKWARD_2000
 
 
+class _RawPwmDualForward2000OneSecondTransport(
+        _RawPwmDualForward2000ConnectedTransport):
+    steps = STEPS_DUAL_FORWARD_2000_ONE_SECOND
+    success = SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
+    observation_seconds = 1.0
+    absolute_cleanup_bound_seconds = 1.5
+
+
 def _submit(transport, report, step, *, deadline):
     raw = transport.steps[step]
     report["uncertain_tx_bytes"] += len(raw)
@@ -626,9 +658,32 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
 def _attempt_cleanup(transport, report, *, clock=time.monotonic):
     deadline = clock() + CLEANUP_SECONDS
     _submit(transport, report, "cleanup", deadline=deadline)
+    if hasattr(transport, "absolute_cleanup_bound_seconds"):
+        report["cleanup_prewrite_monotonic"] = transport.last_write_started
     packet = _response(transport, report, "cleanup", deadline=deadline, clock=clock)
     report["cleanup_raw_response_field"] = packet.response_field
     transport.cleanup_raw80 = packet.response_field == 0x80
+    if hasattr(transport, "absolute_cleanup_bound_seconds"):
+        elapsed = (
+            report["cleanup_prewrite_monotonic"]
+            - report["setter_prewrite_monotonic"])
+        report["setter_to_cleanup_start_seconds"] = elapsed
+        if elapsed > transport.absolute_cleanup_bound_seconds:
+            raise OSError("Cleanup syscall started after the absolute 1.5-second bound.")
+
+
+def _wait_until(transport, target, deadline, *, clock=time.monotonic,
+                sleeper=time.sleep):
+    if target > deadline:
+        raise OSError("One-second observation cannot fit before cleanup deadline.")
+    while clock() < target:
+        transport.identity(deadline=deadline)
+        transport.ingress.pump()
+        if transport.ingress.rx:
+            raise OSError("Unsolicited USB input during observation; cleanup required.")
+        sleeper(min(0.01, max(0, target - clock())))
+    if clock() > deadline:
+        raise OSError("Observation reached the absolute cleanup deadline.")
 
 
 def _observe(transport, report, *, clock=time.monotonic):
@@ -649,6 +704,8 @@ def _observe(transport, report, *, clock=time.monotonic):
         _response(transport, report, "baseline", deadline=deadline, clock=clock)
         report["nonzero_may_have_applied"] = True
         _submit(transport, report, "set", deadline=deadline)
+        if hasattr(transport, "absolute_cleanup_bound_seconds"):
+            report["setter_prewrite_monotonic"] = transport.last_write_started
         packet = _response(transport, report, "set", deadline=deadline, clock=clock)
         report["setter_raw_response_field"] = packet.response_field
         print(
@@ -661,7 +718,16 @@ def _observe(transport, report, *, clock=time.monotonic):
             + f"; fixed {transport.observation_seconds}-second window; "
             "mandatory zero cleanup follows.",
             file=sys.stderr, flush=True)
-        transport.wait(transport.observation_seconds)
+        if hasattr(transport, "absolute_cleanup_bound_seconds"):
+            cleanup_deadline = (
+                report["setter_prewrite_monotonic"]
+                + transport.absolute_cleanup_bound_seconds)
+            report["absolute_cleanup_deadline_monotonic"] = cleanup_deadline
+            _wait_until(
+                transport, clock() + transport.observation_seconds,
+                cleanup_deadline, clock=clock)
+        else:
+            transport.wait(transport.observation_seconds)
     except BaseException as error:
         primary = error
         report.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
@@ -761,6 +827,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             _RawPwmLeftReverseRightForward2000Transport),
         consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE: (
             _RawPwmLeftForwardRightBackward2000Transport),
+        consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: (
+            _RawPwmDualForward2000OneSecondTransport),
     }[scope]
     output = new_output_path(output)
     root = output.parent

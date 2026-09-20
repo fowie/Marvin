@@ -297,6 +297,8 @@ def run_session(
     authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof=False,
     raw_pwm_left_forward_right_backward_2000_connected_proof=False,
     authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=False,
+    raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+    authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
     raw_pwm_both_connected_left_forward_2000_proof=False,
     authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
     raw_pwm_both_connected_right_forward_2000_proof=False,
@@ -421,6 +423,10 @@ def run_session(
             raw_pwm_left_forward_right_backward_2000_connected_proof),
         authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=(
             authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof),
+        raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
         raw_pwm_both_connected_left_forward_2000_proof=(
             raw_pwm_both_connected_left_forward_2000_proof),
         authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
@@ -502,6 +508,7 @@ def run_session(
                                         *motor_consent.RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GET_LOG_ONLY_FLAGS,
@@ -800,6 +807,8 @@ def run_session(
                             if scope == motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE
                             else "RawPwmLeftForwardRightBackwardValue2000ConnectedProof"
                             if scope == motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE
+                            else "RawPwmDualMotorForwardValue2000OneSecondOnBlocksProof"
+                            if scope == motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE
                             else "RawPwmBothConnectedLeftForwardValue2000Proof"
                             if scope == motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE
                             else "RawPwmBothConnectedRightForwardValue2000Proof"
@@ -865,6 +874,8 @@ def run_session(
                             scope == motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE),
                         fixed_raw_pwm_left_forward_right_backward_2000_connected_proof_authorized=(
                             scope == motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE),
+                        fixed_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE),
                         fixed_raw_pwm_both_connected_left_forward_2000_proof_authorized=(
                             scope == motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE),
                         fixed_raw_pwm_both_connected_right_forward_2000_proof_authorized=(

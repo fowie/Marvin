@@ -769,6 +769,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof=False,
             raw_pwm_left_forward_right_backward_2000_connected_proof=False,
             authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=False,
+            raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
             raw_pwm_both_connected_left_forward_2000_proof=False,
             authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
             raw_pwm_both_connected_right_forward_2000_proof=False,
@@ -883,6 +885,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             raw_pwm_left_forward_right_backward_2000_connected_proof),
         authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=(
             authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof),
+        raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
         raw_pwm_both_connected_left_forward_2000_proof=(
             raw_pwm_both_connected_left_forward_2000_proof),
         authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(

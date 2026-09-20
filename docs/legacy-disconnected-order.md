@@ -1772,6 +1772,82 @@ scope/authorization flags and must be a separate run after A evidence and
 physical restoration are resolved. This is software readiness, not live
 authorization.
 
+Both sealed steering evidence trees and nested manifests verify. Profile A
+exited zero with four accepted writes / 56 TX, zero uncertain TX, and 56 RX:
+exact-zero raw-`80` baseline, opaque raw-`82` `[2000,0,0,2000]` setter, one
+raw-`80` cleanup, and exact-zero raw-`80` final getter. usbmon independently
+recorded four successful OUT / 56 bytes and four successful payload-bearing IN
+/ 56 bytes. The operator observed left reverse, right forward, and both
+stopping. Hashes are outer
+`12ec8685388d2f8da2e9a3486899e6f7f708f9f1e33335b3e19f1f956edd48b5`,
+capture
+`ad4aa9dc4c0eef91dd1aa379fb5470dbbe6f3471ba5c222517708d5d1a9f05f3`,
+journal
+`bf38f6e7a79838a606232c3ab071dc6ef1aa78d76176b889d2e32febc63c4168`,
+and binary usbmon
+`0713899b4a94a733a899ae6937150764e01fe7f24b482de1cece788efb42e23e`.
+
+Profile B had the same clean accounting and response classes for its
+`[0,2000,2000,0]` setter. The operator observed left forward, right backward,
+and both stopping; the robot was powered OFF afterward. Hashes are outer
+`e03241a98f94ac9cb9a0cbc8a9b2fbe41f65fd363b81e8e4c36fb8c055cd1425`,
+capture
+`aaabbadc861ed004f98035fdd036b7155bdfa9a8d4f98b582cf57efea83028b0`,
+journal
+`9ee56537afcfb98f45bc5f03311789a21107ecd8b56caa9771c6c92b6496c617`,
+and binary usbmon
+`6b420bb9f50559802fde01b7f8ebc6fcb908bade676aa9915694836270de4e89`.
+These results establish the requested wheel directions on blocks, not robot
+yaw or ground-driving behavior. Each observed stop remains separate from
+cleanup and raw-status semantics.
+
+### Prepared sustained dual-forward on-blocks proof
+
+This distinct immutable scope reuses `[0,2000,0,2000]` with both motors
+correctly connected, servos isolated, both encoders connected, wheels clear,
+and the cutoff operator present. It holds the fixed observation window at
+1.0 second after a clean setter response when that full window fits before
+the absolute cleanup deadline, then makes exactly one mandatory all-zero
+cleanup attempt. A late response faults and skips the remaining observation
+rather than delaying cleanup. It is on-blocks only and does not authorize
+ground-driving.
+
+| Step | Sequence | Exact request |
+|---:|---:|---|
+| exact-zero `0A` baseline | 3411 | `53530d0a000000417f45` |
+| one dual-forward `0B` setter | 3412 | `53540d0b0008000000d0070000d0078b8745` |
+| one mandatory all-zero `0B` cleanup | 3413 | `53550d0b0008000000000000000000311445` |
+| conditional exact-zero `0A` getter | 3414 | `53560d0a000000412a45` |
+
+Transcript SHA-256:
+`e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7`.
+Bounds are four writes / 56 TX / 56 expected RX / 8192 maximum RX, or three
+writes / 46 TX if verification is suppressed. Cleanup starts no later than
+1.5 seconds after setter prewrite: after the strict 500 ms response gate plus
+the fixed 1.0-second observation when it fits, or immediately on response
+lateness, a response fault, interruption, or wait fault. The actual
+setter-to-cleanup prewrite interval is recorded and an overrun fails closed
+after cleanup response handling. Existing prewrite, USB, unique correlation,
+no-retry, no-reconnect, cutoff, and restoration-state gates remain. The
+operator observes continuous forward rotation of each wheel, HY1803D CC state
+and displayed supply behavior, abnormal sound/behavior, and whether both
+wheels stop together or any stop is uncertain.
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-dual-motor-forward-2000-one-second-on-blocks-proof \
+  --authorize-unvalidated-raw-pwm-dual-motor-forward-2000-one-second-on-blocks-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-left-connected --motor-right-connected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+This is software readiness, not live authorization or ground-drive permission.
+
 #### Completed connected-right cadence result
 
 The sealed `velocity-right-connected-20260919T1924` tree and nested manifest

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from tests import test_marvin_session as session_tests
 from tests.test_marvin_legacy_client import frame
@@ -59,6 +59,8 @@ DECLARATIONS_LEFT_REVERSE_RIGHT_FORWARD = dict.fromkeys(
     consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_FLAGS, True)
 DECLARATIONS_LEFT_FORWARD_RIGHT_BACKWARD = dict.fromkeys(
     consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_FLAGS, True)
+DECLARATIONS_DUAL_FORWARD_ONE_SECOND = dict.fromkeys(
+    consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_FLAGS, True)
 DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD = dict.fromkeys(
     consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_FLAGS, True)
 DECLARATIONS_BOTH_CONNECTED_RIGHT_FORWARD = dict.fromkeys(
@@ -92,6 +94,7 @@ class _Transport:
         self.may_have_applied = False
         self.cleanup_attempted = False
         self.cleanup_raw80 = False
+        self.last_write_started = 0
         self.close = Mock()
         self.wait = Mock()
 
@@ -383,6 +386,27 @@ class RawPwmPilotTests(unittest.TestCase):
             self.assertEqual(direction_plan["immutable_application_transcript_hex"], frames)
             self.assertEqual(direction_plan["transcript_sha256"], digest)
             self.assertEqual(direction_plan["fixed_setter_words_uint16"], words)
+        sustained_flags = [
+            "--" + name.replace("_", "-")
+            for name in consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_FLAGS]
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(pilot.main(sustained_flags), 0)
+        sustained_plan = json.loads(stdout.getvalue())
+        self.assertEqual(sustained_plan["immutable_application_transcript_hex"], [
+            "53530d0a000000417f45",
+            "53540d0b0008000000d0070000d0078b8745",
+            "53550d0b0008000000000000000000311445",
+            "53560d0a000000412a45",
+        ])
+        self.assertEqual(
+            sustained_plan["transcript_sha256"],
+            "e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7")
+        self.assertEqual(sustained_plan["observation_seconds"], 1.0)
+        self.assertEqual(sustained_plan["maximum_setter_to_cleanup_start_seconds"], 1.5)
+        self.assertFalse(sustained_plan["ground_drive_authorized"])
+        self.assertEqual(sustained_plan["operating_surface"], "on_blocks_only")
         for declarations, frames, digest, words in (
             (DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD, [
                 "533f0d0a000000481345",
@@ -450,7 +474,8 @@ class RawPwmPilotTests(unittest.TestCase):
                 DECLARATIONS_DUAL_FORWARD_CONNECTED,
                 DECLARATIONS_DUAL_REVERSE_CONNECTED,
                 DECLARATIONS_LEFT_REVERSE_RIGHT_FORWARD,
-                DECLARATIONS_LEFT_FORWARD_RIGHT_BACKWARD):
+                DECLARATIONS_LEFT_FORWARD_RIGHT_BACKWARD,
+                DECLARATIONS_DUAL_FORWARD_ONE_SECOND):
             for name in declarations:
                 with self.subTest(dual_name=name), self.assertRaises(ValueError):
                     pilot.run_diagnostic(
@@ -531,6 +556,30 @@ class RawPwmPilotTests(unittest.TestCase):
             with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
                     redirect_stdout(io.StringIO()):
                 self.assertEqual(usbmon.main(command[2:]), 0)
+            pilot._validate_capture(capture.call_args.kwargs)
+            sustained_harness = session_tests.SessionTests()
+            sustained_harness.setUp()
+            self.addCleanup(sustained_harness.doCleanups)
+            sustained_runner = Mock(side_effect=sustained_harness.capture)
+            sustained_result = sustained_harness.run_capture(
+                seconds=10, baudrate=57600, allow_unknown_command=True,
+                probe_profile="legacy", capture_runner=sustained_runner,
+                binary_payload_limit=4096, usb_tail_seconds=5,
+                usb_close_grace_seconds=5, actuators_isolated=False,
+                **DECLARATIONS_DUAL_FORWARD_ONE_SECOND)
+            sustained_command = sustained_harness.popen.call_args.args[0]
+            self.assertEqual(
+                sustained_result["scope"], consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE)
+            self.assertEqual(
+                sustained_result["probe_name"],
+                "RawPwmDualMotorForwardValue2000OneSecondOnBlocksProof")
+            self.assertTrue(
+                sustained_result[
+                    "fixed_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_authorized"])
+            pilot._validate_capture(sustained_runner.call_args.kwargs)
+            with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(usbmon.main(sustained_command[2:]), 0)
             pilot._validate_capture(capture.call_args.kwargs)
             for declarations, scope, probe, authorization in (
                 (DECLARATIONS_LEFT_REVERSE_RIGHT_FORWARD,
@@ -903,6 +952,68 @@ class RawPwmPilotTests(unittest.TestCase):
             [row["sequence"] for row in dual_report["responses"]],
             [3387, 3388, 3389, 3390])
         self.assertEqual(dual_report["status"], pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED)
+        sustained_transport = _Transport()
+        sustained_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND
+        sustained_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
+        sustained_transport.motor_connected = True
+        sustained_transport.physical_motor_label = "BOTH"
+        sustained_transport.observation_seconds = 1.0
+        sustained_transport.absolute_cleanup_bound_seconds = 1.5
+        sustained_transport.last_write_started = 0
+        sustained_report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                patch.object(pilot, "_wait_until") as wait_until, \
+                redirect_stderr(io.StringIO()):
+            pilot._observe(sustained_transport, sustained_report, clock=lambda: 0)
+        wait_until.assert_called_once_with(
+            sustained_transport, 1.0, 1.5, clock=ANY)
+        self.assertEqual(
+            [row["sequence"] for row in sustained_report["responses"]],
+            [3411, 3412, 3413, 3414])
+        self.assertEqual(
+            sustained_report["status"], pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND)
+        self.assertEqual(sustained_report["setter_to_cleanup_start_seconds"], 0)
+        with self.assertRaisesRegex(OSError, "cannot fit"):
+            pilot._wait_until(Mock(), 1.6, 1.5, clock=lambda: 0)
+        interrupted_transport = _Transport()
+        interrupted_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND
+        interrupted_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
+        interrupted_transport.motor_connected = True
+        interrupted_transport.observation_seconds = 1.0
+        interrupted_transport.absolute_cleanup_bound_seconds = 1.5
+        interrupted_transport.last_write_started = 0
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                patch.object(pilot, "_wait_until", side_effect=InterruptedError("stop")), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaises(InterruptedError):
+            pilot._observe(interrupted_transport, {}, clock=lambda: 0)
+        self.assertEqual(
+            interrupted_transport.attempts, ["baseline", "set", "cleanup", "verify"])
+        self.assertTrue(interrupted_transport.cleanup_attempted)
+        late_transport = _Transport()
+        late_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND
+        late_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND
+        late_transport.motor_connected = True
+        late_transport.observation_seconds = 1.0
+        late_transport.absolute_cleanup_bound_seconds = 1.5
+        original_submit = late_transport.submit
+
+        def submit_late(step, *, deadline):
+            count = original_submit(step, deadline=deadline)
+            if step == "cleanup":
+                late_transport.last_write_started = 1.6
+            return count
+
+        late_transport.submit = submit_late
+        late_report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                patch.object(pilot, "_wait_until"), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "after the absolute"):
+            pilot._observe(late_transport, late_report, clock=lambda: 0)
+        self.assertEqual(late_report["setter_to_cleanup_start_seconds"], 1.6)
+        self.assertEqual(
+            late_transport.attempts, ["baseline", "set", "cleanup", "verify"])
 
         connected_word1_transport = _Transport()
         connected_word1_transport.steps = pilot.STEPS_WORD1_2000_LEFT_CONNECTED

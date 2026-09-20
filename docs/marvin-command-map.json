@@ -550,26 +550,47 @@
         "hashes": ["b2fc0e4ef1d7ed8587f1fd2a0da60b8186a287a5437cf0aae72d7067fdbfeaba", "c992e1143e6290244fb7c37ef426c368c1b4eb6ec3799de0f71bab10a36fd870", "f594956ac7f1d98e7584cfbabd97ec99c01d21b8996064a886a5491c14c3f01a", "a89b6e835574be36d0a37130484f1d3d608ebfdf3080259d1bb38dd0f219af13"]
       },
       "opposite_wheel_direction_profiles": {
-        "status": "prepared_not_executed",
+        "status": "completed",
         "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
         "left_reverse_right_forward_first": {
           "scope": "raw_pwm_left_reverse_right_forward_2000_connected_proof",
           "sequence_range": "3403..3406",
           "setter_words_uint16": [2000, 0, 0, 2000],
           "transcript_sha256": "e1b7c5fbe491c37b8c2b78dd352d6d96885049c61f9d3e3f46e242d139b475f2",
-          "frames_hex": ["534b0d0a00000042a745", "534c0d0b000800d00700000000d0074e5345", "534d0d0b0008000000000000000000290c45", "534e0d0a00000042f245"]
+          "frames_hex": ["534b0d0a00000042a745", "534c0d0b000800d00700000000d0074e5345", "534d0d0b0008000000000000000000290c45", "534e0d0a00000042f245"],
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "operator_observation": "left reverse; right forward; both stopped",
+          "hashes": ["12ec8685388d2f8da2e9a3486899e6f7f708f9f1e33335b3e19f1f956edd48b5", "ad4aa9dc4c0eef91dd1aa379fb5470dbbe6f3471ba5c222517708d5d1a9f05f3", "bf38f6e7a79838a606232c3ab071dc6ef1aa78d76176b889d2e32febc63c4168", "0713899b4a94a733a899ae6937150764e01fe7f24b482de1cece788efb42e23e"]
         },
         "left_forward_right_backward_second": {
           "scope": "raw_pwm_left_forward_right_backward_2000_connected_proof",
           "sequence_range": "3407..3410",
           "setter_words_uint16": [0, 2000, 2000, 0],
           "transcript_sha256": "1673977cfce05b88411e568bd3fd1a5cf029a419c24f74b7b5da6622a2b3ea36",
-          "frames_hex": ["534f0d0a000000432345", "53500d0b0008000000d007d00700001b4045", "53510d0b000800000000000000000034d045", "53520d0a00000040ae45"]
+          "frames_hex": ["534f0d0a000000432345", "53500d0b0008000000d007d00700001b4045", "53510d0b000800000000000000000034d045", "53520d0a00000040ae45"],
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "operator_observation": "left forward; right backward; both stopped; robot powered off",
+          "hashes": ["e03241a98f94ac9cb9a0cbc8a9b2fbe41f65fd363b81e8e4c36fb8c055cd1425", "aaabbadc861ed004f98035fdd036b7155bdfa9a8d4f98b582cf57efea83028b0", "9ee56537afcfb98f45bc5f03311789a21107ecd8b56caa9771c6c92b6496c617", "6b420bb9f50559802fde01b7f8ebc6fcb908bade676aa9915694836270de4e89"]
         },
         "bounds": "each 4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup by 750ms after setter prewrite",
         "gates": "independent runs; exact-zero baseline; one 250ms setter; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
         "operator_observation": "report each wheel direction, crosstalk/mismatch, stop/uncertainty, abnormal behavior, and cutoff separately",
         "interpretation": "names state wheel directions only; differential-drive spin/yaw is a hypothesis, not established behavior",
+        "conclusion": "requested opposite wheel directions established on blocks; observed stops do not prove cleanup causation; robot yaw and ground driving remain unproved"
+      },
+      "sustained_dual_forward_on_blocks_profile": {
+        "status": "prepared_not_executed",
+        "scope": "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof",
+        "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear on blocks",
+        "sequence_range": "3411..3414",
+        "setter_words_uint16": [0, 2000, 0, 2000],
+        "observation_seconds": 1.0,
+        "transcript_sha256": "e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7",
+        "frames_hex": ["53530d0a000000417f45", "53540d0b0008000000d0070000d0078b8745", "53550d0b0008000000000000000000311445", "53560d0a000000412a45"],
+        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup no later than 1.5s after setter prewrite",
+        "gates": "exact-zero baseline; one setter; fixed 1.0s observation only when it fits the absolute deadline; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; immediate cleanup on lateness/fault/interruption; measured cleanup prewrite overrun fails closed; no retry/reconnect",
+        "operator_observation": "continuous forward rotation of each wheel; HY1803D CC/display behavior; abnormal sound/behavior; simultaneous stop or uncertainty",
+        "operating_surface": "on blocks only; no ground-drive authorization",
         "authorization": "software readiness only; not live authorization"
       },
       "both_connected_single_channel_profiles": {
