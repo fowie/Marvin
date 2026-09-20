@@ -1854,6 +1854,32 @@ response fault, lateness, interruption, wait fault, or hard-bound overrun still
 enters the same one-time cleanup immediately. The actual cleanup prewrite
 interval remains recorded and enforced.
 
+The corrected live repeat completed successfully. Both sealed manifests
+verify. It recorded four accepted writes / 56 TX, zero uncertain TX, and 56
+RX: exact-zero raw-`80` baseline, opaque raw-`82` `[0,2000,0,2000]` setter,
+exactly one raw-`80` cleanup, and exact-zero raw-`80` final getter. usbmon
+independently recorded four successful OUT / 56 bytes and four successful
+payload-bearing IN / 56 bytes with no submission errors or unmatched
+completions. Setter prewrite was `360402.97143092`; cleanup prewrite was
+`360404.473246764`, 1.5018158439779654 seconds later and inside the fixed
+1.75-second hard bound. The state ended `restored` from the exact-zero getter.
+
+The operator separately observed both wheels rotating forward continuously
+for approximately the full 1.0-second window and both visibly stopping after
+the test command. No abnormal sound or behavior and no HY1803D CC, voltage, or
+current issue was observed. HY1803D power was cut immediately afterward and
+the robot was confirmed OFF. These observations establish the requested
+sustained on-blocks behavior for this run; they do not attribute the stop to
+cleanup, decode raw `82`, establish calibrated duty or speed, or authorize
+ground driving. Hashes are outer
+`de3b15ea20c2296fc36e090288c589886a35039fb770a5cd99ed338419b12932`,
+capture manifest
+`786e2cfac3c320ac1c2207ecb7749bd950297233e0285c81387624e693006ee0`,
+serial journal
+`bcf5844fa6cc002887cd65793ee502f26906c9f524030afe3666b8af562c0858`,
+and binary usbmon
+`db0cbb0f74783f2d685d8a7bd118ced6e66fff5b98c683b8f220fb94b8d163f9`.
+
 | Step | Sequence | Exact request |
 |---:|---:|---|
 | exact-zero `0A` baseline | 3411 | `53530d0a000000417f45` |
@@ -1888,9 +1914,8 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
-The scheduling fault is fixed and a repeat is software-justified after fresh
-operator safety confirmations. This is software readiness, not live
-authorization or ground-drive permission.
+The scheduling fault is fixed and the sustained proof is complete. This is
+evidence for on-blocks behavior only, not ground-drive permission.
 
 #### Completed connected-right cadence result
 

@@ -579,7 +579,7 @@
         "conclusion": "requested opposite wheel directions established on blocks; observed stops do not prove cleanup causation; robot yaw and ground driving remain unproved"
       },
       "sustained_dual_forward_on_blocks_profile": {
-        "status": "first_attempt_scheduler_fault_repeat_prepared",
+        "status": "completed",
         "scope": "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof",
         "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear on blocks",
         "sequence_range": "3411..3414",
@@ -599,6 +599,15 @@
           "restoration_acknowledgment": "exact evidence lock acknowledged offline after operator physical-stop and power-cycle confirmation; hardware_access false; no stop attribution"
         },
         "scheduler_fix": "hard setter-prewrite bound increased from 1.5s to 1.75s to include validation/scheduler margin without changing the 500ms response gate or 1.0s dwell",
+        "successful_live_repeat": {
+          "status": "completed",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; exactly one raw80 cleanup; exact-zero raw80 final getter; state restored",
+          "usb": "4 successful OUT / 56 bytes; 4 successful payload-bearing IN / 56 bytes; no submission errors or unmatched completions",
+          "timing": "setter prewrite 360402.97143092; cleanup prewrite 360404.473246764; elapsed 1.5018158439779654s within the fixed 1.75s bound",
+          "operator_observation": "both wheels rotated forward continuously for approximately the full 1.0s window and visibly stopped; no abnormal sound/behavior or HY1803D CC/voltage/current issue; power cut immediately afterward and robot confirmed off",
+          "interpretation": "sustained dual-forward behavior established for this on-blocks run; stop causation, raw82 semantics, calibrated duty/speed, and ground driving remain unproved",
+          "hashes": ["de3b15ea20c2296fc36e090288c589886a35039fb770a5cd99ed338419b12932", "786e2cfac3c320ac1c2207ecb7749bd950297233e0285c81387624e693006ee0", "bcf5844fa6cc002887cd65793ee502f26906c9f524030afe3666b8af562c0858", "db0cbb0f74783f2d685d8a7bd118ced6e66fff5b98c683b8f220fb94b8d163f9"]
+        },
         "operator_observation": "continuous forward rotation of each wheel; HY1803D CC/display behavior; abnormal sound/behavior; simultaneous stop or uncertainty",
         "operating_surface": "on blocks only; no ground-drive authorization",
         "authorization": "software readiness only; not live authorization"
