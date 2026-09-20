@@ -1553,6 +1553,62 @@ python3 -m tools.marvin_legacy_velocity_train \
 
 This is software readiness, not live authorization.
 
+#### Completed dual-forward result
+
+The sealed `raw-pwm-dual-forward-20260919T1926` tree and nested manifest
+verify. The run exited zero with four accepted writes / 56 TX bytes, zero
+uncertain TX, and 56 RX bytes: exact-zero raw-`80` baseline, opaque raw-`82`
+`[0,2000,0,2000]` setter, one raw-`80` all-zero cleanup, and exact-zero
+raw-`80` final getter. usbmon recorded four successful OUT / 56 bytes and four
+successful payload-bearing IN / 56 bytes without correlation faults.
+
+Hashes are outer
+`4527d255552ece1c215b6aca16a39da921b18a14bb8d79fdb41381b2e647b16a`,
+capture
+`4a552b557709d5b2c2aeb6eb732d1fafba4c4ac72c48de1f35ba34c9f3b3a57b`,
+journal
+`3694b9db0433ae48d83201c602817051448cc3f42cd3a68e3c5f7056dab6e7e3`,
+and binary usbmon
+`9d9b756fc072d9cc9802efbc9d69fbdb5b5863c30c9c6c9932f37f997558f550`.
+With both motors correctly connected, neither wheel moved and there was no
+abnormal behavior. Cleanup completed and the robot was powered OFF. The clean
+protocol does not make raw `82` an application acknowledgment.
+
+### Prepared both-connected single-channel raw-PWM discriminators
+
+Both profiles retain the identical both-motors-connected setup, servos
+isolated, both encoders connected, wheels clear, and cutoff operator. They are
+independent immutable scopes: A commands only proven left-forward word 1 and
+runs first; B commands only proven right-forward word 3. Each has one 250 ms
+setter, one mandatory zero cleanup, and a conditional exact-zero getter. A
+nonzero final getter faults/locks without a second cleanup.
+
+| Scope | Sequences | Setter | Exact frames | SHA-256 |
+|---|---:|---|---|---|
+| A: left-forward only | 3391..3394 | `[0,2000,0,0]` | `533f0d0a000000481345`; `53400d0b0008000000d00700000000839145`; `53410d0b0008000000000000000000250045`; `53420d0a000000423e45` | `039eb52792de9be997c1ec92ae5d236d5a9c6f39ad7b39f24584c748bac0a846` |
+| B: right-forward only | 3395..3398 | `[0,0,0,2000]` | `53430d0a00000043ef45`; `53440d0b000800000000000000d0073c0745`; `53450d0b000800000000000000000020c445`; `53460d0a00000043ba45` | `1bd1d7eaf79f367f049a4852e0901df44265d41a3515fdf474e67cd32cdd8501` |
+
+The operator watches both wheels and reports intended-wheel motion/direction,
+unintended-wheel crosstalk, visible stop/uncertainty, abnormal behavior, and
+cutoff. Exact A live-ready invocation (software readiness only, **not live
+authorization**):
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-both-connected-left-forward-2000-proof \
+  --authorize-unvalidated-raw-pwm-both-connected-left-forward-2000-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-left-connected --motor-right-connected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+B substitutes `right` for `left` in the two literal scope/authorization flags
+and must not run until A evidence and physical restoration are resolved.
+
 #### Completed connected-right cadence result
 
 The sealed `velocity-right-connected-20260919T1924` tree and nested manifest

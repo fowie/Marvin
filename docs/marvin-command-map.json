@@ -510,7 +510,7 @@
         "established_direction_map": "raw2000/250ms: left word0 reverse, left word1 forward, right word2 backward, right word3 forward; raw82 opaque and stop causation unproved"
       },
       "dual_motor_forward_connected_profile": {
-        "status": "prepared_not_executed",
+        "status": "completed_no_motion",
         "scope": "raw_pwm_dual_motor_forward_2000_connected_proof",
         "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
         "sequence_range": "3387..3390",
@@ -520,7 +520,27 @@
         "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed",
         "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
         "nonzero_final_getter": "fault and restoration lock; no second cleanup",
-        "operator_observation": "report left and right wheel direction/no-motion and visible stop separately; cutoff primary"
+        "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",
+        "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+        "hashes": ["4527d255552ece1c215b6aca16a39da921b18a14bb8d79fdb41381b2e647b16a", "4a552b557709d5b2c2aeb6eb732d1fafba4c4ac72c48de1f35ba34c9f3b3a57b", "3694b9db0433ae48d83201c602817051448cc3f42cd3a68e3c5f7056dab6e7e3", "9d9b756fc072d9cc9802efbc9d69fbdb5b5863c30c9c6c9932f37f997558f550"]
+      },
+      "both_connected_single_channel_profiles": {
+        "status": "prepared_not_executed",
+        "physical_load": "both motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
+        "left_forward_first": {
+          "scope": "raw_pwm_both_connected_left_forward_2000_proof",
+          "sequence_range": "3391..3394",
+          "setter_words_uint16": [0, 2000, 0, 0],
+          "transcript_sha256": "039eb52792de9be997c1ec92ae5d236d5a9c6f39ad7b39f24584c748bac0a846"
+        },
+        "right_forward_second": {
+          "scope": "raw_pwm_both_connected_right_forward_2000_proof",
+          "sequence_range": "3395..3398",
+          "setter_words_uint16": [0, 0, 0, 2000],
+          "transcript_sha256": "1bd1d7eaf79f367f049a4852e0901df44265d41a3515fdf474e67cd32cdd8501"
+        },
+        "gates": "separate runs; exact-zero baseline; one setter; 250ms observation; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
+        "purpose": "distinguish suppression from merely connecting both motors versus simultaneous dual payload/current/load interaction"
       },
       "newer_drive_meaning": {
         "command": 11,

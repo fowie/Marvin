@@ -763,6 +763,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             physical_right_motor_connected_to_robot_left_motor_r_connector=False,
             raw_pwm_dual_motor_forward_2000_connected_proof=False,
             authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=False,
+            raw_pwm_both_connected_left_forward_2000_proof=False,
+            authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
+            raw_pwm_both_connected_right_forward_2000_proof=False,
+            authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof=False,
             disconnected_load_get_log=False,
             disconnected_load_legacy_getter_survey=False,
             disconnected_load_led_state_round_trip=False,
@@ -861,6 +865,14 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             raw_pwm_dual_motor_forward_2000_connected_proof),
         authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=(
             authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof),
+        raw_pwm_both_connected_left_forward_2000_proof=(
+            raw_pwm_both_connected_left_forward_2000_proof),
+        authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
+            authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof),
+        raw_pwm_both_connected_right_forward_2000_proof=(
+            raw_pwm_both_connected_right_forward_2000_proof),
+        authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof=(
+            authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof),
         disconnected_load_get_log=disconnected_load_get_log,
         disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
         disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
