@@ -1668,7 +1668,7 @@ CC indication or supply issue, so supply current limiting is not supported by
 that observation. The earlier no-motion result remains unexplained; controller
 multiword interaction is also unproved.
 
-### Prepared dual-motor raw-PWM reverse proof
+### Completed dual-motor raw-PWM reverse proof
 
 This independent immutable scope uses the established reverse/backward pair
 `[2000,0,2000,0]`: word 0 for the physical left motor and word 2 for the
@@ -1709,6 +1709,68 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
 ```
 
 This is software readiness, not live authorization.
+
+The sealed `raw-pwm-dual-reverse-20260919T1943` tree and nested manifest
+verify. The run exited zero with four accepted writes / 56 TX bytes, zero
+uncertain TX, and 56 RX bytes: exact-zero raw-`80` baseline, opaque raw-`82`
+`[2000,0,2000,0]` setter, one raw-`80` all-zero cleanup, and exact-zero
+raw-`80` final getter. usbmon independently recorded four successful OUT / 56
+bytes and four successful payload-bearing IN / 56 bytes without correlation
+faults. Hashes are outer
+`b2fc0e4ef1d7ed8587f1fd2a0da60b8186a287a5437cf0aae72d7067fdbfeaba`,
+capture
+`c992e1143e6290244fb7c37ef426c368c1b4eb6ec3799de0f71bab10a36fd870`,
+journal
+`f594956ac7f1d98e7584cfbabd97ec99c01d21b8996064a886a5491c14c3f01a`,
+and binary usbmon
+`a89b6e835574be36d0a37130484f1d3d608ebfdf3080259d1bb38dd0f219af13`.
+The operator observed both wheels moving backward and stopping; the robot was
+then powered OFF. Motion and stop are physical observations separate from the
+opaque status and cleanup response.
+
+### Prepared opposite-wheel-direction raw-PWM proofs
+
+These are independent immutable scopes with both motors connected to their
+correctly labelled opposite-side connectors, servos isolated, both encoders
+connected, wheels clear, and the cutoff operator present. Profile A is left
+reverse plus right forward; profile B is left forward plus right backward.
+The names state wheel directions only. Opposite wheel directions are
+consistent with a differential-drive spin hypothesis, but installed robot yaw
+is not established and is not part of either acceptance criterion.
+
+| Scope | Sequences | Setter | Exact frames | SHA-256 |
+|---|---:|---|---|---|
+| A: left reverse / right forward | 3403..3406 | `[2000,0,0,2000]` | `534b0d0a00000042a745`; `534c0d0b000800d00700000000d0074e5345`; `534d0d0b0008000000000000000000290c45`; `534e0d0a00000042f245` | `e1b7c5fbe491c37b8c2b78dd352d6d96885049c61f9d3e3f46e242d139b475f2` |
+| B: left forward / right backward | 3407..3410 | `[0,2000,2000,0]` | `534f0d0a000000432345`; `53500d0b0008000000d007d00700001b4045`; `53510d0b000800000000000000000034d045`; `53520d0a00000040ae45` | `1673977cfce05b88411e568bd3fd1a5cf029a419c24f74b7b5da6622a2b3ea36` |
+
+Each profile retains one 250 ms setter, one mandatory all-zero cleanup, and a
+conditional exact-zero getter. Bounds are four writes / 56 TX / 56 expected RX
+/ 8192 maximum RX, or three writes / 46 TX if verification is suppressed.
+Cleanup starts by 750 ms after setter prewrite or immediately on a fault.
+Strict prewrite, USB, unique correlation, 500 ms response, no-retry,
+no-reconnect, cutoff, and restoration-state gates remain unchanged. The
+operator reports each wheel direction independently, crosstalk/mismatch,
+visible stop/uncertainty, abnormal behavior, and cutoff use.
+
+Profile A exact invocation:
+
+```bash
+python3 -m tools.marvin_legacy_raw_pwm_pilot \
+  --raw-pwm-left-reverse-right-forward-2000-connected-proof \
+  --authorize-unvalidated-raw-pwm-left-reverse-right-forward-2000-connected-proof \
+  --physical-left-motor-connected-to-robot-right-motor-l-connector \
+  --physical-right-motor-connected-to-robot-left-motor-r-connector \
+  --motor-left-connected --motor-right-connected \
+  --servos-isolated --both-encoder-feedback-connected \
+  --robot-secured-on-blocks --operator-at-external-cutoff \
+  --unprivileged-usbmon --expected-physical-port PORT \
+  --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
+```
+
+Profile B substitutes the two `left-forward-right-backward` literal
+scope/authorization flags and must be a separate run after A evidence and
+physical restoration are resolved. This is software readiness, not live
+authorization.
 
 #### Completed connected-right cadence result
 
