@@ -97,6 +97,7 @@ owner's approval.** Publication acceptance is tracked in
 - [Capability map and bring-up plan](docs/marvin-bringup-plan.md)
 - [Persistent legacy getter client and offline API example](docs/legacy-client.md)
 - [Bounded read-only polling, recording and offline inspection](docs/legacy-polling.md)
+- [Cliff/proximity command reconciliation and controlled mapping plan](docs/cliff-proximity-mapping.md)
 - [Explicitly guarded LIVE serial/USB collection](docs/legacy-live.md)
 - [Isolated one-shot zero-velocity characterization](docs/legacy-zero.md)
 - [Motor-power-OFF preparation (offline default; no power-ON permission)](docs/legacy-motor-power-off-prep.md)
