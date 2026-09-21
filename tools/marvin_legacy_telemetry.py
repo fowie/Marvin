@@ -24,6 +24,10 @@ from tools import marvin_legacy_protocol as protocol
 RAW_DATA_PAYLOAD_BYTES = 134
 UNIT_INFO_PAYLOAD_BYTES = 12
 POWER_STATE_PAYLOAD_BYTES = 2
+SENSOR_FIELDS = (
+    *(f"proximity{i}" for i in range(1, 9)),
+    *(f"cliff{i}" for i in range(1, 6)),
+)
 _SOURCE_PATH = "MarvinFirmwareAndSample/v1/Firmware/PCTestApp/Form1.cs"
 _SOURCE_SHA256 = "567edeece799528b0b04304e89c1375ba434fe3b76e031731b0ab3a20f692f61"
 
