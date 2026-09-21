@@ -121,16 +121,17 @@ attempts, no audio content or PCM frames were captured, no playback occurred,
 and no mixer or control state was changed. Empty artifacts are not retained in
 this repository.
 
-The narrow conclusion is that USB, ALSA, and PipeWire enumeration and format
-metadata are valid, but capture transport currently yields zero frames, with a
-direct ALSA I/O error. The cause is unresolved.
+The initial conclusion was that USB, ALSA, and PipeWire enumeration and format
+metadata were valid, but capture transport yielded zero frames with a direct
+ALSA I/O error. Later USB tracing and a targeted kernel fix identified and
+corrected the cause, as recorded below.
 
 The previously investigated, non-actionable
 `usb 1-1.1.3-port4: over-current condition` warning is excluded from this
 analysis. It could not be mapped to a plug or hub and is not a Marvin blocker;
 the microphone is on the distinct path `usb-0000:00:14.0-1.1.2.4`.
 
-## Read-only follow-up
+## Initial exclusion work
 
 Later read-only host inspection found:
 
@@ -184,75 +185,66 @@ missing initialization path but does not exclude undocumented vendor USB
 control traffic. Do not invent or replay such traffic. Upstream
 `snd-usb-audio` applies Microsoft's vendor-wide
 `QUIRK_FLAG_GET_SAMPLE_RATE`, which avoids unreliable sample-rate readback, but
-its fixed-format and boot-quirk tables contain no exact `045e:fff0`
-initialization entry. This is evidence against assuming a known Linux boot
-sequence, not proof that undocumented firmware behavior is absent.
+its fixed-format and boot-quirk tables had no exact `045e:fff0`
+initialization entry. The successful fix required no controller or HID
+initialization.
 
-## Ranked future diagnostics
+## Confirmed root cause
 
-Start with non-streaming checks only:
+An authorized usbmon capture showed ALSA submitting 384-byte isochronous reads
+to endpoint `0x82`. Completions alternated between per-packet `EOVERFLOW` and
+zero-length success. Temporary xHCI dynamic debug then recorded 253
+`Babble error` lines and no buffer-overrun lines. This established that the
+device's packets exceeded the requested transfer size; the host rejected them
+before ALSA could deliver PCM frames.
 
-1. Confirm that sysfs path `1-1.1.2.4` still identifies `045e:fff0`, and that
-   `/proc/asound/card1/stream0` still reports `Stop` and only the fixed profile
-   above.
-2. Record `id`, device-node ownership/mode and `getfacl` results. Run
-   `fuser -v /dev/snd/pcmC1D0c`, `wpctl status`, `wpctl inspect 99`, and
-   `pw-cli info 99` to identify a holder, active link, or node error without
-   opening a capture stream. PipeWire serial 504 is dynamic; resolve it again.
-3. Review an unfiltered, tightly bounded kernel-journal interval around the
-   previous failure for xHCI, USB, isochronous, and `snd-usb-audio` messages.
-   Preserve exact timestamps and errors. Also compare `uname -r`, ALSA,
-   PipeWire, WirePlumber, and device firmware/descriptor identity before
-   looking for an upstream quirk.
-4. Search the running kernel's `snd-usb-audio` device table and upstream change
-   history for exact identity `045e:fff0`. A nearby Microsoft product or a
-   generic synchronous-endpoint workaround is not sufficient evidence to set a
-   quirk.
-5. Check cached USB power-management state. Runtime suspension is a secondary
-   hypothesis only; access should normally resume the device, and no matching
-   log evidence has been observed.
+Permissions, PipeWire ownership and USB autosuspend were separately excluded.
+The libsndfile failures remain a distinct pre-stream issue and were not the
+cause of the zero-frame transport failure.
 
-Only a failed check justifies a temporary host change. None is currently
-needed: the ACL grants access, no holder was found, and the source is managed.
-Prefer a per-session correction and restore it immediately. The following
-state-changing command families were **not executed**:
+The kernel override was built from linux-surface `surface/v6.19.8` commit
+`57d61aff0b53b089227f5a794363fec829114fc5`. It combines two changes:
 
-| Change | Examples not to run without separate review | Scope |
-|---|---|---|
-| Device permissions | `setfacl -m u:fowie:rw /dev/snd/controlC1 /dev/snd/pcmC1D0c`; `usermod -aG audio fowie` | ACL is temporary until device recreation; group membership is persistent and requires a new login |
-| PipeWire/WirePlumber state | `wpctl set-profile 39 off`; `systemctl --user restart pipewire wireplumber pipewire-pulse` | Current login session; disrupts every audio client and must be restored |
-| USB runtime power | writing `on` to the device's `power/control` attribute | Temporary until restored to `auto`; changes device power-management state |
-| USB interface ownership | writes to the USB driver's sysfs `unbind` and `bind` attributes | Re-enumerates or reclaims the interface; hardware state changes |
-| Kernel driver | `modprobe -r snd_usb_audio`; `modprobe snd_usb_audio` with a `quirk_flags` or device setup override | Host-wide and potentially affects every USB audio device |
+1. Backport upstream commit
+   [`d0199ae1666ff9ae2d1d568d64c3430d4c47f0e5`](https://github.com/torvalds/linux/commit/d0199ae1666ff9ae2d1d568d64c3430d4c47f0e5),
+   which sets `maxsize = curpacksize` when `fill_max` is active so the DMA
+   buffer allocation matches the requested transfer size.
+2. Add an exact `USB_ID(0x045e, 0xfff0)` format-attribute quirk that sets
+   `UAC_EP_CS_ATTR_FILL_MAX`, causing the endpoint to request its full packet
+   size instead of the smaller sample-rate-derived size.
 
-Do not use `chmod`, persistent udev rules, group changes, service restarts,
-USB resets, driver unbind/rebind, module reloads, or quirk parameters
-speculatively. Capture success after an unrecorded state change would not
-identify the cause.
+**These changes are inseparable.** Applying the device quirk without the DMA
+allocation fix is unsafe: `fill_max` would enlarge the transfer request without
+enlarging its buffer, allowing DMA to write beyond the allocation and corrupt
+kernel heap memory.
 
-After the read-only record and only with fresh, attempt-specific user consent,
-the next test should repeat the native hardware profile as raw PCM while
-removing both file-container handling and an unbounded wait:
+## Installed override and verification
 
-```sh
-test -d "$PRIVATE_CAPTURE_DIR" &&
-test "$(stat -c %a "$PRIVATE_CAPTURE_DIR")" = 700 &&
-test "$(cat /sys/bus/usb/devices/1-1.1.2.4/idVendor):$(cat /sys/bus/usb/devices/1-1.1.2.4/idProduct)" = 045e:fff0 &&
-timeout --signal=INT --kill-after=1s 7s \
-  arecord --quiet --device=hw:CARD=Array,DEV=0 --file-type=raw \
-  --format=S16_LE --rate=16000 --channels=8 --duration=5 \
-  "$PRIVATE_CAPTURE_DIR/microphone-array-hw-8ch-16k.raw"
+Only the audio module was built against the installed `Module.symvers`, signed
+with the enrolled local MOK, and installed as:
+
+```text
+/lib/modules/6.19.8-surface-3/updates/marvin/snd-usb-audio.ko
 ```
 
-This command has not been run. A successful five-second result is exactly
-1,280,000 bytes; any other size is incomplete evidence. Capture the tightly
-bounded kernel journal separately, then inspect exit status, exact byte/frame
-count and final stream status before any next step. Only if native transport
-delivers frames would a separately consented `plughw` test usefully isolate
-ALSA conversion behavior. Do not retry automatically: every capture requires
-fresh consent. Playback, transcription, upload, publication, mixer/control
-changes, USB resets, alternate-interface manipulation, HID output, and vendor
-USB requests remain outside this procedure.
+The distribution-packaged module remains untouched. No kernel source, module
+binary, signing key, captured audio or PCM artifact is committed here.
+
+With the override loaded, the separately consented direct ALSA five-second raw
+capture exited 0 and produced exactly 1,280,000 bytes: 16000 frames/second,
+8 channels, 2 bytes/sample, 5 seconds. A separately consented PipeWire raw
+capture also produced exactly 1,280,000 bytes, with 639,915 of 640,000 channel
+samples nonzero. No kernel error was recorded. These results establish working
+PCM delivery through both direct ALSA and PipeWire on this host/kernel/module
+combination; they do not establish acoustic calibration, channel placement,
+privacy behavior or portability to another kernel.
+
+For rollback, remove only the override module, run `depmod`, and reload
+`snd-usb-audio` or reboot so the packaged module is selected again. Removal,
+module reload and reboot are state-changing operations and require a separately
+reviewed maintenance window; do not perform them during capture. After any
+kernel update, treat the override as incompatible until its two changes and
+build inputs are revalidated. Do not carry only the device quirk forward.
 
 ## Upstream references
 
