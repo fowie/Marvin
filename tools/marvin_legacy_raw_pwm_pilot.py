@@ -569,6 +569,7 @@ class _RawPwmDualForward2000ConnectedTransport(_RawPwmTransport):
     steps = STEPS_DUAL_FORWARD_2000_CONNECTED
     success = SUCCESS_DUAL_FORWARD_2000_CONNECTED
     observation_seconds = 0.250
+    absolute_cleanup_bound_seconds = RESPONSE_SECONDS + observation_seconds
     motor_connected = True
     physical_plug_label = "Motor L and Motor R"
     physical_motor_label = "BOTH"
@@ -681,7 +682,7 @@ def _attempt_cleanup(transport, report, *, clock=time.monotonic):
 def _wait_until(transport, target, deadline, *, clock=time.monotonic,
                 sleeper=time.sleep):
     if target > deadline:
-        raise OSError("One-second observation cannot fit before cleanup deadline.")
+        raise OSError("Observation cannot fit before cleanup deadline.")
     while clock() < target:
         transport.identity(deadline=deadline)
         transport.ingress.pump()
