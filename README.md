@@ -102,7 +102,7 @@ owner's approval.** Publication acceptance is tracked in
 - [Isolated one-shot zero-velocity characterization](docs/legacy-zero.md)
 - [Offline projector/front-camera tilt servo mapping plan](docs/legacy-servo-mapping.md)
 - [Motor-power-OFF preparation (offline default; no power-ON permission)](docs/legacy-motor-power-off-prep.md)
-- [Read-only rear/top microphone array discovery](docs/microphone-array-discovery.md)
+- [Rear/top microphone array discovery and capture diagnostics](docs/microphone-array-discovery.md)
 - [Complete source/evidence command catalogue and held test matrix](docs/marvin-command-catalog.md)
 - [Full historical/modern command catalogue](docs/marvin-command-map.json)
 - [Configuration export: 108 bytes, 27 words](docs/marvin-configuration.json)
