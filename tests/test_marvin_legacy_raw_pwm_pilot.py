@@ -11,6 +11,7 @@ from unittest.mock import ANY, Mock, patch
 
 from tests import test_marvin_session as session_tests
 from tests.test_marvin_legacy_client import frame
+from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_raw_pwm_pilot as pilot
 from tools import marvin_motor_power_off_consent as consent
 from tools import marvin_session as session
@@ -1241,6 +1242,54 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._response(
                 boundary, boundary_report, "baseline",
                 deadline=11, clock=lambda: 10.004)
+
+    def test_named_drive_steps_reuse_fixed_profiles_offline(self):
+        expected_words = {
+            "forward": [0, 2000, 0, 2000],
+            "backward": [2000, 0, 2000, 0],
+            "rotate-left": [2000, 0, 0, 2000],
+            "rotate-right": [0, 2000, 2000, 0],
+        }
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")):
+            for direction, words in expected_words.items():
+                plan = drive_step.prepare(
+                    direction, duration=0.25, raw_pwm=2000)
+                self.assertEqual(plan["fixed_setter_words_uint16"], words)
+                self.assertEqual(plan["direction"], direction)
+                self.assertEqual(plan["physical_stop"], "not_established")
+                self.assertIn("--authorize-unvalidated-drive-step", plan["required"])
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                self.assertEqual(drive_step.main([
+                    "forward", "--duration", "0.25", "--raw-pwm", "2000",
+                ]), 0)
+            self.assertEqual(json.loads(stdout.getvalue())["status"], "dry_run")
+
+        for invalid in (
+                {"direction": "forward", "duration": 0.5, "raw_pwm": 2000},
+                {"direction": "forward", "duration": 0.25, "raw_pwm": 1999},
+                {"direction": "stop", "duration": 0.25, "raw_pwm": 2000}):
+            with self.assertRaises(ValueError):
+                drive_step.prepare(**invalid)
+
+        declarations = dict.fromkeys(drive_step.COMMON_FLAGS, True)
+        with patch.object(drive_step.pilot, "run_diagnostic",
+                          return_value={"status": "ok"}) as run:
+            self.assertEqual(drive_step.run_step(
+                self.root / "drive", direction="rotate-left", duration=0.25,
+                raw_pwm=2000, expected_physical_port="1-3", run=True,
+                authorize_unvalidated_drive_step=True, **declarations),
+                {"status": "ok"})
+        expected_scope = consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE
+        run.assert_called_once_with(
+            self.root / "drive", expected_physical_port="1-3", run=True,
+            **dict.fromkeys(consent.POWERED_TRIAL_SCOPES[expected_scope], True))
+        self.assertEqual(
+            pilot._RawPwmLeftReverseRightForward2000Transport
+            .absolute_cleanup_bound_seconds,
+            0.75)
 
 
 if __name__ == "__main__":

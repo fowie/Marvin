@@ -63,6 +63,19 @@ The damaged PEND TXCVR USB-A socket and reported hub port-4 over-current remain
 unresolved. Keep that branch unused; successful communication does not clear
 electrical faults.
 
+The offline-default `tools.marvin_legacy_drive_step` facade exposes only the
+proved named raw-PWM mappings: `forward`, `backward`, `rotate-left`, and
+`rotate-right`. It requires explicit `--duration 0.25 --raw-pwm 2000`; other
+values and a standalone `stop` action are intentionally rejected. Live use
+retains the fixed pilot's exact-zero baseline, one bounded nonzero dwell,
+single all-zero cleanup attempt, evidence lock, and operator declarations.
+These are raw wire values and bounded observations, not calibrated movement or
+proof of stop/cleanup effect. For an offline plan:
+
+```sh
+python -m tools.marvin_legacy_drive_step forward --duration 0.25 --raw-pwm 2000
+```
+
 The explicitly selected [left-motor-powered read-only observation](docs/legacy-live.md#left-motor-powered-read-only-observation)
 has one separately authorized recorded result and remains **under HARDWARE HOLD**: exactly one fixed
 ReadRawData (sequence 2304), no zero/setter or power switch. It truthfully does
