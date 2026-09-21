@@ -219,7 +219,7 @@
       "sample_name": "SetRawMotorPWM",
       "request_layout": "four LE uint16 values / 8 bytes",
       "sample_effect": "actuation",
-      "live_probe_policy": "excluded",
+      "live_probe_policy": "connected_raw2000_retired_after_reverse_motion_and_nonzero_post_cleanup_getter",
       "sample_calls": [
         {
           "method": "setRawMotorPWM_btn_Click",
@@ -232,7 +232,412 @@
           "source": "PCTestApp/Form1.cs:1057"
         }
       ],
-      "live_observations": [],
+      "live_observations": [
+        {
+          "status": "two_raw1_runs_completed",
+          "scope": "disconnected_load_raw_pwm_word0_one_pilot",
+          "protocol_each": "baseline getter raw80 exact 8 zero bytes; word0 raw1 setter raw82 empty; all-zero cleanup raw80 empty; final getter raw80 exact 8 zero bytes",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX",
+          "first_scope_observation": "uncertain; instrument not correctly configured",
+          "repeat_scope_observation": "1V/div, 500us/div, about 1.5V trigger; no trigger or visible waveform",
+          "physical_connector": "robot-right-side connector printed Motor L; operator states it controls left motor",
+          "meaning": "raw statuses opaque; null raw1 result inconclusive; no word-to-connector mapping established"
+        },
+        {
+          "status": "three_raw1000_runs_completed",
+          "scope": "disconnected_load_raw_pwm_word0_1000_pilot",
+          "protocol_each": "baseline getter raw80 exact 8 zero bytes; word0 raw1000 setter raw82 empty; all-zero cleanup raw80 empty; final getter raw80 exact 8 zero bytes",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX",
+          "observations": [
+            "uncertain auto-mode observation, no retained capture",
+            "clear waveform with reversed probe polarity",
+            "clear positive waveform after corrected polarity"
+          ],
+          "physical_connector": "robot-right-side connector printed Motor L; operator states it controls left motor",
+          "scope_readings": "CH1 DC 10x 2V/div; 2.11Vpp, +509mV average, 2.24Vrms, 37us width; spacing and amplitude varied",
+          "frequency_limitation": "27.0kHz was reciprocal pulse width, not established repetition frequency; stable actual repetition rate not obtained",
+          "meaning": "physical lower-level output path established for word0/raw1000 and tested connector; raw82, calibrated duty, motion, and full bridge health unproved"
+        },
+        {
+          "status": "two_raw2000_runs_completed",
+          "scope": "disconnected_load_raw_pwm_word0_2000_pilot",
+          "protocol_each": "baseline getter raw80 exact 8 zero bytes; word0 raw2000 setter raw82 empty; all-zero cleanup raw80 empty; final getter raw80 exact 8 zero bytes",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX",
+          "width_run_hashes": {
+            "outer_manifest": "32f9b89a497ac3316337ca3d191f114a7ef96f69ce326305fcb39964093fca09",
+            "nested_manifest": "af50926558be59b99a7fa1e753cd9fc3f9ce6c065e204b0c5f9f6d174f6057d5",
+            "adapter_journal": "604bf054c23657c43e810057f8211bd2f0990a0ae566a1a2c15b93efcd8676d6",
+            "binary_usbmon": "6fa8ae516d94be51255683497cbe1e4705343db2a646f377a3e54c3543297d7c"
+          },
+          "amplitude_run_hashes": {
+            "outer_manifest": "2cd7129aa137fdb4c9f4cf8f9ca9f7e91a11eafecd080d0f02413c3a862f43bb",
+            "nested_manifest": "9f655a5038ffdb698ff519f82f66e6b0e2caa59b2d93e22f5ad3d0c57ece96a2",
+            "adapter_journal": "cc4cfa909bd7a7fd5207a59311662585b04168aa8de815f739b746de80a251da",
+            "binary_usbmon": "e2b2525adfef3deb48183e793b5911a2c5bfc11289c7430606f217910f77b14e"
+          },
+          "operator_observations": "triggered width run: 37.6us and displayed 14.9kHz; repeat amplitude run: 6.5Vpp",
+          "comparison": "raw1000 positive capture reported 37us and 2.11Vpp; near-equal width and changed amplitude",
+          "meaning": "value-dependent unloaded output established; calibrated voltage/duty/frequency and loaded bridge capability unproved"
+        },
+        {
+          "status": "two_connected_raw1000_runs_completed",
+          "scope": "raw_pwm_word0_1000_left_motor_connected_proof",
+          "physical_setup": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; encoder harnesses connected; wheels clear; cutoff operator",
+          "protocol_each": "seq3341 raw80 exact-zero getter; seq3342 raw82 empty setter; seq3343 raw80 empty cleanup; seq3344 raw80 exact-zero getter",
+          "accounting_each": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; usbmon 4 successful OUT / 56 bytes and 4 payload-bearing successful IN / 56 bytes",
+          "first_observation": "invalid_or_uncertain_wrong_wheel_watched_not_no_motion",
+          "second_observation": "physical_left_wheel_no_motion_and_no_abnormal_behavior",
+          "powered_off_afterward": true,
+          "wrong_wheel_run_hashes": {
+            "outer_metadata": "25a7e315e13f238b567ac37cc1846dd1fc20d34d60e7a1b2e7b356589ab7f378",
+            "capture_metadata": "36a201d958eda264a318b2b9a21f661f11b4ae0adb159df1f023bfda58f9ca5e",
+            "adapter_journal": "7c11c0754da2a64e8d173f08f68622d7e713e495dd8becb88d137402d5b74a6f",
+            "binary_usbmon": "5940ab98101d5765708fb236ebdc356b23816795d35bdafdb2bafc7ed5be5d8a"
+          },
+          "left_wheel_run_hashes": {
+            "outer_metadata": "3ed65b40a649cfa79547a2f38d8b4093a5db6d15d894bb26513ff424956d01a2",
+            "capture_metadata": "10d9153f0fa06eb2d454bbde88150f445f1ebbcd4b8e8b3e4c1d2ed1eef9ae40",
+            "adapter_journal": "a3f76fb7c7ed25c44ddc6acd92790b5f09748947b326a6bf0d22ec49b81ce010",
+            "binary_usbmon": "bf4f9ba399ae08c91d06b86bb760a61545c699bd0a7335f90515344430dcd197"
+          },
+          "meaning": "raw1000 produced no observed physical-left-wheel motion in the valid run; application status, physical stop, and torque threshold remain unproved"
+        }
+      ],
+      "fixed_profile": {
+        "status": "completed",
+        "scope": "disconnected_load_raw_pwm_word0_1000_pilot",
+        "sequence_range": "3333..3336",
+        "setter_words_uint16": [1000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 3,
+        "transcript_sha256": "f9fb5e2ae27dbbeb0c8c57b3d9bb1663ca2d34fa16f2c2ae7966e505310e012b",
+        "limitations": "raw1000 units/duty and word-to-connector mapping unknown; null result inconclusive"
+      },
+      "completed_comparison_profile": {
+        "status": "completed",
+        "scope": "disconnected_load_raw_pwm_word0_2000_pilot",
+        "sequence_range": "3337..3340",
+        "setter_words_uint16": [2000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 3,
+        "transcript_sha256": "9a3a6fa3110df4769b62391cd289cebbd06bf801b04154117f4a989c1a78d51b",
+        "comparison_prompt": "same Motor L-labelled connector and corrected polarity; CH1 DC 10x, 2V/div, 50us/div; record width, Vpp, and stable period only if captured",
+        "limitations": "raw2000 is 3.05% numeric full scale, not known duty; width ratio empirical only"
+      },
+      "next_fixed_profile": {
+        "status": "completed",
+        "scope": "raw_pwm_word0_1000_left_motor_connected_proof",
+        "sequence_range": "3341..3344",
+        "setter_words_uint16": [1000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 0.25,
+        "maximum_setter_to_cleanup_start_seconds": 0.75,
+        "transcript_sha256": "35c73a4732f7ee75e95f27c291018d7a038172a80c3a9bc9827aabd2d0cac575",
+        "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
+        "limitations": "raw82 opaque; first observation invalid due wrong wheel; second observed no physical-left-wheel motion; clean cleanup/getter is not physical stop proof"
+      },
+      "connected_raw2000_live_result": {
+        "status": "failed_retired",
+        "scope": "raw_pwm_word0_2000_left_motor_connected_proof",
+        "sequence_range": "3345..3348",
+        "setter_words_uint16": [2000, 0, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 0.25,
+        "maximum_setter_to_cleanup_start_seconds": 0.75,
+        "transcript_sha256": "00c4193c533cdcf24d94b280bd866255ceb6d94a9e3fb4e01eb59899749853a8",
+        "physical_load": "left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated",
+        "operator_observation": "watch physical left wheel; report no motion or direction plus visible stop/uncertainty and abnormal sound/cutoff use",
+        "protocol": "seq3345 raw80 exact-zero baseline; seq3346 raw82 empty setter; seq3347 raw80 empty all-zero cleanup; seq3348 raw80 payload 0000640000000000 / LE words [0,100,0,0]",
+        "accounting": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; usbmon 4 successful OUT / 56 bytes and 4 payload-bearing successful IN / 56 bytes with no pairing faults",
+        "cleanup": "attempted exactly once; no second cleanup; stop cause not established",
+        "physical_observation": "physical left wheel moved in reverse then stopped; external power cut immediately when instructed; software cleanup versus cutoff stop cause unproved",
+        "failure": "conditional post-cleanup getter failed exact-zero gate with unexpected_raw_pwm_payload; baseline was exact zero",
+        "hashes": {
+          "outer_metadata": "863fb1fca170eecbe189983bfc47a9457340caf8c86745ca8bdc07a0480ffc07",
+          "capture_metadata": "84ae0ff7e6df76e2d113c13d83236f975241de41c0630e05949e3e7f421f6bd1",
+          "adapter_journal": "7b7284bb5e93ce9b2dbdcce248cacf2d925520f54bcb4f73a413123d03d04a47",
+          "binary_usbmon": "750ade3bafec6e81e05d48b43da9d84a92c9ac42bf30763e083672ff8c76d108"
+        },
+        "policy": "retired; runner and coordinator reject before hardware access; exact-zero baseline gate unchanged",
+        "limitations": "raw80/raw82 and getter word meanings opaque; nonzero getter may be stale commanded state, another controller value, or incomplete cleanup application; physical stop not established"
+      },
+      "word1_2000_disconnected_profile": {
+        "status": "three_runs_completed",
+        "scope": "disconnected_load_raw_pwm_word1_2000_pilot",
+        "sequence_range": "3349..3352",
+        "setter_words_uint16": [0, 2000, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 3,
+        "maximum_setter_to_cleanup_start_seconds": 3.5,
+        "transcript_sha256": "41b8589d900c4e071e8c5510a70411d43561bf2059314537b63b7b7d20dc5d27",
+        "physical_load": "both motor power plugs disconnected; differential isolated scope on robot-right-side connector printed Motor L",
+        "operator_observation": "compare waveform polarity to disconnected word0 raw2000 as same/opposite/uncertain; record width/amplitude/spacing without calibrated-unit claims",
+        "source_basis": "PCTestApp serializes four positional UInt16 words but does not name motor/direction/bridge semantics",
+        "hypothesis": "word1 may be complementary direction for the same tested connector; inference only",
+        "gates": "fresh-boot exact-zero cmd0A baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict prewrite/USB/correlation; no retry/reconnect",
+        "connected_followup": "not implemented; requires disconnected waveform and cleanup-state evidence first",
+        "aborted_attempts": [
+          {
+            "requested_output": "raw-pwm-word1-2000-20260919T1222",
+            "result": "udevadm by-id preflight failure before output or serial creation",
+            "evidence": "named output directory absent; no manifest, metadata, adapter journal, or usbmon",
+            "application_commands": 0,
+            "application_tx_bytes": 0
+          },
+          {
+            "requested_output": "raw-pwm-word1-2000-20260919T1223",
+            "result": "stale RESTORATION_ACK_REQUIRED rejection before preflight",
+            "evidence": "named output directory absent; no manifest, metadata, adapter journal, or usbmon",
+            "application_commands": 0,
+            "application_tx_bytes": 0
+          }
+        ],
+        "state_fix": "artifact-free preflight failure => aborted_before_hardware/hardware_access false; explicit no-nonzero evidence => set_aborted_before_nonzero; possible or indeterminate setter => restoration lock retained",
+        "stale_state_resolution": "updated offline to aborted_before_hardware with hardware_access false and application_tx_bytes 0",
+        "fresh_attempt": "completed after new safety confirmations",
+        "live_runs": [
+          {
+            "observation": "positive 5V single-shot trigger did not trigger; invalid for negative polarity",
+            "outer_metadata": "f971c8965913f822ed93e47182f85686c9d97e7c4e57d0c89b6d70a54398ac98",
+            "capture_metadata": "ea0a763ef4b739a6ffea800f6e6d71ec9ea09177d0b131983635e5857abffe01",
+            "adapter_journal": "c9fc15afc3401db02093e0589431eca5b6ee43320c8f29ee23a8c5b2efae1cdd",
+            "binary_usbmon": "0cfeaa47fe557f140463ab9a12880df9ea03a1eb3e22baece8a338cc12b7fa4c"
+          },
+          {
+            "observation": "continuous centered display clearly showed negative waveform",
+            "outer_metadata": "535b94ab096af144bccddba13b965a5d8eb6ce97d0574a94d3220a8e7878e261",
+            "capture_metadata": "c9f2eca2d61bd016bc3f6f8e92940f3f60312b49cd8cb8c6d09e932e1e1121d9",
+            "adapter_journal": "f29693a2c732bf39b37ab043e833a5a8ce8b4565c6353a98b8e0b292e34f44b1",
+            "binary_usbmon": "3c301fe587659f45cfa32cbd71acb417203ef19aac8d14a565910e57830ac114"
+          },
+          {
+            "observation": "negative-edge single shot; manual estimates approximately -11.8V negative excursion, 26.8us pulse width, 15.2kHz repetition; division counts may be slightly inaccurate",
+            "outer_metadata": "e78bc814ff069d7f83381b4243b61a81f87a5d9af79220759f339742aad08e85",
+            "capture_metadata": "951eab6f720b3f2c8142db917924ba42fb1c4be69736c9fdebe51cd233f43196",
+            "adapter_journal": "7bc3a77152fc99a2fc5b30df64b4417be6a8f229c260d0f6f0380718943653dd",
+            "binary_usbmon": "337cd1fdf9bb565d7cde0e376e0093b312aa64766ca144eaefb6814a6630216f"
+          }
+        ],
+        "shared_protocol": "each: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 empty setter; raw80 empty cleanup; exact-zero raw80 final getter",
+        "meaning": "word1 raw2000 has opposite observed negative polarity from corrected word0 raw2000 positive output on same disconnected connector; field/direction/calibrated units unproved"
+      },
+      "connected_word1_2000_profile": {
+        "status": "completed",
+        "scope": "raw_pwm_word1_2000_left_motor_connected_proof",
+        "sequence_range": "3353..3356",
+        "setter_words_uint16": [0, 2000, 0, 0],
+        "cleanup_words_uint16": [0, 0, 0, 0],
+        "observation_seconds": 0.25,
+        "maximum_setter_to_cleanup_start_seconds": 0.75,
+        "transcript_sha256": "2bdece99255756fed374341c9d8520eb7e0231c398aa5eb8f1e5da8dc8d58b95",
+        "physical_load": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; encoder harnesses connected; wheels clear",
+        "expectation": "opposite/forward relative to word0 reverse is hypothesis only; operator reports actual direction",
+        "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/correlation; no retry/reconnect",
+        "nonzero_final_getter": "fault and restoration lock without reinterpretation or relaxed policy",
+        "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 empty setter; raw80 empty cleanup; exact-zero raw80 final getter",
+        "physical_observation": "physical left wheel moved forward and visibly stopped after the 250ms window/cleanup; no abnormal behavior; robot powered OFF afterward",
+        "meaning": "combined tested map: word0 value2000 moved the physical left wheel reverse; word1 value2000 moved it forward; raw82 and stop causation remain unproved",
+        "hashes": {
+          "outer_metadata": "938afb98fc9cdf284a0d5810f5c099240b2fafe083ea173adaf9ad03bce9d43e",
+          "capture_metadata": "bf0a6e4274cbf7b24e907bd8d6e83c54f945bf9083fdb487e3a3327a319fc5ed",
+          "adapter_journal": "55baf86a273981238c880b50384ffe07ce1a1a59f5d7f2ab99da67f46890ae25",
+          "binary_usbmon": "03fca236daef6710119bd1c46a87c663c6826830a8c1962862217a2d546bf4ef"
+        }
+      },
+      "motor_r_disconnected_profiles": {
+        "status": "four_runs_completed",
+        "physical_target": "robot-left-side connector printed Motor R; both motor power plugs disconnected",
+        "word2": {
+          "scope": "disconnected_load_raw_pwm_word2_2000_pilot",
+          "sequence_range": "3357..3360",
+          "setter_words_uint16": [0, 0, 2000, 0],
+          "transcript_sha256": "64bf02c70c5b94a5e2845e73468d72a3b441fa4cd0002f38012707a2b2bc8fca",
+          "observed_polarity": "negative",
+          "manual_capture": "approximately -12V negative excursion, 26.4us width, 15.2kHz; division-count uncertainty",
+          "run_hashes": [
+            ["97b2f9056588cb79df550bbd0f2f2bbaebc025d259da5c482f94164e14de8e3a", "1d17f4f9f0b20af183c77dbcc59887b49613d1e913701c4a855da9dc81fcf365", "7aeff3e9a46550b21cd339040f08e0a22b4af7ff88e4d368f8386a22a842791e", "334b84e2551a1184770daf1fb663b269336a7f361c22c2228a46982983ea5e0c"],
+            ["40579ff19e3c4848017926f6ca3a5dd1c9c4f6ffa06fa801d97e40a9579bd1f8", "c4a3159714f081b0e0a75b4026716898f96abbdf531013de1ead38c67b35e839", "50e076474d2e883aacd857b4b0702e1361847c462ad418eb7686a5c98eb7c078", "fad6814e27a5a7b63781e4fd3cb8330ccd2d3c85d8fc02460fbc887f85724698"]
+          ]
+        },
+        "word3": {
+          "scope": "disconnected_load_raw_pwm_word3_2000_pilot",
+          "sequence_range": "3361..3364",
+          "setter_words_uint16": [0, 0, 0, 2000],
+          "transcript_sha256": "6ecfb0fac2ed75ae890517d913ba82b1e5a460d52826bf50661d0ec01304700d",
+          "observed_polarity": "positive",
+          "manual_capture": "approximately 8Vpp, 38.8us width, 15kHz; division-count uncertainty",
+          "run_hashes": [
+            ["8997d72e708c5bd159520b177ab9856cdae7c00c78f3fc012e4b57e8305cc6d2", "b4b288f59c735975ee804cb3aefc9e5281f213edff4ef70932f8014c7021abc4", "c7d7f984b479390c0ac05597ace629fcf70046b88a6239af0aad53efa4cb10a1", "b4bcd0cd14d22923e7c730f8aa996c644f3f0d47365d2372267f8941710d27b3"],
+            ["76c829231ffe13893827ffc9d101e5a6f1f4546682a923314fc88db162025412", "b27f5282bab48a2c63395b55b5612e195f6b7caeeebd2222f6e1104f5e2850b5", "fca25eae47bf800dd71f450ad5b97b26dbcd29a4d088c3a0aafd2f637b130f42", "5f3f98e3fca07b10dbf48dfb1b448c9ed7c6c1c93e763662cbf46fa0cbe622b4"]
+          ]
+        },
+        "shared_protocol": "each: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 empty setter; raw80 empty cleanup; exact-zero raw80 final getter",
+        "shared_gates": "separate runs; exact-zero baseline; one setter; 3s observation; mandatory all-zero cleanup; conditional exact-zero getter; no retry/reconnect",
+        "hypothesis": "word2/word3 may be the positional pair for printed Motor R, but polarity establishes only the tested waveform fact"
+      },
+      "motor_r_connected_profiles": {
+        "status": "completed",
+        "physical_load": "only right motor connected to robot-left-side connector printed Motor R; left motor unplugged; servos isolated; both encoders connected; wheels clear",
+        "word2": {
+          "scope": "raw_pwm_word2_2000_right_motor_connected_proof",
+          "sequence_range": "3365..3368",
+          "setter_words_uint16": [0, 0, 2000, 0],
+          "transcript_sha256": "4bb4f48a37e8a08db303b7df19990108504ca4e5800d71c13ddd9fd189a2f064"
+        },
+        "word3": {
+          "scope": "raw_pwm_word3_2000_right_motor_connected_proof",
+          "sequence_range": "3369..3372",
+          "setter_words_uint16": [0, 0, 0, 2000],
+          "transcript_sha256": "45853e630a4d4f1fb292b77ffe68c0c0bef1258bfb757de80840f9210c106ccd"
+        },
+        "shared_gates": "separate runs; exact-zero baseline; one setter; 250ms observation after clean response; mandatory all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB; no retry/reconnect",
+        "operator_observation": "watch physical right wheel; report actual direction and visible stop or uncertainty; unloaded polarity does not predict direction",
+        "nonzero_final_getter": "fault and restoration lock without reinterpretation",
+        "word2_live_result": {
+          "status": "completed",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "physical_observation": "physical right wheel moved backward and visibly stopped after 250ms/cleanup",
+          "hashes": ["188915eb2cd531990072bd41321ad4401469a1f9f78e6c62e9300bb2e722ab26", "b5e62ee7ba8f9caebcd5bf3dbbd8ab0bfe51fc3b7ab008f402e178ee45882542", "adbb29836b1e2bcf83ac64716f374f82aecc51aa49dd1128471207e3dc3d286c", "ead985abaa6ac53307f5bff0f951dbe67d70c353128070917b8da42d91483d08"]
+        },
+        "word3_live_result": {
+          "status": "failed_final_exact_zero_gate",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; final raw80 getter payload 0000000064000000 / words [0,0,100,0]",
+          "physical_observation": "physical right wheel moved forward and visibly stopped; operator then cut power immediately",
+          "stop_attribution": "software cleanup, observed stop, and external cutoff are separate; cause unproved",
+          "offline_acknowledgment": "evidence-bound physical-stop plus power-cycle confirmation; hardware_access false; nonzero getter unchanged",
+          "hashes": ["e8adc9915b0910b4a768c1376ca457ea58bad579c1800add0c20c85fc57d6345", "9d0ed2467cbe345aad7c535a9fef2a11921bc324b1448d2a3ab3c5d456c33e26", "7a84a229f6909c7be97e83bac0338735cf21fe336e8fac0010f43de819705211", "16756cf83784bf453a2f6141247d731640212be038b5fe9d884c89588fb1702f"]
+        },
+        "established_direction_map": "raw2000/250ms: left word0 reverse, left word1 forward, right word2 backward, right word3 forward; raw82 opaque and stop causation unproved"
+      },
+      "dual_motor_forward_connected_profile": {
+        "status": "completed_conflicting_physical_observations",
+        "scope": "raw_pwm_dual_motor_forward_2000_connected_proof",
+        "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
+        "sequence_range": "3387..3390",
+        "setter_words_uint16": [0, 2000, 0, 2000],
+        "observation_seconds": 0.25,
+        "transcript_sha256": "efc78618ca4c6f208886a61628f2b38e475250c45abbb5d08dea12f5624b24d0",
+        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed",
+        "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
+        "nonzero_final_getter": "fault and restoration lock; no second cleanup",
+        "protocol": "both runs: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+        "runs": [
+          {
+            "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",
+            "hashes": ["4527d255552ece1c215b6aca16a39da921b18a14bb8d79fdb41381b2e647b16a", "4a552b557709d5b2c2aeb6eb732d1fafba4c4ac72c48de1f35ba34c9f3b3a57b", "3694b9db0433ae48d83201c602817051448cc3f42cd3a68e3c5f7056dab6e7e3", "9d9b756fc072d9cc9802efbc9d69fbdb5b5863c30c9c6c9932f37f997558f550"]
+          },
+          {
+            "operator_observation": "at unchanged 12.4V/1.5A, supply fine/no CC issue; both wheels moved forward and stopped; robot powered off",
+            "hashes": ["d299d64cb08cbfe8a132261f8300b43eb6294416085d2c6b7d9abd6e1517577c", "c072b22c494d186ed3d3982ccee5486ead28cd717dc3d81e6a2398333b3eda37", "c1f8f4b3ea45dc7c18a8cc9e2340ce6f54ec57b571b37db6ef5fb97edf31de87", "317adffe0dab1b3a851d2fd16494296bc8388f2257197af81947a6515409e834"]
+          }
+        ],
+        "conclusion": "conflicting operator observations from separate protocol-valid runs; neither outcome is deterministic evidence and stop cause remains unproved"
+      },
+      "dual_motor_reverse_connected_profile": {
+        "status": "completed",
+        "scope": "raw_pwm_dual_motor_reverse_2000_connected_proof",
+        "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
+        "sequence_range": "3399..3402",
+        "setter_words_uint16": [2000, 0, 2000, 0],
+        "observation_seconds": 0.25,
+        "transcript_sha256": "01062cff9b64d2334d9b7fb023db002723444922eb4f291d7ddf5dcc569de9bd",
+        "frames_hex": ["53470d0a000000426b45", "53480d0b000800d0070000d0070000de9445", "53490d0b00080000000000000000002cc845", "534a0d0a000000437645"],
+        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup by 750ms after setter prewrite",
+        "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
+        "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+        "operator_observation": "both wheels moved backward and stopped; robot powered off",
+        "stop_attribution": "observed stop and software cleanup are separate facts; cause unproved",
+        "hashes": ["b2fc0e4ef1d7ed8587f1fd2a0da60b8186a287a5437cf0aae72d7067fdbfeaba", "c992e1143e6290244fb7c37ef426c368c1b4eb6ec3799de0f71bab10a36fd870", "f594956ac7f1d98e7584cfbabd97ec99c01d21b8996064a886a5491c14c3f01a", "a89b6e835574be36d0a37130484f1d3d608ebfdf3080259d1bb38dd0f219af13"]
+      },
+      "opposite_wheel_direction_profiles": {
+        "status": "completed",
+        "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
+        "left_reverse_right_forward_first": {
+          "scope": "raw_pwm_left_reverse_right_forward_2000_connected_proof",
+          "sequence_range": "3403..3406",
+          "setter_words_uint16": [2000, 0, 0, 2000],
+          "transcript_sha256": "e1b7c5fbe491c37b8c2b78dd352d6d96885049c61f9d3e3f46e242d139b475f2",
+          "frames_hex": ["534b0d0a00000042a745", "534c0d0b000800d00700000000d0074e5345", "534d0d0b0008000000000000000000290c45", "534e0d0a00000042f245"],
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "operator_observation": "left reverse; right forward; both stopped",
+          "hashes": ["12ec8685388d2f8da2e9a3486899e6f7f708f9f1e33335b3e19f1f956edd48b5", "ad4aa9dc4c0eef91dd1aa379fb5470dbbe6f3471ba5c222517708d5d1a9f05f3", "bf38f6e7a79838a606232c3ab071dc6ef1aa78d76176b889d2e32febc63c4168", "0713899b4a94a733a899ae6937150764e01fe7f24b482de1cece788efb42e23e"]
+        },
+        "left_forward_right_backward_second": {
+          "scope": "raw_pwm_left_forward_right_backward_2000_connected_proof",
+          "sequence_range": "3407..3410",
+          "setter_words_uint16": [0, 2000, 2000, 0],
+          "transcript_sha256": "1673977cfce05b88411e568bd3fd1a5cf029a419c24f74b7b5da6622a2b3ea36",
+          "frames_hex": ["534f0d0a000000432345", "53500d0b0008000000d007d00700001b4045", "53510d0b000800000000000000000034d045", "53520d0a00000040ae45"],
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "operator_observation": "left forward; right backward; both stopped; robot powered off",
+          "hashes": ["e03241a98f94ac9cb9a0cbc8a9b2fbe41f65fd363b81e8e4c36fb8c055cd1425", "aaabbadc861ed004f98035fdd036b7155bdfa9a8d4f98b582cf57efea83028b0", "9ee56537afcfb98f45bc5f03311789a21107ecd8b56caa9771c6c92b6496c617", "6b420bb9f50559802fde01b7f8ebc6fcb908bade676aa9915694836270de4e89"]
+        },
+        "bounds": "each 4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup by 750ms after setter prewrite",
+        "gates": "independent runs; exact-zero baseline; one 250ms setter; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
+        "operator_observation": "report each wheel direction, crosstalk/mismatch, stop/uncertainty, abnormal behavior, and cutoff separately",
+        "interpretation": "names state wheel directions only; differential-drive spin/yaw is a hypothesis, not established behavior",
+        "conclusion": "requested opposite wheel directions established on blocks; observed stops do not prove cleanup causation; robot yaw and ground driving remain unproved"
+      },
+      "sustained_dual_forward_on_blocks_profile": {
+        "status": "completed",
+        "scope": "raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof",
+        "physical_load": "both physical motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear on blocks",
+        "sequence_range": "3411..3414",
+        "setter_words_uint16": [0, 2000, 0, 2000],
+        "observation_seconds": 1.0,
+        "transcript_sha256": "e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7",
+        "frames_hex": ["53530d0a000000417f45", "53540d0b0008000000d0070000d0078b8745", "53550d0b0008000000000000000000311445", "53560d0a000000412a45"],
+        "bounds": "4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup no later than 1.75s after setter prewrite",
+        "gates": "exact-zero baseline; one setter; fixed 1.0s observation after the 500ms unique-response window; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; immediate cleanup on lateness/fault/interruption; measured cleanup prewrite overrun fails closed; no retry/reconnect",
+        "first_live_attempt": {
+          "status": "failed_runner_admission_after_clean_setter_response",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+          "timing": "setter prewrite 359725.578315799; cleanup prewrite 359726.080694749; elapsed 0.502378950s; intended 1.0s dwell did not occur",
+          "operator_observation": "both wheels moved forward then stopped; no abnormal sound; external cutoff used; stop cause not established",
+          "hashes": ["85eb9425a4649ddffa14f7a776d423d29a6372c62241f0e8dfab66b74d8a2a4d", "d911ea10f246acf608abed31b37e9c3a89312e6e83ed223290b89a1b861ccc7f", "9befe082146cb58b45cf2138f30fdd80d4b3d37a7ba85e8bf392fc4caa780a0c", "81093d7cab0944fb2b65f121c47de82dbd850ea9a549a36630ea7d5b24bcf53b"],
+          "metadata_limitation": "sealed top-level load_scope/physical_connection incorrectly describe left-only due to omitted both-connected tuple membership; literal declarations and scope record both motors; code and regression corrected for repeat",
+          "restoration_acknowledgment": "exact evidence lock acknowledged offline after operator physical-stop and power-cycle confirmation; hardware_access false; no stop attribution"
+        },
+        "scheduler_fix": "hard setter-prewrite bound increased from 1.5s to 1.75s to include validation/scheduler margin without changing the 500ms response gate or 1.0s dwell",
+        "successful_live_repeat": {
+          "status": "completed",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; exactly one raw80 cleanup; exact-zero raw80 final getter; state restored",
+          "usb": "4 successful OUT / 56 bytes; 4 successful payload-bearing IN / 56 bytes; no submission errors or unmatched completions",
+          "timing": "setter prewrite 360402.97143092; cleanup prewrite 360404.473246764; elapsed 1.5018158439779654s within the fixed 1.75s bound",
+          "operator_observation": "both wheels rotated forward continuously for approximately the full 1.0s window and visibly stopped; no abnormal sound/behavior or HY1803D CC/voltage/current issue; power cut immediately afterward and robot confirmed off",
+          "interpretation": "sustained dual-forward behavior established for this on-blocks run; stop causation, raw82 semantics, calibrated duty/speed, and ground driving remain unproved",
+          "hashes": ["de3b15ea20c2296fc36e090288c589886a35039fb770a5cd99ed338419b12932", "786e2cfac3c320ac1c2207ecb7749bd950297233e0285c81387624e693006ee0", "bcf5844fa6cc002887cd65793ee502f26906c9f524030afe3666b8af562c0858", "db0cbb0f74783f2d685d8a7bd118ced6e66fff5b98c683b8f220fb94b8d163f9"]
+        },
+        "operator_observation": "continuous forward rotation of each wheel; HY1803D CC/display behavior; abnormal sound/behavior; simultaneous stop or uncertainty",
+        "operating_surface": "on blocks only; no ground-drive authorization",
+        "authorization": "software readiness only; not live authorization"
+      },
+      "both_connected_single_channel_profiles": {
+        "status": "completed",
+        "physical_load": "both motors connected to correctly labelled opposite-side connectors; servos isolated; both encoders connected; wheels clear",
+        "left_forward_first": {
+          "scope": "raw_pwm_both_connected_left_forward_2000_proof",
+          "sequence_range": "3391..3394",
+          "setter_words_uint16": [0, 2000, 0, 0],
+          "transcript_sha256": "039eb52792de9be997c1ec92ae5d236d5a9c6f39ad7b39f24584c748bac0a846",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; raw80 cleanup; exact-zero raw80 final getter",
+          "physical_observation": "left wheel moved forward; right stayed still; both stopped",
+          "hashes": ["b64bba814aa3a69e9872ee639e3ce8672234eb450f6a578bf2984f2f36faab75", "11cd2c550860d60f08a30b8ece6e49ccedbf3c71f7ff100572748fc1bd4d3b09", "7327723d466232ad9df4e0037c28e3f22af2514a900a6a40743a855d88982637", "aac252344ac5c277e884223d9aa0ea978081f16d9eee33665c1ee067f2ab94e0"]
+        },
+        "right_forward_second": {
+          "scope": "raw_pwm_both_connected_right_forward_2000_proof",
+          "sequence_range": "3395..3398",
+          "setter_words_uint16": [0, 0, 0, 2000],
+          "transcript_sha256": "1bd1d7eaf79f367f049a4852e0901df44265d41a3515fdf474e67cd32cdd8501",
+          "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; raw80 cleanup; final raw80 getter words [0,0,100,0]",
+          "physical_observation": "right wheel moved forward; left stayed still; both stopped; operator cut power",
+          "offline_acknowledgment": "exact evidence lock cleared after physical-stop and power-cycle confirmation; hardware_access false",
+          "hashes": ["7dd3f9bc7542f646940faf57574b929a72884ea2c77a8c7842e78536e04e6e9a", "e19f91e97d7ec9060290fc8b117687ba3e5cb750f947ccdb6e103f5d62a65c83", "47a363192e80267d1a4f66c60b107af64da801e885a7d4090995dc189145da59", "68a2c8ec4fae6b45d06ffe1cff27a35ff8937127c20bb66858b9daa2b100e811"]
+        },
+        "gates": "separate runs; exact-zero baseline; one setter; 250ms observation; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
+        "conclusion": "both connected does not suppress independent channels; dual-forward repeat moved both wheels, conflicting with the earlier no-motion observation",
+        "hypotheses": "repeat showed no CC or supply issue, so current limiting is not supported by that observation; earlier no-motion result and controller multiword behavior remain unexplained"
+      },
       "newer_drive_meaning": {
         "command": 11,
         "command_hex": "0b",
@@ -472,7 +877,7 @@
       "sample_name": "SetMotorVelocity",
       "request_layout": "left/right LE int16 / 4 bytes; units not live calibrated",
       "sample_effect": "actuation",
-      "live_probe_policy": "excluded",
+      "live_probe_policy": "prepared_minimal_connected_left_cadence_discriminator",
       "sample_calls": [
         {
           "method": "setMotorVelocity_btn_Click",
@@ -490,7 +895,86 @@
           "source": "PCTestApp/Form1.cs:1019"
         }
       ],
-      "live_observations": [],
+      "live_observations": [
+        {
+          "status": "first_live_attempt_stopped_after_one_nonzero",
+          "scope": "disconnected_load_left_plus_1000_velocity_train",
+          "payload": "left signed raw +1000, right zero",
+          "cadence_ms": 50,
+          "train_count": 20,
+          "sequence_range": "3285..3306",
+          "bounds": "22 writes / 308 TX bytes / 8192 maximum RX bytes",
+          "cleanup": "exactly one fixed all-zero attempt after any possible nonzero syscall",
+          "transmitted": "seq3285 zero, seq3286 one left +1000, seq3306 cleanup zero; 42 accepted TX / 0 uncertain TX",
+          "responses": "seq3285 raw80, seq3286 raw82, seq3306 raw80; CRC-valid correlated empty command11 frames",
+          "not_transmitted": "seq3287..3305",
+          "scope_observation": "uncertain_scope_was_not_triggered",
+          "software_fault": "post-write submitted_at timestamp mislabeled a fast correlated response prewrite_or_ambiguous",
+          "fix": "response boundary now uses matching immediate pre-os.write monotonic timestamp; ambiguity gate retained",
+          "meaning": "single nonzero application/output unknown; oscilloscope observation separate from opaque protocol response and physical stop"
+        },
+        {
+          "status": "two_corrected_left_word_trains_completed",
+          "scope": "disconnected_load_left_plus_1000_velocity_train",
+          "protocol": "each run: initial zero raw80, 20 left-word +1000 responses raw82, cleanup zero raw80",
+          "accounting": "each run: 22 writes / 308 accepted TX / 0 uncertain TX / 220 RX",
+          "first_scope_observation": "uncertain_scope_did_not_trigger",
+          "repeat_scope_observation": "free-running 50ms/div across physical Motor L showed no output change",
+          "meaning": "source field to physical plug mapping and raw82 application meaning remain unknown"
+        },
+        {
+          "status": "mirrored_right_word_train_completed",
+          "scope": "disconnected_load_right_plus_1000_velocity_train",
+          "source_field": "PCTestApp rightVel second signed int16 word",
+          "payload": "leftVel=0, rightVel=+1000",
+          "cadence_ms": 50,
+          "train_count": 20,
+          "sequence_range": "3307..3328",
+          "transcript_sha256": "07d2dec07a7db89cc859ac16f4aeb16390361076385aafa41af1fb563c43ec5d",
+          "protocol": "initial zero raw80, 20 right-word +1000 responses raw82, cleanup zero raw80",
+          "accounting": "22 writes / 308 accepted TX / 0 uncertain TX / 220 RX",
+          "operator_scope_target": "robot-right-side connector actually printed Motor L; actual Motor R-labelled connector untested",
+          "operator_observation": "free-running differential/isolated scope 50ms/div showed no visible output change",
+          "meaning": "not evidence about actual Motor R-labelled connector; does not establish source-field-to-connector, robot-side mapping, raw82 meaning, or output absence"
+        },
+        {
+          "status": "completed_no_motion",
+          "scope": "left_motor_connected_left_plus_1000_velocity_train",
+          "physical_load": "only physical left motor connected to robot-right-side connector printed Motor L; right motor unplugged; servos isolated; both encoders connected; wheels clear",
+          "payload": "source leftVel=+1000, rightVel=0",
+          "sequence_range": "3373..3379",
+          "train_count": 5,
+          "cadence_ms": 50,
+          "nominal_train_span_ms": 200,
+          "maximum_first_nonzero_to_cleanup_prewrite_ms": 250,
+          "transcript_sha256": "62f25f66bda910a2f9764db7809b844e0602ccad10bd0b8c7ff2e464367baa1d",
+          "bounds": "7 writes / 98 TX bytes / 70 expected RX bytes / 8192 maximum RX bytes",
+          "response_policy": "initial zero requires unique correlated CRC-valid empty raw80; nonzero and cleanup require unique correlated CRC-valid empty raw80/raw82",
+          "cleanup": "immediately after fifth planned response or any fault; exactly one zero syscall; no retry/reconnect",
+          "getters": "none; no getter may delay cleanup and raw getter state is not physical stop proof",
+          "operator_observation": "no physical-left-wheel motion; external HY1803D cutoff used after immediate clarification; final state powered off",
+          "protocol": "7 writes / 98 accepted TX / 0 uncertain TX / 70 RX; initial zero raw80; five nonzero raw82; cleanup raw80",
+          "cleanup_prewrite_elapsed_seconds": 0.24642485805088654,
+          "hashes": ["99e1d27460daf6bb8680898a0c70e29b78536c1a712f19dbcdebe24c3d8c7140", "2e4e504df920b0225c3c37e9645ff0cc2ce6afbaf27b58978ddea3d3d217e3f1", "c0360c333b3234c385fd3177e0fd72a25ba88a1a5e05fd8ad55a212e2ff51d5b", "2a3b1f17ce4578de83e0baf93417e025b87164568b10263bb167ee1563a8e44c"]
+        },
+        {
+          "status": "completed_no_motion",
+          "scope": "right_motor_connected_right_plus_1000_velocity_train",
+          "physical_load": "only physical right motor connected to robot-left-side connector printed Motor R; left motor unplugged; servos isolated; both encoders connected; wheels clear",
+          "payload": "source leftVel=0, rightVel=+1000",
+          "sequence_range": "3380..3386",
+          "train_count": 5,
+          "cadence_ms": 50,
+          "maximum_first_nonzero_to_cleanup_prewrite_ms": 250,
+          "transcript_sha256": "563fb24134a3935d7037a6bfcfe40ba2506e2885ade85b3c578dab6b516f2639",
+          "bounds": "7 writes / 98 TX bytes / 70 expected RX bytes / 8192 maximum RX bytes",
+          "reason": "profile was required because earlier disconnected rightVel scope used misidentified printed Motor L connector"
+          ,"protocol": "7 writes / 98 accepted TX / 0 uncertain TX / 70 RX; initial zero raw80; five nonzero raw82; cleanup raw80"
+          ,"cleanup_prewrite_elapsed_seconds": 0.2466230380232446
+          ,"operator_observation": "no physical-right-wheel motion; cleanup completed; robot powered off"
+          ,"hashes": ["71c99c77c20d7ef844789c46eab44a1208b6849ee6cf51eff553c932b58b42ce", "ddb65a8bc94925c1afb4ce899678997b05740d80b822c22cab7305f2ea6cfd7d", "fbfa382df182c1c9eed8842187bc36ec70789638d152c92df83906f4f55c7e5a", "111f84b4a0943a91339caf1c9332179c6ed06e706ed89e5077d059f529ae8436"]
+        }
+      ],
       "newer_drive_meaning": {
         "command": 17,
         "command_hex": "11",
@@ -702,7 +1186,7 @@
       "sample_name": "SetLedBlink",
       "request_layout": "18 uint8 blink values; timing semantics unconfirmed",
       "sample_effect": "output_setting",
-      "live_probe_policy": "excluded",
+      "live_probe_policy": "completed_fixed_off_start_reversible_pilot",
       "sample_calls": [
         {
           "method": "setLedBlink_btn_Click",
@@ -720,7 +1204,21 @@
           "source": "PCTestApp/Form1.cs:844"
         }
       ],
-      "live_observations": [],
+      "live_observations": [
+        {
+          "evidence": "local-evidence:wheel-led-blink-off-start-20260919",
+          "request_bytes": 28,
+          "reply_bytes": 10,
+          "matched_response_fields": [
+            130
+          ],
+          "matched_payload_sizes": [
+            0
+          ],
+          "physical_observation": "wheel LEDs visibly blinked during the fixed three-second window",
+          "restore_observation": "exact blink restore returned raw 82; visible baseline restoration and power cycle were operator-confirmed separately"
+        }
+      ],
       "newer_drive_meaning": {
         "command": 26,
         "command_hex": "1a",

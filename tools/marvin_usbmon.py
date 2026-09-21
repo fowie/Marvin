@@ -724,7 +724,65 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             motor_right_disconnected=False, robot_secured_on_blocks=False,
             authorize_unvalidated_left_one_and_zero=False,
             powered_left_command_right_connected=False,
-            motor_left_disconnected=False, motor_right_connected=False):
+            motor_left_disconnected=False, motor_right_connected=False,
+            disconnected_load_zero_one_order_diagnostic=False,
+            authorize_unvalidated_zero_one_order_diagnostic=False,
+            disconnected_load_zero_plus_1000_order_diagnostic=False,
+            authorize_unvalidated_left_plus_1000_order_diagnostic=False,
+            disconnected_load_left_plus_1000_velocity_train=False,
+            authorize_unvalidated_left_plus_1000_velocity_train=False,
+            disconnected_load_right_plus_1000_velocity_train=False,
+            authorize_unvalidated_right_plus_1000_velocity_train=False,
+            left_motor_connected_left_plus_1000_velocity_train=False,
+            authorize_unvalidated_connected_left_plus_1000_velocity_train=False,
+            right_motor_connected_right_plus_1000_velocity_train=False,
+            authorize_unvalidated_connected_right_plus_1000_velocity_train=False,
+            disconnected_load_raw_pwm_word0_one_pilot=False,
+            authorize_unvalidated_raw_pwm_word0_one_pilot=False,
+            disconnected_load_raw_pwm_word0_1000_pilot=False,
+            authorize_unvalidated_raw_pwm_word0_1000_pilot=False,
+            disconnected_load_raw_pwm_word0_2000_pilot=False,
+            authorize_unvalidated_raw_pwm_word0_2000_pilot=False,
+            disconnected_load_raw_pwm_word1_2000_pilot=False,
+            authorize_unvalidated_raw_pwm_word1_2000_pilot=False,
+            disconnected_load_raw_pwm_word2_2000_pilot=False,
+            authorize_unvalidated_raw_pwm_word2_2000_pilot=False,
+            disconnected_load_raw_pwm_word3_2000_pilot=False,
+            authorize_unvalidated_raw_pwm_word3_2000_pilot=False,
+            raw_pwm_word0_1000_left_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_left_motor_connected_proof=False,
+            physical_left_motor_connected_to_robot_right_motor_l_connector=False,
+            raw_pwm_word0_2000_left_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=False,
+            raw_pwm_word1_2000_left_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=False,
+            raw_pwm_word2_2000_right_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof=False,
+            raw_pwm_word3_2000_right_motor_connected_proof=False,
+            authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof=False,
+            physical_right_motor_connected_to_robot_left_motor_r_connector=False,
+            raw_pwm_dual_motor_forward_2000_connected_proof=False,
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=False,
+            raw_pwm_dual_motor_reverse_2000_connected_proof=False,
+            authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof=False,
+            raw_pwm_left_reverse_right_forward_2000_connected_proof=False,
+            authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof=False,
+            raw_pwm_left_forward_right_backward_2000_connected_proof=False,
+            authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=False,
+            raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+            raw_pwm_both_connected_left_forward_2000_proof=False,
+            authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
+            raw_pwm_both_connected_right_forward_2000_proof=False,
+            authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof=False,
+            disconnected_load_get_log=False,
+            disconnected_load_legacy_getter_survey=False,
+            disconnected_load_led_state_round_trip=False,
+            authorize_unvalidated_led_state_round_trip=False,
+            disconnected_load_led_mapping_phase=False,
+            authorize_unvalidated_led_mapping_phase=False,
+            disconnected_load_wheel_led_blink_pilot=False,
+            authorize_unvalidated_wheel_led_blink_pilot=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -741,6 +799,113 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         powered_left_command_right_connected=powered_left_command_right_connected,
         motor_left_disconnected=motor_left_disconnected,
         motor_right_connected=motor_right_connected,
+        disconnected_load_zero_one_order_diagnostic=disconnected_load_zero_one_order_diagnostic,
+        authorize_unvalidated_zero_one_order_diagnostic=authorize_unvalidated_zero_one_order_diagnostic,
+        disconnected_load_zero_plus_1000_order_diagnostic=(
+            disconnected_load_zero_plus_1000_order_diagnostic),
+        authorize_unvalidated_left_plus_1000_order_diagnostic=(
+            authorize_unvalidated_left_plus_1000_order_diagnostic),
+        disconnected_load_left_plus_1000_velocity_train=(
+            disconnected_load_left_plus_1000_velocity_train),
+        authorize_unvalidated_left_plus_1000_velocity_train=(
+            authorize_unvalidated_left_plus_1000_velocity_train),
+        disconnected_load_right_plus_1000_velocity_train=(
+            disconnected_load_right_plus_1000_velocity_train),
+        authorize_unvalidated_right_plus_1000_velocity_train=(
+            authorize_unvalidated_right_plus_1000_velocity_train),
+        left_motor_connected_left_plus_1000_velocity_train=(
+            left_motor_connected_left_plus_1000_velocity_train),
+        authorize_unvalidated_connected_left_plus_1000_velocity_train=(
+            authorize_unvalidated_connected_left_plus_1000_velocity_train),
+        right_motor_connected_right_plus_1000_velocity_train=(
+            right_motor_connected_right_plus_1000_velocity_train),
+        authorize_unvalidated_connected_right_plus_1000_velocity_train=(
+            authorize_unvalidated_connected_right_plus_1000_velocity_train),
+        disconnected_load_raw_pwm_word0_one_pilot=(
+            disconnected_load_raw_pwm_word0_one_pilot),
+        authorize_unvalidated_raw_pwm_word0_one_pilot=(
+            authorize_unvalidated_raw_pwm_word0_one_pilot),
+        disconnected_load_raw_pwm_word0_1000_pilot=(
+            disconnected_load_raw_pwm_word0_1000_pilot),
+        authorize_unvalidated_raw_pwm_word0_1000_pilot=(
+            authorize_unvalidated_raw_pwm_word0_1000_pilot),
+        disconnected_load_raw_pwm_word0_2000_pilot=(
+            disconnected_load_raw_pwm_word0_2000_pilot),
+        authorize_unvalidated_raw_pwm_word0_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word0_2000_pilot),
+        disconnected_load_raw_pwm_word1_2000_pilot=(
+            disconnected_load_raw_pwm_word1_2000_pilot),
+        authorize_unvalidated_raw_pwm_word1_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word1_2000_pilot),
+        disconnected_load_raw_pwm_word2_2000_pilot=(
+            disconnected_load_raw_pwm_word2_2000_pilot),
+        authorize_unvalidated_raw_pwm_word2_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word2_2000_pilot),
+        disconnected_load_raw_pwm_word3_2000_pilot=(
+            disconnected_load_raw_pwm_word3_2000_pilot),
+        authorize_unvalidated_raw_pwm_word3_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word3_2000_pilot),
+        raw_pwm_word0_1000_left_motor_connected_proof=(
+            raw_pwm_word0_1000_left_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_left_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_left_motor_connected_proof),
+        physical_left_motor_connected_to_robot_right_motor_l_connector=(
+            physical_left_motor_connected_to_robot_right_motor_l_connector),
+        raw_pwm_word0_2000_left_motor_connected_proof=(
+            raw_pwm_word0_2000_left_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof),
+        raw_pwm_word1_2000_left_motor_connected_proof=(
+            raw_pwm_word1_2000_left_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof),
+        raw_pwm_word2_2000_right_motor_connected_proof=(
+            raw_pwm_word2_2000_right_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof),
+        raw_pwm_word3_2000_right_motor_connected_proof=(
+            raw_pwm_word3_2000_right_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof),
+        physical_right_motor_connected_to_robot_left_motor_r_connector=(
+            physical_right_motor_connected_to_robot_left_motor_r_connector),
+        raw_pwm_dual_motor_forward_2000_connected_proof=(
+            raw_pwm_dual_motor_forward_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof),
+        raw_pwm_dual_motor_reverse_2000_connected_proof=(
+            raw_pwm_dual_motor_reverse_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof),
+        raw_pwm_left_reverse_right_forward_2000_connected_proof=(
+            raw_pwm_left_reverse_right_forward_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof),
+        raw_pwm_left_forward_right_backward_2000_connected_proof=(
+            raw_pwm_left_forward_right_backward_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof),
+        raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        raw_pwm_both_connected_left_forward_2000_proof=(
+            raw_pwm_both_connected_left_forward_2000_proof),
+        authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
+            authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof),
+        raw_pwm_both_connected_right_forward_2000_proof=(
+            raw_pwm_both_connected_right_forward_2000_proof),
+        authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof=(
+            authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof),
+        disconnected_load_get_log=disconnected_load_get_log,
+        disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
+        disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
+        authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
+        disconnected_load_led_mapping_phase=disconnected_load_led_mapping_phase,
+        authorize_unvalidated_led_mapping_phase=authorize_unvalidated_led_mapping_phase,
+        disconnected_load_wheel_led_blink_pilot=disconnected_load_wheel_led_blink_pilot,
+        authorize_unvalidated_wheel_led_blink_pilot=(
+            authorize_unvalidated_wheel_led_blink_pilot),
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -770,7 +935,15 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     if observation and (
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096
-            or seconds != (15 if powered_trial else 45 if encoder_feedback_observation else 13)
+            or seconds != (
+                25 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                else 20 if scope in (
+                    motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
+                    motor_consent.DISCONNECTED_LED_STATE_SCOPE,
+                    *motor_consent.VELOCITY_TRAIN_SCOPES,
+                    *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
+                    *motor_consent.RAW_PWM_CONNECTED_SCOPES)
+                else 15 if powered_trial else 45 if encoder_feedback_observation else 13)
             or coordinator_stop is not True
             or max_bytes != 1048576 or max_records != 10000 or max_line_bytes != 16384
             or max_pending != DEFAULT_MAX_PENDING):

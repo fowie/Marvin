@@ -6,8 +6,9 @@ The old PCTestApp/SerialPacket.cs describes this framing; the 2026-09-14
 GetConfig capture corroborates an empty command4 request and a status80,
 108-byte response. Protocol facts only, not copied recovered implementation.
 
-Only the source/live-supported empty GetConfig4, GetUnitInfo1B, GetPowerState0E
-and ReadRawData00 requests can be generated. Other valid command/status/size
+Eleven source-backed empty PCTestApp getter requests can be generated. Five
+have reviewed installed reply shapes; the other six remain fixed diagnostic
+requests with unknown response lengths. Other valid command/status/size
 combinations decode without interpretation. Old00 is not successor ReadRawData3;
 command maps must not be mixed. Firmware/communication version
 words in configuration are returned data, not verified running-firmware identity.
@@ -38,7 +39,14 @@ WIRE_MAX_PAYLOAD_BYTES = 65535
 GET_CONFIG = 4
 GET_UNIT_INFO = 0x1B
 GET_POWER_STATE = 0x0E
+GET_LOG = 0x0C
 READ_RAW_DATA = 0x00
+GET_RAW_MOTOR_PWM = 0x0A
+GET_MOTOR_VELOCITY = 0x10
+GET_LED_STATE = 0x17
+GET_LED_BLINK = 0x19
+GET_SENSOR_INFO = 0x1F
+GET_BATTERY_INFO = 0x28
 GET_CONFIG_PAYLOAD_BYTES = 108
 GETTER_RESPONSE_FIELD = 0x80
 GET_CONFIG_RESPONSE_FIELD = GETTER_RESPONSE_FIELD
@@ -53,8 +61,11 @@ def _sequence(value):
 
 
 def _empty_request(command, sequence):
-    if type(command) is not int or command not in (GET_CONFIG, GET_UNIT_INFO, GET_POWER_STATE, READ_RAW_DATA):
-        raise ValueError("Only the four source/live-supported legacy getters are allowed.")
+    if type(command) is not int or command not in (
+            GET_CONFIG, GET_LOG, GET_UNIT_INFO, GET_POWER_STATE, READ_RAW_DATA,
+            GET_RAW_MOTOR_PWM, GET_MOTOR_VELOCITY, GET_LED_STATE, GET_LED_BLINK,
+            GET_SENSOR_INFO, GET_BATTERY_INFO):
+        raise ValueError("Only the eleven source-backed legacy getters are allowed.")
     body = HEADER + struct.pack("<HBBH", _sequence(sequence), command, 0, 0)
     return body + struct.pack("<H", crc16(body)) + FOOTER
 
@@ -74,9 +85,44 @@ def get_power_state_request(sequence=0):
     return _empty_request(GET_POWER_STATE, sequence)
 
 
+def get_log_request(sequence=0):
+    """PCTestApp getLog_btn and two correlated installed replies support empty0C."""
+    return _empty_request(GET_LOG, sequence)
+
+
 def read_raw_data_request(sequence=0):
     """PCTestApp Form1.cs931-934 and a correlated 2026-09-14 reply support empty00."""
     return _empty_request(READ_RAW_DATA, sequence)
+
+
+def get_raw_motor_pwm_request(sequence=0):
+    """PCTestApp Form1.cs sends an empty legacy 0A; installed reply shape unknown."""
+    return _empty_request(GET_RAW_MOTOR_PWM, sequence)
+
+
+def get_motor_velocity_request(sequence=0):
+    """PCTestApp Form1.cs sends an empty legacy 10; installed reply shape unknown."""
+    return _empty_request(GET_MOTOR_VELOCITY, sequence)
+
+
+def get_led_state_request(sequence=0):
+    """PCTestApp Form1.cs sends an empty legacy 17; installed reply shape unknown."""
+    return _empty_request(GET_LED_STATE, sequence)
+
+
+def get_led_blink_request(sequence=0):
+    """PCTestApp Form1.cs sends an empty legacy 19; installed reply shape unknown."""
+    return _empty_request(GET_LED_BLINK, sequence)
+
+
+def get_sensor_info_request(sequence=0):
+    """PCTestApp Form1.cs sends an empty legacy 1F; installed reply shape unknown."""
+    return _empty_request(GET_SENSOR_INFO, sequence)
+
+
+def get_battery_info_request(sequence=0):
+    """PCTestApp Form1.cs sends an empty legacy 28; installed reply shape unknown."""
+    return _empty_request(GET_BATTERY_INFO, sequence)
 
 
 @dataclass(frozen=True)
@@ -89,6 +135,7 @@ class GetterSpec:
 # Reviewed reply shapes; these facts do not broaden the one-shot live policy.
 GETTERS = MappingProxyType({
     "get-config": GetterSpec(GET_CONFIG, GET_CONFIG_PAYLOAD_BYTES, get_config_request),
+    "get-log": GetterSpec(GET_LOG, 32, get_log_request),
     "get-unit-info": GetterSpec(GET_UNIT_INFO, 12, get_unit_info_request),
     "get-power-state": GetterSpec(GET_POWER_STATE, 2, get_power_state_request),
     "read-raw-data": GetterSpec(READ_RAW_DATA, 134, read_raw_data_request),
@@ -143,7 +190,7 @@ def decode_packet(data):
 def validate_getter_reply(packet, query, sequence=0):
     """Validate a reviewed getter's raw consistency, correlation and exact shape."""
     if not isinstance(query, str) or query not in GETTERS:
-        raise ValueError("Select one of the four reviewed legacy getter names.")
+        raise ValueError("Select one of the five reviewed legacy getter names.")
     spec = GETTERS[query]
     _sequence(sequence)
     if not isinstance(packet, LegacyPacket):
@@ -173,7 +220,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="action", required=True)
     encoders = {
-        "get-config": get_config_request, "get-unit-info": get_unit_info_request,
+        "get-config": get_config_request, "get-log": get_log_request,
+        "get-unit-info": get_unit_info_request,
         "get-power-state": get_power_state_request, "read-raw-data": read_raw_data_request,
     }
     generate = actions.add_parser("generate", help="Print one audited offline getter request as hex only")

@@ -368,6 +368,8 @@ class LiveTransport:
         self.journal_broken = False
         self.writes = 0
         self.last_write = None
+        self.last_write_started = None
+        self.last_write_sequence = None
         self.token = hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).digest()
         self.node_stat = None
 
@@ -502,6 +504,8 @@ class LiveTransport:
         self._check(deadline)
         self.ingress.expected_tx.append(data)
         self.writes += 1
+        self.last_write_sequence = decode_packet(data).sequence
+        self.last_write_started = time.monotonic()
         count = os.write(self.fd, data)  # Exactly one syscall; short/error is never retried.
         self.last_write = time.monotonic()
         self.event("write_returned", accepted_bytes=count)

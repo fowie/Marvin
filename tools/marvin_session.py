@@ -253,6 +253,67 @@ def run_session(
     authorize_unvalidated_left_one_and_zero=False,
     powered_left_command_right_connected=False,
     motor_left_disconnected=False, motor_right_connected=False,
+    disconnected_load_zero_one_order_diagnostic=False,
+    authorize_unvalidated_zero_one_order_diagnostic=False,
+    disconnected_load_zero_plus_1000_order_diagnostic=False,
+    authorize_unvalidated_left_plus_1000_order_diagnostic=False,
+    disconnected_load_left_plus_1000_velocity_train=False,
+    authorize_unvalidated_left_plus_1000_velocity_train=False,
+    disconnected_load_right_plus_1000_velocity_train=False,
+    authorize_unvalidated_right_plus_1000_velocity_train=False,
+    left_motor_connected_left_plus_1000_velocity_train=False,
+    authorize_unvalidated_connected_left_plus_1000_velocity_train=False,
+    right_motor_connected_right_plus_1000_velocity_train=False,
+    authorize_unvalidated_connected_right_plus_1000_velocity_train=False,
+    disconnected_load_raw_pwm_word0_one_pilot=False,
+    authorize_unvalidated_raw_pwm_word0_one_pilot=False,
+    disconnected_load_raw_pwm_word0_1000_pilot=False,
+    authorize_unvalidated_raw_pwm_word0_1000_pilot=False,
+    disconnected_load_raw_pwm_word0_2000_pilot=False,
+    authorize_unvalidated_raw_pwm_word0_2000_pilot=False,
+    disconnected_load_raw_pwm_word1_2000_pilot=False,
+    authorize_unvalidated_raw_pwm_word1_2000_pilot=False,
+    disconnected_load_raw_pwm_word2_2000_pilot=False,
+    authorize_unvalidated_raw_pwm_word2_2000_pilot=False,
+    disconnected_load_raw_pwm_word3_2000_pilot=False,
+    authorize_unvalidated_raw_pwm_word3_2000_pilot=False,
+    raw_pwm_word0_1000_left_motor_connected_proof=False,
+    authorize_unvalidated_raw_pwm_left_motor_connected_proof=False,
+    physical_left_motor_connected_to_robot_right_motor_l_connector=False,
+    raw_pwm_word0_2000_left_motor_connected_proof=False,
+    authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=False,
+    raw_pwm_word1_2000_left_motor_connected_proof=False,
+    authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=False,
+    raw_pwm_word2_2000_right_motor_connected_proof=False,
+    authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof=False,
+    raw_pwm_word3_2000_right_motor_connected_proof=False,
+    authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof=False,
+    physical_right_motor_connected_to_robot_left_motor_r_connector=False,
+    raw_pwm_dual_motor_forward_2000_connected_proof=False,
+    authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=False,
+    raw_pwm_dual_motor_reverse_2000_connected_proof=False,
+    authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof=False,
+    raw_pwm_left_reverse_right_forward_2000_connected_proof=False,
+    authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof=False,
+    raw_pwm_left_forward_right_backward_2000_connected_proof=False,
+    authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=False,
+    raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+    authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+    raw_pwm_both_connected_left_forward_2000_proof=False,
+    authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
+    raw_pwm_both_connected_right_forward_2000_proof=False,
+    authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof=False,
+    disconnected_load_get_log=False,
+    disconnected_load_legacy_getter_survey=False,
+    disconnected_load_led_state_round_trip=False,
+    authorize_unvalidated_led_state_round_trip=False,
+    disconnected_load_led_mapping_phase=False,
+    authorize_unvalidated_led_mapping_phase=False,
+    disconnected_load_wheel_led_blink_pilot=False,
+    authorize_unvalidated_wheel_led_blink_pilot=False,
+    _led_mapping_phase=None,
+    _led_mapping_index=None,
+    _led_mapping_baseline=None,
 ):
     """Keep USB evidence through serial close, optionally reserving bounded grace.
 
@@ -276,6 +337,113 @@ def run_session(
         powered_left_command_right_connected=powered_left_command_right_connected,
         motor_left_disconnected=motor_left_disconnected,
         motor_right_connected=motor_right_connected,
+        disconnected_load_zero_one_order_diagnostic=disconnected_load_zero_one_order_diagnostic,
+        authorize_unvalidated_zero_one_order_diagnostic=authorize_unvalidated_zero_one_order_diagnostic,
+        disconnected_load_zero_plus_1000_order_diagnostic=(
+            disconnected_load_zero_plus_1000_order_diagnostic),
+        authorize_unvalidated_left_plus_1000_order_diagnostic=(
+            authorize_unvalidated_left_plus_1000_order_diagnostic),
+        disconnected_load_left_plus_1000_velocity_train=(
+            disconnected_load_left_plus_1000_velocity_train),
+        authorize_unvalidated_left_plus_1000_velocity_train=(
+            authorize_unvalidated_left_plus_1000_velocity_train),
+        disconnected_load_right_plus_1000_velocity_train=(
+            disconnected_load_right_plus_1000_velocity_train),
+        authorize_unvalidated_right_plus_1000_velocity_train=(
+            authorize_unvalidated_right_plus_1000_velocity_train),
+        left_motor_connected_left_plus_1000_velocity_train=(
+            left_motor_connected_left_plus_1000_velocity_train),
+        authorize_unvalidated_connected_left_plus_1000_velocity_train=(
+            authorize_unvalidated_connected_left_plus_1000_velocity_train),
+        right_motor_connected_right_plus_1000_velocity_train=(
+            right_motor_connected_right_plus_1000_velocity_train),
+        authorize_unvalidated_connected_right_plus_1000_velocity_train=(
+            authorize_unvalidated_connected_right_plus_1000_velocity_train),
+        disconnected_load_raw_pwm_word0_one_pilot=(
+            disconnected_load_raw_pwm_word0_one_pilot),
+        authorize_unvalidated_raw_pwm_word0_one_pilot=(
+            authorize_unvalidated_raw_pwm_word0_one_pilot),
+        disconnected_load_raw_pwm_word0_1000_pilot=(
+            disconnected_load_raw_pwm_word0_1000_pilot),
+        authorize_unvalidated_raw_pwm_word0_1000_pilot=(
+            authorize_unvalidated_raw_pwm_word0_1000_pilot),
+        disconnected_load_raw_pwm_word0_2000_pilot=(
+            disconnected_load_raw_pwm_word0_2000_pilot),
+        authorize_unvalidated_raw_pwm_word0_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word0_2000_pilot),
+        disconnected_load_raw_pwm_word1_2000_pilot=(
+            disconnected_load_raw_pwm_word1_2000_pilot),
+        authorize_unvalidated_raw_pwm_word1_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word1_2000_pilot),
+        disconnected_load_raw_pwm_word2_2000_pilot=(
+            disconnected_load_raw_pwm_word2_2000_pilot),
+        authorize_unvalidated_raw_pwm_word2_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word2_2000_pilot),
+        disconnected_load_raw_pwm_word3_2000_pilot=(
+            disconnected_load_raw_pwm_word3_2000_pilot),
+        authorize_unvalidated_raw_pwm_word3_2000_pilot=(
+            authorize_unvalidated_raw_pwm_word3_2000_pilot),
+        raw_pwm_word0_1000_left_motor_connected_proof=(
+            raw_pwm_word0_1000_left_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_left_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_left_motor_connected_proof),
+        physical_left_motor_connected_to_robot_right_motor_l_connector=(
+            physical_left_motor_connected_to_robot_right_motor_l_connector),
+        raw_pwm_word0_2000_left_motor_connected_proof=(
+            raw_pwm_word0_2000_left_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_2000_left_motor_connected_proof),
+        raw_pwm_word1_2000_left_motor_connected_proof=(
+            raw_pwm_word1_2000_left_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word1_2000_left_motor_connected_proof),
+        raw_pwm_word2_2000_right_motor_connected_proof=(
+            raw_pwm_word2_2000_right_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word2_2000_right_motor_connected_proof),
+        raw_pwm_word3_2000_right_motor_connected_proof=(
+            raw_pwm_word3_2000_right_motor_connected_proof),
+        authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof=(
+            authorize_unvalidated_raw_pwm_word3_2000_right_motor_connected_proof),
+        physical_right_motor_connected_to_robot_left_motor_r_connector=(
+            physical_right_motor_connected_to_robot_left_motor_r_connector),
+        raw_pwm_dual_motor_forward_2000_connected_proof=(
+            raw_pwm_dual_motor_forward_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof),
+        raw_pwm_dual_motor_reverse_2000_connected_proof=(
+            raw_pwm_dual_motor_reverse_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof),
+        raw_pwm_left_reverse_right_forward_2000_connected_proof=(
+            raw_pwm_left_reverse_right_forward_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof),
+        raw_pwm_left_forward_right_backward_2000_connected_proof=(
+            raw_pwm_left_forward_right_backward_2000_connected_proof),
+        authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=(
+            authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof),
+        raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
+            authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        raw_pwm_both_connected_left_forward_2000_proof=(
+            raw_pwm_both_connected_left_forward_2000_proof),
+        authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
+            authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof),
+        raw_pwm_both_connected_right_forward_2000_proof=(
+            raw_pwm_both_connected_right_forward_2000_proof),
+        authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof=(
+            authorize_unvalidated_raw_pwm_both_connected_right_forward_2000_proof),
+        disconnected_load_get_log=disconnected_load_get_log,
+        disconnected_load_legacy_getter_survey=disconnected_load_legacy_getter_survey,
+        disconnected_load_led_state_round_trip=disconnected_load_led_state_round_trip,
+        authorize_unvalidated_led_state_round_trip=authorize_unvalidated_led_state_round_trip,
+        disconnected_load_led_mapping_phase=disconnected_load_led_mapping_phase,
+        authorize_unvalidated_led_mapping_phase=authorize_unvalidated_led_mapping_phase,
+        disconnected_load_wheel_led_blink_pilot=disconnected_load_wheel_led_blink_pilot,
+        authorize_unvalidated_wheel_led_blink_pilot=(
+            authorize_unvalidated_wheel_led_blink_pilot),
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -293,6 +461,21 @@ def run_session(
     )
     scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
+    if scope == motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
+        raise ValueError(
+            "Connected raw-PWM 2000 is retired after reverse motion and a nonzero "
+            "post-cleanup getter; no further live execution is authorized.")
+    led_mapping_runtime_policy = None
+    if scope == motor_consent.LED_MAPPING_SCOPE:
+        from tools.marvin_legacy_led_mapper import LEFT_ATTENTION_PHOTO, transcript_for
+        transcript_for(_led_mapping_phase, _led_mapping_index, _led_mapping_baseline)
+        if (_led_mapping_phase == "set"
+                and _led_mapping_index == LEFT_ATTENTION_PHOTO):
+            led_mapping_runtime_policy = (
+                "captured_baseline_with_only_indices_1_2_3_4_5_forced_to_ff")
+    elif any(value is not None for value in (
+            _led_mapping_phase, _led_mapping_index, _led_mapping_baseline)):
+        raise ValueError("Internal LED mapping fields require the literal LED mapping scope.")
     if powered_trial and (_motor_power_off_preparation or _isolated_zero_velocity):
         raise ValueError("Powered stop characterization forbids other diagnostic profiles.")
     preparation_consent = scope == "preparation"
@@ -303,7 +486,36 @@ def run_session(
     if observation:
         declarations = {name: value for name, value in declarations.items()
                         if name not in (*motor_consent.POWERED_TRIAL_ONLY_FLAGS,
-                                        *motor_consent.MAPPING_TRIAL_ONLY_FLAGS)}
+                                        *motor_consent.MAPPING_TRIAL_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_ORDER_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_PLUS_1000_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_VELOCITY_TRAIN_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                        *motor_consent.CONNECTED_LEFT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                        *motor_consent.CONNECTED_RIGHT_VELOCITY_TRAIN_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_1000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_2000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD1_2000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD2_2000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD3_2000_PILOT_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_LEFT_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_2000_LEFT_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_DUAL_FORWARD_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_DUAL_REVERSE_CONNECTED_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_GET_LOG_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
+                                        *motor_consent.DISCONNECTED_LED_STATE_ONLY_FLAGS,
+                                        *motor_consent.LED_MAPPING_ONLY_FLAGS,
+                                        *motor_consent.WHEEL_LED_BLINK_ONLY_FLAGS)}
         from tools.marvin_legacy_protocol import read_raw_data_request
         fixed_schedule = tuple(marvin_probe.ScheduledWrite(index, read_raw_data_request(sequence),
                                                          "legacy-read-raw-data")
@@ -325,14 +537,46 @@ def run_session(
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
     if _motor_power_off_preparation or powered_trial:
         if powered_trial:
-            from tools.marvin_legacy_powered_left_stop import TRANSCRIPT
+            if scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE:
+                from tools.marvin_legacy_disconnected_get_log import TRANSCRIPT
+            elif scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE:
+                from tools.marvin_legacy_disconnected_getter_survey import TRANSCRIPT
+            elif scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE:
+                from tools.marvin_legacy_disconnected_led_state import TRANSCRIPT
+            elif scope == motor_consent.WHEEL_LED_BLINK_SCOPE:
+                from tools.marvin_legacy_wheel_led_blink import TRANSCRIPT
+            elif scope in motor_consent.VELOCITY_TRAIN_SCOPES:
+                from tools.marvin_legacy_velocity_train import transcript_for_scope
+                TRANSCRIPT = transcript_for_scope(scope)
+            elif scope in (
+                    *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
+                    *motor_consent.RAW_PWM_CONNECTED_SCOPES):
+                from tools.marvin_legacy_raw_pwm_pilot import transcript_for_scope
+                TRANSCRIPT = transcript_for_scope(scope)
+            elif scope == motor_consent.LED_MAPPING_SCOPE:
+                from tools.marvin_legacy_led_mapper import transcript_for
+                TRANSCRIPT = transcript_for(
+                    _led_mapping_phase, _led_mapping_index, _led_mapping_baseline)
+            elif scope in motor_consent.DISCONNECTED_ORDER_SCOPES:
+                from tools.marvin_legacy_disconnected_order import transcript_for_scope
+                TRANSCRIPT = transcript_for_scope(scope)
+            else:
+                from tools.marvin_legacy_powered_left_stop import TRANSCRIPT
         else:
             from tools.marvin_legacy_motor_power_off_prep import TRANSCRIPT
         if (capture_runner is None or allow_unknown_command is not True or sudo_usbmon is not False
                 or usbmon_backend != "binary" or binary_payload_limit != 4096
                 or probe_profile != "legacy" or baudrate != 57600
                 or (bytesize, parity, stopbits) != (8, "N", 1)
-                or seconds != (5 if powered_trial else 15)
+                or seconds != (
+                    15 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                    else 10 if scope in (
+                        motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
+                        motor_consent.DISCONNECTED_LED_STATE_SCOPE,
+                        *motor_consent.VELOCITY_TRAIN_SCOPES,
+                        *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
+                        *motor_consent.RAW_PWM_CONNECTED_SCOPES)
+                    else 5 if powered_trial else 15)
                 or usb_tail_seconds != 5 or usb_close_grace_seconds != 5
                 or dtr is not False or rts is not False
                 or any((probe_cr, probe_get_config, probe_get_unit_info, probe_get_sensor_info,
@@ -447,6 +691,7 @@ def run_session(
         "started_at": marvin_probe.utc_now(),
         "baseline": baseline,
         "requested_application_bytes": (
+            38 if led_mapping_runtime_policy else
             sum(map(len, TRANSCRIPT)) if _motor_power_off_preparation or powered_trial else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
@@ -513,11 +758,129 @@ def run_session(
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; observation uses an unflushed raw tty."
     if powered_trial:
         metadata.update(**motor_consent.powered_trial_history(declarations),
-                        probe_name=("PoweredLeftCommandRightConnected" if scope == motor_consent.MAPPING_TRIAL_SCOPE
-                                    else "PoweredLeftStopCharacterization"),
+                        probe_name=(
+                            "DisconnectedLoadGetLog"
+                            if scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE
+                            else "DisconnectedLoadLegacyGetterSurvey"
+                            if scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE
+                            else "DisconnectedLoadLedStateRoundTrip"
+                            if scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE
+                            else "DisconnectedLoadLedMappingPhase"
+                            if scope == motor_consent.LED_MAPPING_SCOPE
+                            else "DisconnectedLoadWheelLedBlinkPilot"
+                            if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                            else "DisconnectedLoadLeftPlus1000VelocityTrain"
+                            if scope == motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE
+                            else "DisconnectedLoadRightPlus1000VelocityTrain"
+                            if scope == motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
+                            else "ConnectedLeftPlus1000VelocityTrain"
+                            if scope == motor_consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE
+                            else "ConnectedRightPlus1000VelocityTrain"
+                            if scope == motor_consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE
+                            else "DisconnectedLoadRawPwmWord0OnePilot"
+                            if scope == motor_consent.RAW_PWM_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord0Value1000Pilot"
+                            if scope == motor_consent.RAW_PWM_1000_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord0Value2000Pilot"
+                            if scope == motor_consent.RAW_PWM_2000_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord1Value2000Pilot"
+                            if scope == motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord2Value2000Pilot"
+                            if scope == motor_consent.RAW_PWM_WORD2_2000_PILOT_SCOPE
+                            else "DisconnectedLoadRawPwmWord3Value2000Pilot"
+                            if scope == motor_consent.RAW_PWM_WORD3_2000_PILOT_SCOPE
+                            else "RawPwmWord0Value1000LeftMotorConnectedProof"
+                            if scope == motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE
+                            else "RawPwmWord0Value2000LeftMotorConnectedProof"
+                            if scope == motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE
+                            else "RawPwmWord1Value2000LeftMotorConnectedProof"
+                            if scope == motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE
+                            else "RawPwmWord2Value2000RightMotorConnectedProof"
+                            if scope == motor_consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE
+                            else "RawPwmWord3Value2000RightMotorConnectedProof"
+                            if scope == motor_consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE
+                            else "RawPwmDualMotorForwardValue2000ConnectedProof"
+                            if scope == motor_consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE
+                            else "RawPwmDualMotorReverseValue2000ConnectedProof"
+                            if scope == motor_consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE
+                            else "RawPwmLeftReverseRightForwardValue2000ConnectedProof"
+                            if scope == motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE
+                            else "RawPwmLeftForwardRightBackwardValue2000ConnectedProof"
+                            if scope == motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE
+                            else "RawPwmDualMotorForwardValue2000OneSecondOnBlocksProof"
+                            if scope == motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE
+                            else "RawPwmBothConnectedLeftForwardValue2000Proof"
+                            if scope == motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE
+                            else "RawPwmBothConnectedRightForwardValue2000Proof"
+                            if scope == motor_consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE
+                            else "DisconnectedLoadZeroPlus1000OrderDiagnostic"
+                            if scope == motor_consent.DISCONNECTED_PLUS_1000_SCOPE
+                            else "DisconnectedLoadZeroOneOrderDiagnostic"
+                            if scope == motor_consent.DISCONNECTED_ORDER_SCOPE
+                            else "PoweredLeftCommandRightConnected"
+                            if scope == motor_consent.MAPPING_TRIAL_SCOPE
+                            else "PoweredLeftStopCharacterization"),
                         immutable_application_transcript_hex=[raw.hex() for raw in TRANSCRIPT],
                         requested_probe_hex=b"".join(TRANSCRIPT).hex(),
-                        unknown_command_authorized=True,
+                        unknown_command_authorized=scope not in (
+                            motor_consent.DISCONNECTED_GET_LOG_SCOPE,
+                            motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
+                            motor_consent.DISCONNECTED_LED_STATE_SCOPE,
+                            motor_consent.LED_MAPPING_SCOPE),
+                        fixed_get_log_authorized=scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE,
+                        fixed_legacy_getter_survey_authorized=(
+                            scope == motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE),
+                        fixed_led_state_round_trip_authorized=(
+                            scope == motor_consent.DISCONNECTED_LED_STATE_SCOPE),
+                        fixed_led_mapping_phase_authorized=(
+                            scope == motor_consent.LED_MAPPING_SCOPE),
+                        fixed_wheel_led_blink_pilot_authorized=(
+                            scope == motor_consent.WHEEL_LED_BLINK_SCOPE),
+                        fixed_left_plus_1000_velocity_train_authorized=(
+                            scope == motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE),
+                        fixed_right_plus_1000_velocity_train_authorized=(
+                            scope == motor_consent.DISCONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
+                        fixed_connected_left_plus_1000_velocity_train_authorized=(
+                            scope == motor_consent.CONNECTED_LEFT_VELOCITY_TRAIN_SCOPE),
+                        fixed_connected_right_plus_1000_velocity_train_authorized=(
+                            scope == motor_consent.CONNECTED_RIGHT_VELOCITY_TRAIN_SCOPE),
+                        fixed_raw_pwm_word0_one_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_PILOT_SCOPE),
+                        fixed_raw_pwm_word0_1000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_1000_PILOT_SCOPE),
+                        fixed_raw_pwm_word0_2000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_2000_PILOT_SCOPE),
+                        fixed_raw_pwm_word1_2000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD1_2000_PILOT_SCOPE),
+                        fixed_raw_pwm_word2_2000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD2_2000_PILOT_SCOPE),
+                        fixed_raw_pwm_word3_2000_pilot_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD3_2000_PILOT_SCOPE),
+                        fixed_raw_pwm_left_motor_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_LEFT_CONNECTED_SCOPE),
+                        fixed_raw_pwm_2000_left_motor_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE),
+                        fixed_raw_pwm_word1_2000_left_motor_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD1_2000_LEFT_CONNECTED_SCOPE),
+                        fixed_raw_pwm_word2_2000_right_motor_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD2_2000_RIGHT_CONNECTED_SCOPE),
+                        fixed_raw_pwm_word3_2000_right_motor_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_WORD3_2000_RIGHT_CONNECTED_SCOPE),
+                        fixed_raw_pwm_dual_motor_forward_2000_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE),
+                        fixed_raw_pwm_dual_motor_reverse_2000_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE),
+                        fixed_raw_pwm_left_reverse_right_forward_2000_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE),
+                        fixed_raw_pwm_left_forward_right_backward_2000_connected_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE),
+                        fixed_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE),
+                        fixed_raw_pwm_both_connected_left_forward_2000_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE),
+                        fixed_raw_pwm_both_connected_right_forward_2000_proof_authorized=(
+                            scope == motor_consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE),
+                        runtime_derived_setter_policy=led_mapping_runtime_policy,
                         usb_diagnostic_delivery="inherited_stderr_not_captured_in_usbmon-stderr.log")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; diagnostic uses an unflushed raw tty."
     if deadline is not None:
