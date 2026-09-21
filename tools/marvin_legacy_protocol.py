@@ -6,9 +6,9 @@ The old PCTestApp/SerialPacket.cs describes this framing; the 2026-09-14
 GetConfig capture corroborates an empty command4 request and a status80,
 108-byte response. Protocol facts only, not copied recovered implementation.
 
-Eleven source-backed empty PCTestApp getter requests can be generated. Five
-have reviewed installed reply shapes; the other six remain fixed diagnostic
-requests with unknown response lengths. Other valid command/status/size
+Twelve source-backed empty PCTestApp getter requests can be generated. Five
+remain admitted to the persistent client; the other seven remain fixed offline
+diagnostic generators and do not broaden its live allowlist. Other valid command/status/size
 combinations decode without interpretation. Old00 is not successor ReadRawData3;
 command maps must not be mixed. Firmware/communication version
 words in configuration are returned data, not verified running-firmware identity.
@@ -45,6 +45,7 @@ GET_RAW_MOTOR_PWM = 0x0A
 GET_MOTOR_VELOCITY = 0x10
 GET_LED_STATE = 0x17
 GET_LED_BLINK = 0x19
+GET_SERVO_POSITION = 0x1D
 GET_SENSOR_INFO = 0x1F
 GET_BATTERY_INFO = 0x28
 GET_CONFIG_PAYLOAD_BYTES = 108
@@ -64,9 +65,19 @@ def _empty_request(command, sequence):
     if type(command) is not int or command not in (
             GET_CONFIG, GET_LOG, GET_UNIT_INFO, GET_POWER_STATE, READ_RAW_DATA,
             GET_RAW_MOTOR_PWM, GET_MOTOR_VELOCITY, GET_LED_STATE, GET_LED_BLINK,
-            GET_SENSOR_INFO, GET_BATTERY_INFO):
-        raise ValueError("Only the eleven source-backed legacy getters are allowed.")
-    body = HEADER + struct.pack("<HBBH", _sequence(sequence), command, 0, 0)
+            GET_SERVO_POSITION, GET_SENSOR_INFO, GET_BATTERY_INFO):
+        raise ValueError("Only the twelve source-backed legacy getters are allowed.")
+    return encode_request(sequence, command)
+
+
+def encode_request(sequence, command, payload=b""):
+    """Encode one offline legacy request; this function has no transport."""
+    _sequence(sequence)
+    if type(command) is not int or not 0 <= command <= 255:
+        raise ValueError("Command must be an integer fitting uint8.")
+    if type(payload) is not bytes or len(payload) > WIRE_MAX_PAYLOAD_BYTES:
+        raise ValueError("Payload must be immutable bytes fitting uint16.")
+    body = HEADER + struct.pack("<HBBH", sequence, command, 0, len(payload)) + payload
     return body + struct.pack("<H", crc16(body)) + FOOTER
 
 
@@ -113,6 +124,11 @@ def get_led_state_request(sequence=0):
 def get_led_blink_request(sequence=0):
     """PCTestApp Form1.cs sends an empty legacy 19; installed reply shape unknown."""
     return _empty_request(GET_LED_BLINK, sequence)
+
+
+def get_servo_position_request(sequence=0):
+    """PCTestApp sends empty legacy1D; a correlated installed reply contained 4 bytes."""
+    return _empty_request(GET_SERVO_POSITION, sequence)
 
 
 def get_sensor_info_request(sequence=0):
@@ -223,6 +239,7 @@ def main(argv=None):
         "get-config": get_config_request, "get-log": get_log_request,
         "get-unit-info": get_unit_info_request,
         "get-power-state": get_power_state_request, "read-raw-data": read_raw_data_request,
+        "get-servo-position": get_servo_position_request,
     }
     generate = actions.add_parser("generate", help="Print one audited offline getter request as hex only")
     generate.add_argument("--command", choices=tuple(encoders), default="get-config")

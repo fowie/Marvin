@@ -100,6 +100,7 @@ owner's approval.** Publication acceptance is tracked in
 - [Cliff/proximity command reconciliation and controlled mapping plan](docs/cliff-proximity-mapping.md)
 - [Explicitly guarded LIVE serial/USB collection](docs/legacy-live.md)
 - [Isolated one-shot zero-velocity characterization](docs/legacy-zero.md)
+- [Offline projector/front-camera tilt servo mapping plan](docs/legacy-servo-mapping.md)
 - [Motor-power-OFF preparation (offline default; no power-ON permission)](docs/legacy-motor-power-off-prep.md)
 - [Complete source/evidence command catalogue and held test matrix](docs/marvin-command-catalog.md)
 - [Full historical/modern command catalogue](docs/marvin-command-map.json)

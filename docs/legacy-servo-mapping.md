@@ -1,0 +1,97 @@
+# Legacy projector/front-camera tilt: offline mapping plan
+
+This is an offline evidence summary and future operator checklist, not live
+authorization. `tools.marvin_legacy_servo_plan` only builds S/E packet bytes;
+it has no transport and cannot open serial, USB or sysfs.
+
+## Authoritative legacy findings
+
+- The installed `045e:4444` controller has proved legacy S/E `1D`
+  `GetServoPosition`: empty request, raw-`80` reply, four payload bytes. The
+  retained reply contains two little-endian `uint16` values: **2500, 2730**.
+- The historical `PCTestApp` sends legacy `1E` `SetServoPosition` with exactly
+  two positional little-endian `uint16` words. Its two input boxes are
+  unlabeled. The error text says `0-3000`, but `UInt16.Parse` is the only
+  enforcement, so this is a UI hint, not a safe range.
+- Legacy `ReadRawData` labels its two servo fields in the opposite value order:
+  `projectorPosition=2730`, then `depthCam=2500`. This supports a hypothesis,
+  not proof, that getter/setter word 0 is camera and word 1 is projector.
+- The installed 108-byte configuration reply, interpreted through the later
+  source layout, reports camera `min/default/max=1200/2500/2500` and projector
+  `200/2730/2730`. The later source defaults differ for camera and its handler
+  returns compiled defaults. These words are evidence inputs, not established
+  physical limits, calibration, units, active settings, or permission to move.
+- The old sample has no servo timer, startup setter, cadence, retry, cleanup,
+  neutral restore, response parser, or narrower validation at this call site.
+
+Source anchors: `PCTestApp/Form1.cs:749-778,510-511`,
+`PCTestApp/Form1.Designer.cs:413-445,1548-1582`,
+`m_inc/m_config.h:45-53`, the sealed getter/config/raw-data evidence cited in
+`provenance.md`, and the derived command/configuration/telemetry exports.
+
+## Generation boundary
+
+The retained installed service is successor-generation evidence only. It uses
+EF/BE framing and `19 SetServoRadians` with joint 3 `ProjectorTilt` on Drive
+and joint 4 `FrontCameraTilt` on Head. Its configured ranges are projector
+`0..1.4` rad and front camera `-0.34906585..0.61086524` rad. On startup it
+commands front-camera tilt to zero, enables holding current, and starts a
+projector shutter/brightness/inversion/reindex/home sequence. None of those
+IDs, radians, ranges, board routing, startup actions, or mechanics may be
+imported into legacy S/E `1D/1E`.
+
+The successor servo surface also contains `0D RecalibrateServo` (one `uint8`
+ID), `1A SetServoHoldingCurrent` (ID plus enable bytes), `35
+SetServoCalibrationOffset` (one `int32`), `3B SetServoSequence` (packed motion
+sequence), and `3C ConfigPid` (four `int32`). The installed service directly
+calls radians, holding-current, recalibration and sequence operations. It has
+no legacy `1D` two-word position getter/setter contract. Every one of these
+successor operations is protocol-mismatch/catalog-only for the installed
+legacy controller.
+
+## Unknowns that block live use
+
+Physical word-to-servo ordering, polarity, units, exact installed handler,
+accepted response, active bounds, neutral safety, holding behavior, timeout,
+startup behavior, mechanical clearance, and whether a getter reflects command,
+feedback, or cached state remain unknown. The reported version words do not
+identify an exact image. A successful write, CRC-valid frame, raw response, or
+restored getter cannot prove physical restoration.
+
+## Reconnection checklist
+
+Before each separately authorized run: declare exactly one named servo
+connected and the other isolated; remove all power including USB back-power
+before wiring changes; secure the robot/mechanism; place an operator at an
+external actuator-energy cutoff; verify exact physical port and installed
+legacy identity; approve one exact word, baseline, neutral, minimum, maximum,
+target and source citation; confirm clearances; start fresh serial and USB
+evidence; prohibit retry, reconnect and resume; and require one bounded cleanup
+attempt plus evidence sealing on every post-setter exit.
+
+## Minimal one-channel sequence
+
+1. With only one declared servo connected, issue one `1D` getter and stop
+   closed unless its two words exactly match the reviewed baseline.
+2. Change only candidate `word0` **or** `word1`; hold the other word at its
+   fresh baseline. Send one exact bounded `1E` setter and observe only the
+   declared mechanism with the cutoff ready.
+3. Attempt exactly one `1E` restore of the complete fresh two-word baseline,
+   including on timeout, rejection, partial/uncertain write, interruption, or
+   observation fault. Never retry or reconnect.
+4. Only after a correlated restore response, issue one `1D` verification
+   getter. Seal raw serial/USB evidence and operator observations regardless of
+   result. A mismatch or uncertain physical restore ends the session.
+5. Power down and remove USB back-power before changing which servo is
+   connected. Review and seal the first channel before planning the other.
+
+Example generation requires caller-supplied reviewed values; it does not make
+them safe:
+
+```sh
+python -m tools.marvin_legacy_servo_plan \
+  --word WORD --baseline WORD0 WORD1 --target TARGET \
+  --minimum MIN --maximum MAX --neutral NEUTRAL \
+  --connected-servo projector-tilt-only \
+  --profile-source REVIEWED_EVIDENCE_CITATION
+```
