@@ -82,6 +82,7 @@ class LegacyProtocolTests(unittest.TestCase):
             0x10: protocol.get_motor_velocity_request,
             0x17: protocol.get_led_state_request,
             0x19: protocol.get_led_blink_request,
+            0x1D: protocol.get_servo_position_request,
             0x1F: protocol.get_sensor_info_request,
             0x28: protocol.get_battery_info_request,
         }
@@ -113,7 +114,7 @@ class LegacyProtocolTests(unittest.TestCase):
     def test_named_cli_queries_only_and_default_is_unchanged(self):
         for name, command in (
             ("get-config", 4), ("get-unit-info", 0x1B), ("get-power-state", 0x0E), ("read-raw-data", 0),
-            ("get-log", 0x0C),
+            ("get-log", 0x0C), ("get-servo-position", 0x1D),
         ):
             output = io.StringIO()
             with redirect_stdout(output):
