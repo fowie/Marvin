@@ -309,10 +309,12 @@ avoidance or autonomous navigation.
 A UI stop button is supplemental to the physical stop. Camera, audio and other
 host media devices must be inventoried and integrated separately rather than
 inferred from fields or capabilities in the newer firmware. Read-only
-discovery found no new USB/UVC interface after the reported internal rear-camera
-connection. The pre-existing PCI/MIPI Intel IPU3 paths belong to the host and
-must not be attributed to Marvin; the camera's host transport remains unknown.
-See [camera interface discovery](camera-discovery.md).
+discovery with Marvin powered off and external power disconnected found no
+additional camera interface after the reported internal rear-camera connection.
+The pre-existing PCI/MIPI Intel IPU3 paths belong to the host and must not be
+attributed to Marvin. This powered-off result cannot determine the camera's
+powered transport or identity. See
+[camera interface discovery](camera-discovery.md).
 
 ## Not required for the next phase
 

@@ -1,10 +1,11 @@
 # Read-only camera interface discovery
 
-This records a negative host-side discovery result from September 21, 2026.
-After the reported connection of Marvin's rear camera through the robot's
-internal wiring/controller, Linux showed no new USB camera or UVC interface.
-This does not prove that the camera or controller lacks a video interface; it
-only establishes that none appeared in the interfaces inspected.
+This records a powered-off host-side discovery result from September 21, 2026.
+With Marvin powered off and external power disconnected, Linux showed no
+additional camera interface after the reported connection of Marvin's rear
+camera through the robot's internal wiring/controller. This result cannot
+determine the camera's powered transport or identity and does not exclude a
+USB/UVC or other interface when Marvin is powered.
 
 Discovery used only `lsusb`, `lsusb -t`,
 `v4l2-ctl --list-devices`, `v4l2-ctl --info`, `udevadm info`, and
@@ -50,10 +51,10 @@ controller, and must not be sent to it. See
 [the command catalog](marvin-command-catalog.md#newer-drive-and-head-command-tables)
 and [legacy servo mapping](legacy-servo-mapping.md).
 
-The unresolved blocker is interface identity: current evidence does not show
-whether the internally connected camera reaches the host through a separate
-USB path, another bus, an unpowered bridge, or no host-facing path at all.
-Absence from this enumeration is not proof of absence.
+The unresolved blocker is powered interface identity: this powered-off
+observation cannot show whether the internally connected camera reaches the
+host through a separate USB path, another bus, or a bridge that requires robot
+power. Absence from this enumeration is not proof of absence.
 
 At 11:14:41 PDT the kernel reported
 `usb 1-1.1.3-port4: over-current condition`. The TUSB2046 hub is at USB path
