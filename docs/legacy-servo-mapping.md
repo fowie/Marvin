@@ -95,3 +95,40 @@ python -m tools.marvin_legacy_servo_plan \
   --connected-servo projector-tilt-only \
   --profile-source REVIEWED_EVIDENCE_CITATION
 ```
+
+## Fixed front-camera live mapper
+
+`tools.marvin_legacy_front_servo_mapper` is the only live-capable legacy servo
+tool. It is still offline by default and exposes no target, delta, range,
+dwell, word, command, stop, calibration, reset, flash or power-state option.
+Its reviewed profile is fixed to one physically connected AX-12+ front-camera
+tilt servo with the projector servo disconnected: getter baseline
+`[2500,2730]`, one setter `[2490,2730]`, at most 0.25 seconds of observation,
+one complete `[2500,2730]` restore attempt, then one verification getter only
+after a correlated restore response. Raw response status is retained as an
+observed field and is not called generic success. Protocol agreement never
+proves physical motion or restoration.
+
+Dry run:
+
+```sh
+python -m tools.marvin_legacy_front_servo_mapper
+```
+
+The exact live invocation is intentionally verbose:
+
+```sh
+python -m tools.marvin_legacy_front_servo_mapper \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
+  --front-camera-servo-is-ax12-plus \
+  --exact-profile-baseline-2500-2730-target-2490-2730-dwell-0-25-seconds \
+  --authorize-single-legacy-1e-front-camera-mapping-command \
+  --unprivileged-usbmon
+```
+
+This command is documentation only. Do not run it without a separately
+reviewed physical test plan and fresh operator authorization.
