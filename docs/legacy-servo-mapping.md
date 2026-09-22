@@ -132,3 +132,34 @@ python -m tools.marvin_legacy_front_servo_mapper \
 
 This command is documentation only. Do not run it without a separately
 reviewed physical test plan and fresh operator authorization.
+
+The clean word-0 run produced correlated raw-`82` setter/restore responses, a
+matching final `[2500,2730]` getter, accepted TX only, zero uncertain TX bytes,
+zero usbmon drops, and no operator-visible movement. Marvin was then reported
+OFF with host USB disconnected. Those run and operator reports are external
+evidence, not proof of channel assignment. A separate named word-1 hypothesis
+changes only `[2500,2730]` to `[2500,2720]`; it cannot accept arbitrary words
+or values.
+
+Word-1 hypothesis dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word1-front-camera-hypothesis
+```
+
+Exact word-1 hypothesis live invocation:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word1-front-camera-hypothesis \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
+  --front-camera-servo-is-ax12-plus \
+  --exact-profile-baseline-2500-2730-target-2500-2720-word1-hypothesis-dwell-0-25-seconds \
+  --authorize-single-legacy-1e-front-camera-word1-hypothesis-command \
+  --unprivileged-usbmon
+```

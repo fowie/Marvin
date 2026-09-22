@@ -161,6 +161,26 @@ class SessionTests(unittest.TestCase):
         runner.assert_called_once()
         self.serial.assert_not_called()
 
+    def test_word1_front_servo_mode_keeps_same_true_recorder_state(self):
+        from tools.marvin_legacy_front_servo_mapper import WORD1_TRANSCRIPT
+        runner = Mock(side_effect=self.capture)
+        result = self.run_capture(
+            seconds=8, actuators_isolated=False, baudrate=57600,
+            allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=runner, binary_payload_limit=4096,
+            usb_tail_seconds=5, usb_close_grace_seconds=5,
+            _front_servo_mapper=True, _front_servo_word1_mapper=True)
+        self.assertEqual(
+            result["requested_application_bytes"], sum(map(len, WORD1_TRANSCRIPT)))
+        self.assertEqual(result["probe_name"], "LegacyFrontCameraServoWord1Hypothesis")
+        command = self.popen.call_args.args[0]
+        self.assertNotIn("--actuators-isolated", command)
+        self.assertIn(
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+            command)
+        runner.assert_called_once()
+        self.serial.assert_not_called()
+
     def test_dangling_output_symlink_cannot_redirect_evidence(self):
         root = Path(self.temp.name)
         for relative in (False, True):

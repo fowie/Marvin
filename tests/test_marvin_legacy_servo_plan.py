@@ -94,6 +94,36 @@ class LegacyServoPlanTests(unittest.TestCase):
                 (3503, 0x1D, b""),
             ],
         )
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(mapper.main(["--word1-front-camera-hypothesis"]), 0)
+        word1 = json.loads(stdout.getvalue())
+        self.assertEqual(word1["fixed_mode"], "word1-front-camera-hypothesis")
+        self.assertEqual(word1["candidate_wire_word"], 1)
+        self.assertEqual(word1["target_words_uint16"], [2500, 2720])
+        self.assertEqual(word1["word1_front_camera_assignment"], "hypothesis_not_proved")
+        self.assertEqual(
+            word1["external_word0_observation"]["classification"],
+            "external_evidence_not_channel_proof")
+        word1_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in word1["immutable_application_transcript_hex"]
+        ]
+        self.assertEqual(
+            [(frame.sequence, frame.command, frame.payload) for frame in word1_frames],
+            [
+                (3504, 0x1D, b""),
+                (3505, 0x1E, bytes.fromhex("c409a00a")),
+                (3506, 0x1E, bytes.fromhex("c409aa0a")),
+                (3507, 0x1D, b""),
+            ],
+        )
+        self.assertIn(
+            "--authorize-single-legacy-1e-front-camera-word1-hypothesis-command",
+            word1["required"])
+        self.assertNotIn(
+            "--authorize-single-legacy-1e-front-camera-mapping-command",
+            word1["required"])
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
                 self.assertRaisesRegex(ValueError, "acknowledgment"):
             mapper.run_diagnostic(
@@ -101,6 +131,15 @@ class LegacyServoPlanTests(unittest.TestCase):
                 expected_physical_port="1-2",
                 run=True,
                 **dict.fromkeys(mapper.ACKNOWLEDGMENTS, False),
+            )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
+                self.assertRaisesRegex(ValueError, "acknowledgment"):
+            mapper.run_diagnostic(
+                Path(directory) / "evidence",
+                expected_physical_port="1-2",
+                run=True,
+                word1_hypothesis=True,
+                **dict.fromkeys(mapper.WORD1_ACKNOWLEDGMENTS, False),
             )
 
         class Transport:

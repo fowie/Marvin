@@ -1,7 +1,6 @@
-"""Bounded legacy front-camera servo mapping; offline by default.
+"""Two named, bounded legacy front-camera servo mappings; offline by default.
 
-The only live profile is word0 2500 -> 2490 -> 2500 while word1 remains
-2730. It never exposes arbitrary commands, values, timing, retry or reconnect.
+No arbitrary commands, words, values, timing, retry or reconnect are exposed.
 """
 
 import argparse
@@ -19,8 +18,11 @@ from tools.marvin_legacy_protocol import decode_packet, encode_request, get_serv
 
 BASELINE = (2500, 2730)
 TARGET = (2490, 2730)
+WORD1_TARGET = (2500, 2720)
 BASELINE_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in BASELINE)
 TARGET_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in TARGET)
+WORD1_TARGET_PAYLOAD = b"".join(
+    value.to_bytes(2, "little") for value in WORD1_TARGET)
 FIRST_SEQUENCE = 3500
 DWELL_SECONDS = 0.250
 RESPONSE_SECONDS = 0.500
@@ -35,27 +37,68 @@ STEPS = {
     "verify": get_servo_position_request(FIRST_SEQUENCE + 3),
 }
 TRANSCRIPT = tuple(STEPS.values())
-ACKNOWLEDGMENTS = (
+WORD1_STEPS = {
+    "baseline": get_servo_position_request(FIRST_SEQUENCE + 4),
+    "set": encode_request(FIRST_SEQUENCE + 5, 0x1E, WORD1_TARGET_PAYLOAD),
+    "restore": encode_request(FIRST_SEQUENCE + 6, 0x1E, BASELINE_PAYLOAD),
+    "verify": get_servo_position_request(FIRST_SEQUENCE + 7),
+}
+WORD1_TRANSCRIPT = tuple(WORD1_STEPS.values())
+COMMON_ACKNOWLEDGMENTS = (
     "operator_present",
     "robot_secured",
     "independent_actuator_cutoff_ready",
     "drive_and_other_actuators_inactive",
     "front_camera_tilt_only_connected_projector_servo_physically_disconnected",
     "front_camera_servo_is_ax12_plus",
+    "unprivileged_usbmon",
+)
+ACKNOWLEDGMENTS = (
+    *COMMON_ACKNOWLEDGMENTS,
     "exact_profile_baseline_2500_2730_target_2490_2730_dwell_0_25_seconds",
     "authorize_single_legacy_1e_front_camera_mapping_command",
-    "unprivileged_usbmon",
+)
+WORD1_ACKNOWLEDGMENTS = (
+    *COMMON_ACKNOWLEDGMENTS,
+    "exact_profile_baseline_2500_2730_target_2500_2720_word1_hypothesis_dwell_0_25_seconds",
+    "authorize_single_legacy_1e_front_camera_word1_hypothesis_command",
 )
 
 
-def prepare():
+def _profile(word1_hypothesis):
+    if type(word1_hypothesis) is not bool:
+        raise ValueError("Word1 hypothesis selection must be a literal boolean.")
+    return ({
+        "name": "word1-front-camera-hypothesis",
+        "word": 1,
+        "target": WORD1_TARGET,
+        "steps": WORD1_STEPS,
+        "transcript": WORD1_TRANSCRIPT,
+        "acknowledgments": WORD1_ACKNOWLEDGMENTS,
+        "success": "front_camera_servo_word1_hypothesis_complete_protocol_only",
+        "first_sequence": FIRST_SEQUENCE + 4,
+    } if word1_hypothesis else {
+        "name": "word0-front-camera-observation",
+        "word": 0,
+        "target": TARGET,
+        "steps": STEPS,
+        "transcript": TRANSCRIPT,
+        "acknowledgments": ACKNOWLEDGMENTS,
+        "success": SUCCESS,
+        "first_sequence": FIRST_SEQUENCE,
+    })
+
+
+def prepare(*, word1_hypothesis=False):
+    profile = _profile(word1_hypothesis)
     expected = (
-        (FIRST_SEQUENCE, 0x1D, b""),
-        (FIRST_SEQUENCE + 1, 0x1E, TARGET_PAYLOAD),
-        (FIRST_SEQUENCE + 2, 0x1E, BASELINE_PAYLOAD),
-        (FIRST_SEQUENCE + 3, 0x1D, b""),
+        (profile["first_sequence"], 0x1D, b""),
+        (profile["first_sequence"] + 1, 0x1E,
+         WORD1_TARGET_PAYLOAD if word1_hypothesis else TARGET_PAYLOAD),
+        (profile["first_sequence"] + 2, 0x1E, BASELINE_PAYLOAD),
+        (profile["first_sequence"] + 3, 0x1D, b""),
     )
-    for raw, fields in zip(TRANSCRIPT, expected):
+    for raw, fields in zip(profile["transcript"], expected):
         packet = decode_packet(raw)
         if (packet.sequence, packet.command, packet.response_field, packet.payload) != (
                 fields[0], fields[1], 0, fields[2]):
@@ -64,18 +107,37 @@ def prepare():
         "status": "dry_run",
         "live_execution_authorized": False,
         "profile": "marvin-legacy-se-front-camera-tilt-only-ax12-plus",
+        "fixed_mode": profile["name"],
+        "candidate_wire_word": profile["word"],
+        "word1_front_camera_assignment": (
+            "hypothesis_not_proved" if word1_hypothesis else "not_tested_by_this_profile"),
         "usb_identity": "045e:4444",
         "connected_servo": "front-camera-tilt-only",
         "projector_servo": "physically_disconnected",
         "baseline_words_uint16": list(BASELINE),
-        "target_words_uint16": list(TARGET),
-        "word0_delta": -10,
+        "target_words_uint16": list(profile["target"]),
+        f"word{profile['word']}_delta": -10,
+        **({"external_word0_observation": {
+            "operator_report": "no_visible_movement",
+            "protocol_baseline_words_uint16": list(BASELINE),
+            "protocol_target_words_uint16": list(TARGET),
+            "protocol_restore_and_final_getter_words_uint16": list(BASELINE),
+            "setter_raw_response_field_uint8": 0x82,
+            "restore_raw_response_field_uint8": 0x82,
+            "accepted_tx_only": True,
+            "uncertain_tx_bytes": 0,
+            "usbmon_dropped": 0,
+            "post_run_operator_report": "marvin_off_and_host_usb_disconnected",
+            "classification": "external_evidence_not_channel_proof",
+        }} if word1_hypothesis else {}),
         "legacy_ui_scale": "0..3000 maps AX-12+ 0..300 degrees; 10 units = 1 degree",
         "observation_seconds": DWELL_SECONDS,
         "setter_response_observation_seconds": SET_RESPONSE_SECONDS,
         "overall_deadline_seconds": OVERALL_SECONDS,
-        "immutable_application_transcript_hex": [raw.hex() for raw in TRANSCRIPT],
-        "transcript_sha256": hashlib.sha256(b"".join(TRANSCRIPT)).hexdigest(),
+        "immutable_application_transcript_hex": [
+            raw.hex() for raw in profile["transcript"]],
+        "transcript_sha256": hashlib.sha256(
+            b"".join(profile["transcript"])).hexdigest(),
         "maximum_writes": 4,
         "maximum_nonzero_setters": 1,
         "cleanup_attempts_after_setter_may_apply": 1,
@@ -91,7 +153,9 @@ def prepare():
         ),
         "required": [
             "--run", "--expected-physical-port", "--output NEWDIR",
-            *("--" + name.replace("_", "-") for name in ACKNOWLEDGMENTS),
+            *(("--word1-front-camera-hypothesis",) if word1_hypothesis else ()),
+            *("--" + name.replace("_", "-")
+              for name in profile["acknowledgments"]),
         ],
         "refused": [
             "both_servos_connected", "arbitrary_target_delta_dwell_or_range",
@@ -103,6 +167,7 @@ def prepare():
 
 class _Transport(LiveTransport):
     steps = STEPS
+    success = SUCCESS
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -148,6 +213,11 @@ class _Transport(LiveTransport):
         if count == len(raw):
             self.completed.append("restore")
         return count
+
+
+class _Word1Transport(_Transport):
+    steps = WORD1_STEPS
+    success = "front_camera_servo_word1_hypothesis_complete_protocol_only"
 
 
 def _submit(transport, report, step, *, deadline):
@@ -286,7 +356,7 @@ def _observe(transport, report, *, clock=time.monotonic):
                 else "not_required_before_setter"),
         )
         if primary is None and not final_errors:
-            report["status"] = SUCCESS
+            report["status"] = transport.success
         elif final_errors:
             report["status"] = "failed"
             if primary is None:
@@ -295,25 +365,34 @@ def _observe(transport, report, *, clock=time.monotonic):
                 primary.add_note(f"Additional front-servo {step} error: {error}")
 
 
-def run_diagnostic(output, *, expected_physical_port, run=False, **acknowledgments):
-    if run is not True or set(acknowledgments) != set(ACKNOWLEDGMENTS):
+def run_diagnostic(output, *, expected_physical_port, run=False,
+                   word1_hypothesis=False, **acknowledgments):
+    profile = _profile(word1_hypothesis)
+    required = profile["acknowledgments"]
+    if run is not True or set(acknowledgments) != set(required):
         raise ValueError("Literal --run and the complete fixed front-servo scope are required.")
-    if any(acknowledgments[name] is not True for name in ACKNOWLEDGMENTS):
+    if any(acknowledgments[name] is not True for name in required):
         raise ValueError("Every separate front-servo acknowledgment must be literal true.")
     return zero._run_diagnostic(
         output,
         expected_physical_port=expected_physical_port,
-        review=prepare(),
-        transport_type=_Transport,
+        review=prepare(word1_hypothesis=word1_hypothesis),
+        transport_type=_Word1Transport if word1_hypothesis else _Transport,
         observe=_observe,
         limits=zero._Limits(
-            first_sequence=FIRST_SEQUENCE, max_requests=4, interval=0),
-        session_options={"_front_servo_mapper": True},
+            first_sequence=profile["first_sequence"], max_requests=4, interval=0),
+        session_options={
+            "_front_servo_mapper": True,
+            "_front_servo_word1_mapper": word1_hypothesis,
+        },
         declarations={"operator_declarations": dict(acknowledgments)},
         expected_tx=lambda report: report["accepted_tx_bytes"],
-        success_status=SUCCESS,
+        success_status=profile["success"],
         report_key="front_servo_mapping",
-        authorizations={"single_legacy_1e_front_camera_mapping_authorized": True},
+        authorizations={
+            ("single_legacy_1e_front_camera_word1_hypothesis_authorized"
+             if word1_hypothesis
+             else "single_legacy_1e_front_camera_mapping_authorized"): True},
         serial_seconds=OVERALL_SECONDS,
     )
 
@@ -321,17 +400,26 @@ def run_diagnostic(output, *, expected_physical_port, run=False, **acknowledgmen
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--word1-front-camera-hypothesis", action="store_true")
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--output", type=Path)
-    for name in ACKNOWLEDGMENTS:
+    all_acknowledgments = tuple(dict.fromkeys(
+        (*ACKNOWLEDGMENTS, *WORD1_ACKNOWLEDGMENTS)))
+    for name in all_acknowledgments:
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
     args = parser.parse_args(argv)
-    acknowledgments = {name: getattr(args, name) for name in ACKNOWLEDGMENTS}
+    profile = _profile(args.word1_front_camera_hypothesis)
+    acknowledgments = {
+        name: getattr(args, name) for name in profile["acknowledgments"]}
+    unused_acknowledgments = set(all_acknowledgments) - set(profile["acknowledgments"])
     try:
+        if any(getattr(args, name) for name in unused_acknowledgments):
+            raise ValueError("Authorization literals cannot be mixed between fixed profiles.")
         if not args.run:
             if args.output or args.expected_physical_port or any(acknowledgments.values()):
                 raise ValueError("Live-only arguments require --run.")
-            result = prepare()
+            result = prepare(
+                word1_hypothesis=args.word1_front_camera_hypothesis)
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
@@ -339,6 +427,7 @@ def main(argv=None):
                 args.output,
                 expected_physical_port=args.expected_physical_port,
                 run=True,
+                word1_hypothesis=args.word1_front_camera_hypothesis,
                 **acknowledgments,
             )
     except (Exception, KeyboardInterrupt) as error:
