@@ -136,6 +136,29 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(result["requested_application_bytes"], 14)
         self.assertEqual(result["immutable_application_transcript_hex"], [ZERO_TRANSCRIPT[0].hex()])
         self.assertEqual(result["physical_stop"], "not_established")
+        command = self.popen.call_args.args[0]
+        self.assertIn("--actuators-isolated", command)
+        self.assertNotIn(
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+            command)
+        self.serial.assert_not_called()
+
+    def test_front_servo_mode_uses_true_recorder_state_not_full_isolation(self):
+        from tools.marvin_legacy_front_servo_mapper import TRANSCRIPT
+        runner = Mock(side_effect=self.capture)
+        result = self.run_capture(
+            seconds=8, actuators_isolated=False, baudrate=57600,
+            allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=runner, binary_payload_limit=4096,
+            usb_tail_seconds=5, usb_close_grace_seconds=5,
+            _front_servo_mapper=True)
+        self.assertEqual(result["requested_application_bytes"], sum(map(len, TRANSCRIPT)))
+        command = self.popen.call_args.args[0]
+        self.assertNotIn("--actuators-isolated", command)
+        self.assertIn(
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+            command)
+        runner.assert_called_once()
         self.serial.assert_not_called()
 
     def test_dangling_output_symlink_cannot_redirect_evidence(self):

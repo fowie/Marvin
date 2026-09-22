@@ -461,7 +461,15 @@ def run_session(
         left_motor_powered_observation=left_motor_powered_observation,
         operator_at_external_cutoff=operator_at_external_cutoff,
     )
-    scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
+    if _front_servo_mapper:
+        if actuators_isolated or any(declarations.values()):
+            raise ValueError(
+                "Front-servo mapping requires its own connected-servo profile, "
+                "not isolation or a motor diagnostic declaration.")
+        scope = None
+    else:
+        scope = motor_consent.classify(
+            actuators_isolated=actuators_isolated, **declarations)
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
     if scope == motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
         raise ValueError(
@@ -920,6 +928,9 @@ def run_session(
     ]
     if powered_trial:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.POWERED_TRIAL_SCOPES[scope])
+    elif _front_servo_mapper:
+        command.append(
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected")
     elif encoder_feedback_observation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.ENCODER_FLAGS)
     elif left_motor_powered_observation:

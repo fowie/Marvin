@@ -631,6 +631,20 @@ class CaptureTests(LocalFilesTests):
         options.update(kwargs)
         return usbmon.capture(USB_PATH, self.output, **options)
 
+    def test_front_servo_profile_is_explicit_and_mutually_exclusive(self):
+        declaration = {
+            "front_camera_tilt_only_connected_projector_servo_physically_disconnected": True,
+        }
+        for conflict in (
+                {"actuators_isolated": True},
+                {"motor_supply_off": True}):
+            with self.subTest(conflict=conflict), \
+                    self.assertRaisesRegex(usbmon.UsbmonError, "own connected-servo"):
+                self.capture(**(declaration | conflict))
+        with self.assertRaisesRegex(usbmon.UsbmonError, "fixed full binary"):
+            self.capture(actuators_isolated=False, **declaration)
+        self.identity.assert_not_called()
+
     def metadata(self):
         return json.loads((self.output / "metadata.json").read_text())
 

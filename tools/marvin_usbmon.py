@@ -710,6 +710,7 @@ def _coordinator_stop_requested(output):
 
 @motor_consent.powered_faults
 def capture(usb_path, output, *, seconds, actuators_isolated=False,
+            front_camera_tilt_only_connected_projector_servo_physically_disconnected=False,
             drop_to_invoking_user=False, max_bytes=DEFAULT_MAX_BYTES,
             max_records=DEFAULT_MAX_RECORDS, max_line_bytes=DEFAULT_MAX_LINE_BYTES,
             max_pending=DEFAULT_MAX_PENDING, backend="text", coordinator_stop=False,
@@ -921,13 +922,27 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         left_motor_powered_observation=left_motor_powered_observation,
         operator_at_external_cutoff=operator_at_external_cutoff,
     )
-    try:
-        scope = motor_consent.classify(actuators_isolated=actuators_isolated, **declarations)
-    except ValueError as error:
-        raise UsbmonError(str(error)) from error
+    front_servo_profile = (
+        front_camera_tilt_only_connected_projector_servo_physically_disconnected)
+    if type(front_servo_profile) is not bool:
+        raise UsbmonError("Front-servo physical-state declaration must be a boolean.")
+    if front_servo_profile:
+        if actuators_isolated or any(declarations.values()):
+            raise UsbmonError(
+                "Front-servo recording requires its own connected-servo profile, "
+                "not isolation or a motor diagnostic declaration.")
+        scope = None
+    else:
+        try:
+            scope = motor_consent.classify(
+                actuators_isolated=actuators_isolated, **declarations)
+        except ValueError as error:
+            raise UsbmonError(str(error)) from error
     preparation = scope == "preparation"
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
-    observation = left_motor_powered_observation or encoder_feedback_observation or powered_trial
+    observation = (
+        left_motor_powered_observation or encoder_feedback_observation
+        or powered_trial or front_servo_profile)
     notify = (motor_consent.notify_powered_trial_fault if powered_trial else
               motor_consent.notify_collection_ended if encoder_feedback_observation else motor_consent.notify_cut_power)
     if not observation:
@@ -936,7 +951,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096
             or seconds != (
-                25 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                18 if front_servo_profile
+                else 25 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
                 else 20 if scope in (
                     motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
                     motor_consent.DISCONNECTED_LED_STATE_SCOPE,
@@ -967,7 +983,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             or (isinstance(seconds, float) and not math.isfinite(seconds))
             or not 0 < seconds <= 120):
         raise UsbmonError("seconds must be finite, greater than zero and at most 120.")
-    if actuators_isolated is not True and not (preparation or observation):
+    if actuators_isolated is not True and not (
+            preparation or observation or front_servo_profile):
         raise UsbmonError("Explicit --actuators-isolated confirmation is required.")
     _integer_limit(max_bytes, "max_bytes", 1, 64 * DEFAULT_MAX_BYTES)
     if backend == "binary" and max_bytes < len(binary.FILE_MAGIC):
@@ -1030,6 +1047,15 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             if powered_trial:
                 metadata.update(**motor_consent.powered_trial_history(declarations),
                                 consent_profile=scope)
+            if front_servo_profile:
+                metadata.update(
+                    consent_profile=(
+                        "front_camera_tilt_only_connected_"
+                        "projector_servo_physically_disconnected"),
+                    actuators_isolated=False,
+                    connected_servo="front-camera-tilt-only",
+                    projector_servo="physically_disconnected",
+                )
             framer = _Framer(max_line_bytes, (identity["busnum"], identity["devnum"]))
             failure = None
             started = None
@@ -1265,6 +1291,9 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="New private directory; must not exist.")
     parser.add_argument("--seconds", type=float, default=90)
     parser.add_argument("--actuators-isolated", action="store_true")
+    parser.add_argument(
+        "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+        action="store_true")
     motor_consent.add_arguments(parser)
     motor_consent.add_observation_arguments(parser)
     motor_consent.add_powered_trial_arguments(parser)
@@ -1282,6 +1311,7 @@ def main(argv=None):
     args = motor_consent.parse_observation_arguments(parser, argv)
     if args.analyze:
         if (args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated
+                or args.front_camera_tilt_only_connected_projector_servo_physically_disconnected
                 or args.coordinator_stop or any(motor_consent.arguments(args).values())
                 or any(motor_consent.observation_arguments(args).values())
                 or any(motor_consent.powered_trial_arguments(args).values())):
@@ -1315,6 +1345,8 @@ def main(argv=None):
         result = capture(
             args.usb_path, args.output, seconds=args.seconds,
             actuators_isolated=args.actuators_isolated,
+            front_camera_tilt_only_connected_projector_servo_physically_disconnected=(
+                args.front_camera_tilt_only_connected_projector_servo_physically_disconnected),
             drop_to_invoking_user=args.drop_to_invoking_user, max_bytes=args.max_bytes,
             max_records=args.max_records, max_line_bytes=args.max_line_bytes, max_pending=args.max_pending,
             backend=args.backend, coordinator_stop=args.coordinator_stop,
