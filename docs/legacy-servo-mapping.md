@@ -163,3 +163,40 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --authorize-single-legacy-1e-front-camera-word1-hypothesis-command \
   --unprivileged-usbmon
 ```
+
+The clean word-1 one-degree run likewise produced correlated raw-`82`
+setter/restore responses, a matching final `[2500,2730]` getter, accepted TX
+only, zero uncertain TX bytes, zero usbmon drops, and no operator-visible
+movement. The operator reported that the AX-12+ LED illuminated or blinked
+during power-on, then Marvin was OFF with host USB disconnected. Both
+one-degree negative observations remain external evidence, not channel proof.
+
+A separate fixed word-0 five-degree diagnostic changes only `[2500,2730]` to
+`[2450,2730]`. Fifty legacy UI units equals five degrees under the declared
+AX-12+ `0..3000` to `0..300` scale and remains inside that UI range. Neither
+the scale nor the two negative observations establishes mechanical safety, so
+the mode requires a separate literal operator clearance confirmation.
+
+Five-degree dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-five-degree-diagnostic
+```
+
+Exact five-degree live invocation:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-five-degree-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
+  --front-camera-servo-is-ax12-plus \
+  --operator-confirmed-word0-five-degree-mechanical-clearance \
+  --exact-profile-baseline-2500-2730-target-2450-2730-word0-five-degree-dwell-0-25-seconds \
+  --authorize-single-legacy-1e-front-camera-word0-five-degree-diagnostic-command \
+  --unprivileged-usbmon
+```

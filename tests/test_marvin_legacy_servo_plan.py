@@ -103,7 +103,7 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertEqual(word1["target_words_uint16"], [2500, 2720])
         self.assertEqual(word1["word1_front_camera_assignment"], "hypothesis_not_proved")
         self.assertEqual(
-            word1["external_word0_observation"]["classification"],
+            word1["external_one_degree_observations"]["word0"]["classification"],
             "external_evidence_not_channel_proof")
         word1_frames = [
             protocol.decode_packet(bytes.fromhex(raw))
@@ -124,6 +124,43 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertNotIn(
             "--authorize-single-legacy-1e-front-camera-mapping-command",
             word1["required"])
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(mapper.main(["--word0-five-degree-diagnostic"]), 0)
+        five_degree = json.loads(stdout.getvalue())
+        self.assertEqual(five_degree["fixed_mode"], "word0-five-degree-diagnostic")
+        self.assertEqual(five_degree["candidate_wire_word"], 0)
+        self.assertEqual(five_degree["target_words_uint16"], [2450, 2730])
+        self.assertEqual(five_degree["word0_delta"], -50)
+        self.assertIn("does not establish mechanical safety",
+                      five_degree["five_degree_safety_basis"])
+        self.assertEqual(
+            set(five_degree["external_one_degree_observations"]),
+            {"word0", "word1"})
+        self.assertTrue(all(
+            evidence["classification"] == "external_evidence_not_channel_proof"
+            for evidence in five_degree[
+                "external_one_degree_observations"].values()))
+        five_degree_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in five_degree["immutable_application_transcript_hex"]
+        ]
+        self.assertEqual(
+            [(frame.sequence, frame.command, frame.payload)
+             for frame in five_degree_frames],
+            [
+                (3508, 0x1D, b""),
+                (3509, 0x1E, bytes.fromhex("9209aa0a")),
+                (3510, 0x1E, bytes.fromhex("c409aa0a")),
+                (3511, 0x1D, b""),
+            ],
+        )
+        self.assertIn(
+            "--operator-confirmed-word0-five-degree-mechanical-clearance",
+            five_degree["required"])
+        self.assertIn(
+            "--authorize-single-legacy-1e-front-camera-word0-five-degree-diagnostic-command",
+            five_degree["required"])
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
                 self.assertRaisesRegex(ValueError, "acknowledgment"):
             mapper.run_diagnostic(
@@ -140,6 +177,16 @@ class LegacyServoPlanTests(unittest.TestCase):
                 run=True,
                 word1_hypothesis=True,
                 **dict.fromkeys(mapper.WORD1_ACKNOWLEDGMENTS, False),
+            )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
+                self.assertRaisesRegex(ValueError, "acknowledgment"):
+            mapper.run_diagnostic(
+                Path(directory) / "evidence",
+                expected_physical_port="1-2",
+                run=True,
+                word0_five_degree=True,
+                **dict.fromkeys(
+                    mapper.WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS, False),
             )
 
         class Transport:

@@ -244,6 +244,7 @@ def run_session(
     _motor_power_off_preparation=False,
     _front_servo_mapper=False,
     _front_servo_word1_mapper=False,
+    _front_servo_word0_five_degree_mapper=False,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -335,10 +336,15 @@ def run_session(
         raise ValueError("capture_runner must be a callable serial capture boundary.")
     if any(type(flag) is not bool for flag in (
             _isolated_zero_velocity, _motor_power_off_preparation,
-            _front_servo_mapper, _front_servo_word1_mapper)):
+            _front_servo_mapper, _front_servo_word1_mapper,
+            _front_servo_word0_five_degree_mapper)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     if _front_servo_word1_mapper and not _front_servo_mapper:
         raise ValueError("Word1 front-servo mode requires the front-servo mapper.")
+    if _front_servo_word0_five_degree_mapper and not _front_servo_mapper:
+        raise ValueError("Five-degree front-servo mode requires the front-servo mapper.")
+    if _front_servo_word1_mapper and _front_servo_word0_five_degree_mapper:
+        raise ValueError("Front-servo fixed modes are mutually exclusive.")
     declarations = dict(
         powered_left_command_right_connected=powered_left_command_right_connected,
         motor_left_disconnected=motor_left_disconnected,
@@ -556,9 +562,13 @@ def run_session(
     if _motor_power_off_preparation or powered_trial or _front_servo_mapper:
         if _front_servo_mapper:
             from tools.marvin_legacy_front_servo_mapper import (
-                TRANSCRIPT as WORD0_TRANSCRIPT, WORD1_TRANSCRIPT)
+                TRANSCRIPT as WORD0_TRANSCRIPT, WORD1_TRANSCRIPT,
+                WORD0_FIVE_DEGREE_TRANSCRIPT)
             TRANSCRIPT = (
-                WORD1_TRANSCRIPT if _front_servo_word1_mapper else WORD0_TRANSCRIPT)
+                WORD0_FIVE_DEGREE_TRANSCRIPT
+                if _front_servo_word0_five_degree_mapper
+                else WORD1_TRANSCRIPT if _front_servo_word1_mapper
+                else WORD0_TRANSCRIPT)
         elif powered_trial:
             if scope == motor_consent.DISCONNECTED_GET_LOG_SCOPE:
                 from tools.marvin_legacy_disconnected_get_log import TRANSCRIPT
@@ -785,6 +795,8 @@ def run_session(
         )
         if _front_servo_word1_mapper:
             metadata["probe_name"] = "LegacyFrontCameraServoWord1Hypothesis"
+        if _front_servo_word0_five_degree_mapper:
+            metadata["probe_name"] = "LegacyFrontCameraServoWord0FiveDegree"
         metadata["limitations"][2] = (
             "Kernel-open line transitions remain possible; mapping uses an unflushed raw tty.")
     if left_motor_powered_observation:
