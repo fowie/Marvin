@@ -414,7 +414,9 @@ class _SetRestoreEvidence:
                 if step is None:
                     labels.append("unexpected_command_or_sequence")
                 else:
-                    submitted = self.report[f"{step}_prewrite_monotonic"]
+                    submitted = self.report[
+                        "setter_prewrite_monotonic"
+                        if step == "set" else "restore_prewrite_monotonic"]
                     if started is None or started <= submitted:
                         labels.append("prewrite_or_ambiguous")
                     if ended is None or ended >= self.deadline or now >= self.deadline:

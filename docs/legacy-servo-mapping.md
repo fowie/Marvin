@@ -200,3 +200,20 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --authorize-single-legacy-1e-front-camera-word0-five-degree-diagnostic-command \
   --unprivileged-usbmon
 ```
+
+### First five-degree run evidence
+
+The first authorized five-degree execution ended in a software evidence
+correlation failure, `KeyError: 'set_prewrite_monotonic'`. The sealed evidence
+shows three accepted application writes and three successful USB OUT
+completions: the baseline getter, `[2450,2730]` setter, and full `[2500,2730]`
+restore. The restore write began 0.142 ms after the setter write began. A
+CRC-valid raw-`82` setter reply reached serial correlation; a CRC-valid
+raw-`82` restore reply is retained in usbmon during close cancellation but was
+not correlated by the application. No verification getter was sent.
+
+This establishes host submission of the setter and restore, not application
+acknowledgment or physical restoration. The operator separately reported no
+visible movement, hearing the servo engage, then immediately powering Marvin
+off and disconnecting host USB. That physical observation remains separate
+from protocol evidence and does not prove channel mapping or restoration.

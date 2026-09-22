@@ -165,7 +165,7 @@ class LegacyServoPlanTests(unittest.TestCase):
             five_degree["required"])
         evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
         evidence_report = {
-            "set_prewrite_monotonic": 1.0,
+            "setter_prewrite_monotonic": 1.0,
             "restore_prewrite_monotonic": 1.1,
             "protocol_evidence": [],
         }
