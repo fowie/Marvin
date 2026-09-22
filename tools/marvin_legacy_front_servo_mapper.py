@@ -4,16 +4,19 @@ No arbitrary commands, words, values, timing, retry or reconnect are exposed.
 """
 
 import argparse
+from collections import deque
 import hashlib
 import json
 import os
 from pathlib import Path
+import select
 import sys
 import time
 
 from tools import marvin_legacy_zero as zero
 from tools.marvin_legacy_live import LiveTransport
 from tools.marvin_legacy_protocol import decode_packet, encode_request, get_servo_position_request
+from tools.marvin_legacy_stream import LegacyStreamDecoder
 
 
 BASELINE = (2500, 2730)
@@ -29,7 +32,6 @@ WORD0_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
 FIRST_SEQUENCE = 3500
 DWELL_SECONDS = 0.250
 RESPONSE_SECONDS = 0.500
-SET_RESPONSE_SECONDS = 0.200
 OVERALL_SECONDS = 8
 CLEANUP_RESERVE_SECONDS = 2
 SUCCESS = "front_camera_servo_mapping_complete_protocol_only"
@@ -195,7 +197,7 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False):
             "safety, which requires the separate operator clearance confirmation"
         )} if word0_five_degree else {}),
         "observation_seconds": DWELL_SECONDS,
-        "setter_response_observation_seconds": SET_RESPONSE_SECONDS,
+        "post_restore_response_observation_seconds": RESPONSE_SECONDS,
         "overall_deadline_seconds": OVERALL_SECONDS,
         "immutable_application_transcript_hex": [
             raw.hex() for raw in profile["transcript"]],
@@ -236,6 +238,7 @@ class _Transport(LiveTransport):
         super().__init__(*args, **kwargs)
         self.completed = []
         self.nonzero_may_have_applied = False
+        self.setter_write_started = None
         self.restore_attempted = False
         self.restore_correlated = False
 
@@ -247,7 +250,20 @@ class _Transport(LiveTransport):
         if step == "set":
             if self.completed != ["baseline"]:
                 raise OSError("Setter requires the exact correlated baseline.")
+            self.last_write_started = None
+            self.last_write_sequence = None
+            try:
+                count = self._submit_once(self.steps[step], deadline=deadline)
+            except BaseException:
+                self.setter_write_started = self.last_write_started
+                self.nonzero_may_have_applied = (
+                    type(self.setter_write_started) in (int, float))
+                raise
+            self.setter_write_started = self.last_write_started
             self.nonzero_may_have_applied = True
+            if count == len(self.steps[step]):
+                self.completed.append(step)
+            return count
         elif step == "verify":
             if not self.restore_correlated:
                 raise OSError("Verification getter requires a correlated restore response.")
@@ -263,16 +279,25 @@ class _Transport(LiveTransport):
             raise OSError("Restore has already been attempted; no retry.")
         if not self.nonzero_may_have_applied:
             raise OSError("Restore is only admitted after the setter may have applied.")
-        self.restore_attempted = True
         raw = self.steps["restore"]
-        self._check(deadline)
+        self._owner()
+        if self.closed or self.fd is None:
+            raise OSError("Owned tty is unavailable for the single restore attempt.")
         self.ingress.expected_tx.append(raw)
         self.writes += 1
         self.last_write_sequence = decode_packet(raw).sequence
         self.last_write_started = time.monotonic()
+        self.restore_attempted = True
+        self.restore_started_within_bound = self.last_write_started <= deadline
         count = os.write(self.fd, raw)
         self.last_write = time.monotonic()
-        self.event("front_servo_restore_returned", raw_hex=raw.hex(), accepted_bytes=count)
+        self.event(
+            "front_servo_restore_returned",
+            raw_hex=raw.hex(),
+            accepted_bytes=count,
+            restore_prewrite_deadline=deadline,
+            restore_started_within_bound=self.restore_started_within_bound,
+        )
         if count == len(raw):
             self.completed.append("restore")
         return count
@@ -317,12 +342,12 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
             else ["unexpected_front_servo_payload"]),
     )
     evidence.submitted_at = transport.last_write_started
-    response_seconds = SET_RESPONSE_SECONDS if step == "set" else RESPONSE_SECONDS
-    evidence.deadline = min(deadline, evidence.submitted_at + response_seconds)
-    if evidence.deadline != evidence.submitted_at + response_seconds:
+    evidence.deadline = min(deadline, evidence.submitted_at + RESPONSE_SECONDS)
+    if evidence.deadline != evidence.submitted_at + RESPONSE_SECONDS:
         raise OSError(f"Insufficient overall deadline for {step} response.")
     try:
-        zero._observe_response(transport, evidence, deadline=deadline, clock=clock)
+        zero._observe_response(
+            transport, evidence, deadline=evidence.deadline, clock=clock)
         packet = decode_packet(bytes.fromhex(evidence.events[0]["stream"]["raw_hex"]))
         report["protocol_evidence"].append({
             "step": step,
@@ -336,6 +361,126 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
         return packet
     finally:
         evidence.finish(clock())
+
+
+class _SetRestoreEvidence:
+    def __init__(self, transport, report, deadline):
+        self.transport = transport
+        self.report = report
+        self.deadline = deadline
+        self.decoder = LegacyStreamDecoder(max_input_bytes=8192)
+        self.spans = deque()
+        self.last_bounds = None
+        self.events = []
+        self.seen = {"set": 0, "restore": 0}
+        self.expected = {
+            (decode_packet(transport.steps[step]).sequence, 0x1E): step
+            for step in self.seen
+        }
+
+    def feed(self, received, now):
+        start = self.decoder.input_bytes
+        self.spans.append((
+            start, start + len(received.data),
+            received.started_at, received.ended_at))
+        timing_ok = (
+            received.started_at <= received.ended_at <= now
+            and (self.last_bounds is None
+                 or (received.started_at >= self.last_bounds[0]
+                     and received.ended_at >= self.last_bounds[1])))
+        self.last_bounds = (received.started_at, received.ended_at)
+        self._record(self.decoder.feed(received.data), now, timing_ok)
+
+    def finish(self, now):
+        self._record(self.decoder.finish(), now, True)
+
+    def _record(self, events, now, timing_ok):
+        faults = []
+        for event in events:
+            spans = [
+                span for span in self.spans
+                if span[0] < event.end_offset and span[1] > event.offset]
+            started = min((span[2] for span in spans), default=None)
+            ended = max((span[3] for span in spans), default=None)
+            labels = ["unverified_shape_and_semantics"]
+            step = None
+            if not timing_ok:
+                labels.append("invalid_ingress_bounds")
+            if event.kind != "frame":
+                labels.append(event.kind)
+            else:
+                packet = event.packet
+                step = self.expected.get((packet.sequence, packet.command))
+                if step is None:
+                    labels.append("unexpected_command_or_sequence")
+                else:
+                    submitted = self.report[f"{step}_prewrite_monotonic"]
+                    if started is None or started <= submitted:
+                        labels.append("prewrite_or_ambiguous")
+                    if ended is None or ended >= self.deadline or now >= self.deadline:
+                        labels.append("late")
+                    if packet.response_field not in (0x80, 0x82):
+                        labels.append("uninterpreted_non80_status")
+                    if packet.payload:
+                        labels.append("unexpected_front_servo_payload")
+                    if self.seen[step]:
+                        labels.append("additional_frame")
+                    if event.follows_corruption:
+                        labels.append("ambiguous_boundary")
+                    if len(labels) == 1:
+                        labels.append("correlated_command_sequence_only")
+                        self.seen[step] += 1
+            clean = labels == [
+                "unverified_shape_and_semantics",
+                "correlated_command_sequence_only",
+            ]
+            row = {
+                "stream": event.to_dict(),
+                "started_at": started,
+                "ended_at": ended,
+                "labels": labels,
+                "application_acknowledgment": "not_established",
+            }
+            self.events.append(row)
+            self.transport.event("response_evidence", **row)
+            if clean:
+                packet = event.packet
+                self.report["protocol_evidence"].append({
+                    "step": step,
+                    "sequence": packet.sequence,
+                    "command": packet.command,
+                    "raw_response_field": packet.response_field,
+                    "raw_payload_hex": packet.payload.hex(),
+                    "application_acknowledgment": "not_established",
+                    "events": [row],
+                })
+            else:
+                faults.append(labels)
+            while self.spans and self.spans[0][1] <= event.end_offset:
+                self.spans.popleft()
+        if faults:
+            raise OSError(
+                f"Unclean set/restore response evidence: {faults[0]}")
+
+
+def _set_restore_responses(transport, report, *, deadline, clock=time.monotonic):
+    evidence = _SetRestoreEvidence(transport, report, deadline)
+    for _ in range(4096):
+        if clock() >= deadline:
+            break
+        transport.identity(deadline=deadline)
+        transport.ingress.pump()
+        remaining = deadline - clock()
+        if remaining <= 0:
+            break
+        readable, _, _ = select.select(
+            [transport.fd], [], [], min(0.005, remaining))
+        if readable:
+            evidence.feed(transport.read(512, deadline=deadline), clock())
+    else:
+        raise OSError("Set/restore response observation iteration budget exhausted.")
+    evidence.finish(clock())
+    return evidence.seen
 
 
 def _observe(transport, report, *, clock=time.monotonic):
@@ -372,8 +517,7 @@ def _observe(transport, report, *, clock=time.monotonic):
             flush=True,
         )
         _submit(transport, report, "set", deadline=active_deadline)
-        report["setter_prewrite_monotonic"] = transport.last_write_started
-        _response(transport, report, "set", deadline=active_deadline, clock=clock)
+        report["setter_prewrite_monotonic"] = transport.setter_write_started
     except BaseException as error:
         primary = error
         report.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
@@ -381,19 +525,41 @@ def _observe(transport, report, *, clock=time.monotonic):
     finally:
         if transport.nonzero_may_have_applied and not transport.restore_attempted:
             try:
-                _submit(transport, report, "restore", deadline=overall_deadline)
-                _response(
-                    transport, report, "restore", deadline=overall_deadline, clock=clock)
-                transport.restore_correlated = True
-                setter_started = report.get("setter_prewrite_monotonic")
+                setter_started = transport.setter_write_started
                 if type(setter_started) not in (int, float):
-                    raise OSError("Setter timing boundary is uncertain after its write fault.")
-                elapsed = transport.last_write_started - setter_started
-                report["setter_to_restore_start_seconds"] = elapsed
-                if elapsed > DWELL_SECONDS:
-                    raise OSError("Restore started after the 0.25-second setter bound.")
+                    raise OSError("Setter prewrite boundary is unavailable for restore.")
+                report["setter_prewrite_monotonic"] = setter_started
+                restore_deadline = setter_started + DWELL_SECONDS
+                report["restore_prewrite_deadline_monotonic"] = restore_deadline
+                _submit(transport, report, "restore", deadline=restore_deadline)
+                report["restore_prewrite_monotonic"] = transport.last_write_started
+                response_deadline = min(
+                    overall_deadline,
+                    transport.last_write_started + RESPONSE_SECONDS)
+                seen = _set_restore_responses(
+                    transport, report, deadline=response_deadline, clock=clock)
+                transport.restore_correlated = seen["restore"] == 1
+                if seen["set"] != 1:
+                    final_errors.append((
+                        "set_response",
+                        OSError("No single clean correlated setter response."),
+                    ))
+                if not transport.restore_correlated:
+                    raise OSError("No single clean correlated restore response.")
             except BaseException as error:
                 final_errors.append(("restore", error))
+            finally:
+                if transport.restore_attempted:
+                    report["setter_to_restore_start_seconds"] = (
+                        transport.last_write_started - setter_started)
+                    report["restore_started_within_bound"] = (
+                        transport.restore_started_within_bound)
+                    if not transport.restore_started_within_bound:
+                        final_errors.append((
+                            "restore_bound",
+                            OSError(
+                                "Restore started after the 0.25-second setter bound."),
+                        ))
         if transport.restore_correlated:
             try:
                 _submit(transport, report, "verify", deadline=overall_deadline)

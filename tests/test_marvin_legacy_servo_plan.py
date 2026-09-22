@@ -9,9 +9,11 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+from tests.test_marvin_legacy_protocol import frame
 from tools import marvin_legacy_protocol as protocol
 from tools import marvin_legacy_front_servo_mapper as mapper
 from tools import marvin_legacy_servo_plan as plan
+from tools.marvin_legacy_client import Received
 
 
 class LegacyServoPlanTests(unittest.TestCase):
@@ -161,6 +163,24 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertIn(
             "--authorize-single-legacy-1e-front-camera-word0-five-degree-diagnostic-command",
             five_degree["required"])
+        evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
+        evidence_report = {
+            "set_prewrite_monotonic": 1.0,
+            "restore_prewrite_monotonic": 1.1,
+            "protocol_evidence": [],
+        }
+        evidence = mapper._SetRestoreEvidence(
+            evidence_transport, evidence_report, 1.5)
+        evidence.feed(Received(
+            frame(sequence=3509, command=0x1E, status=0x82)
+            + frame(sequence=3510, command=0x1E, status=0x82),
+            1.2, 1.3), 1.4)
+        evidence.finish(1.4)
+        self.assertEqual(evidence.seen, {"set": 1, "restore": 1})
+        self.assertEqual(
+            [(row["step"], row["raw_response_field"])
+             for row in evidence_report["protocol_evidence"]],
+            [("set", 0x82), ("restore", 0x82)])
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
                 self.assertRaisesRegex(ValueError, "acknowledgment"):
             mapper.run_diagnostic(
@@ -198,6 +218,7 @@ class LegacyServoPlanTests(unittest.TestCase):
                 self.attempts = []
                 self.writes = 0
                 self.last_write_started = 0
+                self.setter_write_started = None
                 self.nonzero_may_have_applied = False
                 self.restore_attempted = False
                 self.restore_correlated = False
@@ -215,10 +236,12 @@ class LegacyServoPlanTests(unittest.TestCase):
                 self.writes += 1
                 if step == "set":
                     self.nonzero_may_have_applied = True
+                    self.setter_write_started = self.last_write_started
                 if step == "restore":
                     if self.restore_attempted:
                         raise OSError("restore retry")
                     self.restore_attempted = True
+                    self.restore_started_within_bound = True
                 return len(self.steps[step])
 
         def response(transport, report, step, **_):
@@ -229,16 +252,17 @@ class LegacyServoPlanTests(unittest.TestCase):
             return Mock(response_field=0x82 if step == "restore" else 0x80)
 
         def interrupted_response(transport, report, step, **kwargs):
-            if step == "set":
-                raise KeyboardInterrupt()
             return response(transport, report, step, **kwargs)
 
         transport = Transport()
         with patch.object(mapper, "_response", side_effect=interrupted_response), \
+                patch.object(
+                    mapper, "_set_restore_responses",
+                    side_effect=KeyboardInterrupt()), \
                 redirect_stderr(io.StringIO()), \
                 self.assertRaises(KeyboardInterrupt):
             mapper._observe(transport, {}, clock=lambda: 0)
-        self.assertEqual(transport.attempts, ["baseline", "set", "restore", "verify"])
+        self.assertEqual(transport.attempts, ["baseline", "set", "restore"])
         self.assertEqual(transport.attempts.count("restore"), 1)
         self.assertTrue(transport.restore_attempted)
         transport.close.assert_called_once()
@@ -252,6 +276,7 @@ class LegacyServoPlanTests(unittest.TestCase):
                     faulted.attempts.append(step)
                     faulted.writes += 1
                     faulted.nonzero_may_have_applied = True
+                    faulted.setter_write_started = faulted.last_write_started
                     if set_result == "error":
                         raise OSError("uncertain set write")
                     return 1
@@ -260,6 +285,9 @@ class LegacyServoPlanTests(unittest.TestCase):
             faulted.submit = faulty_submit
             with self.subTest(set_result=set_result), \
                     patch.object(mapper, "_response", side_effect=response), \
+                    patch.object(
+                        mapper, "_set_restore_responses",
+                        return_value={"set": 1, "restore": 1}), \
                     redirect_stderr(io.StringIO()), self.assertRaises(OSError):
                 mapper._observe(faulted, {}, clock=lambda: 0)
             self.assertEqual(faulted.attempts.count("restore"), 1)
@@ -269,17 +297,92 @@ class LegacyServoPlanTests(unittest.TestCase):
         live = mapper._Transport.__new__(mapper._Transport)
         live.nonzero_may_have_applied = True
         live.restore_attempted = False
+        live.closed = False
         live.completed = ["baseline", "set"]
         live.writes = 2
         live.fd = 99
         live.ingress = Mock()
-        live._check = Mock()
+        live._owner = Mock()
+        live._check = Mock(side_effect=OSError("recorder stopped"))
         live.event = Mock(side_effect=OSError("journal fault"))
-        with patch.object(mapper.os, "write", return_value=len(mapper.STEPS["restore"])) as write, \
+        with patch.object(mapper.time, "monotonic", return_value=.2), \
+                patch.object(mapper.os, "write",
+                             return_value=len(mapper.STEPS["restore"])) as write, \
                 self.assertRaises(OSError):
-            live._restore_once(deadline=1)
+            live._restore_once(deadline=.25)
         write.assert_called_once_with(99, mapper.STEPS["restore"])
         self.assertTrue(live.restore_attempted)
+        self.assertTrue(live.restore_started_within_bound)
+        live._check.assert_not_called()
+
+        late = mapper._Transport.__new__(mapper._Transport)
+        late.nonzero_may_have_applied = True
+        late.restore_attempted = False
+        late.closed = False
+        late.completed = ["baseline", "set"]
+        late.writes = 2
+        late.fd = 99
+        late.ingress = Mock()
+        late._owner = Mock()
+        late.event = Mock()
+        with patch.object(mapper.time, "monotonic", side_effect=(.26, .27)), \
+                patch.object(mapper.os, "write",
+                             return_value=len(mapper.STEPS["restore"])) as write:
+            self.assertEqual(
+                late._restore_once(deadline=.25),
+                len(mapper.STEPS["restore"]))
+        write.assert_called_once_with(99, mapper.STEPS["restore"])
+        self.assertTrue(late.restore_attempted)
+        self.assertFalse(late.restore_started_within_bound)
+
+        late_report = {}
+        late_transport = Transport()
+        original_submit = late_transport.submit
+
+        def late_restore(step, *, deadline):
+            if step == "restore":
+                late_transport.attempts.append(step)
+                late_transport.writes += 1
+                late_transport.restore_attempted = True
+                late_transport.last_write_started = .26
+                late_transport.restore_started_within_bound = False
+                raise OSError("restore evidence failed")
+            return original_submit(step, deadline=deadline)
+
+        late_transport.submit = late_restore
+        with patch.object(mapper, "_response", side_effect=response), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "restore evidence failed"):
+            mapper._observe(late_transport, late_report, clock=lambda: 0)
+        self.assertEqual(late_transport.attempts.count("restore"), 1)
+        self.assertEqual(late_report["setter_to_restore_start_seconds"], .26)
+        self.assertFalse(late_report["restore_started_within_bound"])
+        self.assertEqual(
+            [error["step"] for error in late_report["finalization_errors"]],
+            ["restore", "restore_bound"])
+
+        for reached_prewrite in (False, True):
+            setter = mapper._Transport.__new__(mapper._Transport)
+            setter.completed = ["baseline"]
+            setter.nonzero_may_have_applied = False
+            setter.setter_write_started = None
+            setter.last_write_started = 10
+            setter.last_write_sequence = 3508
+
+            def setter_failure(_raw, *, deadline):
+                if reached_prewrite:
+                    setter.last_write_started = 11
+                raise OSError("setter failure")
+
+            setter._submit_once = setter_failure
+            with self.subTest(reached_prewrite=reached_prewrite), \
+                    self.assertRaisesRegex(OSError, "setter failure"):
+                setter.submit("set", deadline=12)
+            self.assertIs(
+                setter.nonzero_may_have_applied, reached_prewrite)
+            self.assertEqual(
+                setter.setter_write_started,
+                11 if reached_prewrite else None)
 
 
 if __name__ == "__main__":
