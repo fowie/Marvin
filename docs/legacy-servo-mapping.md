@@ -258,3 +258,66 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
 ```
 
 This invocation is documentation only and is not authorization to execute it.
+
+### Corrected-cable word-1 result and startup observation
+
+The corrected-cable word-1 five-degree run was protocol-clean: the baseline,
+restore and final getter were `[2500,2730]`; setter and restore each returned
+raw `82`; restore prewrite began 0.141 ms after setter prewrite; accepted TX
+was complete with zero uncertain bytes and zero usbmon drops. The operator
+reported no visible movement and no sound.
+
+Separately, with Marvin OFF, the operator manually displaced the connected
+AX-12+ front-camera tilt servo. On the next power-on it returned to its zero
+position. This is external physical evidence that startup can energize and
+communicate with the downstream servo path. It does not identify the AX-12+
+ID, baud, packets, controller command, runtime `1E` behavior, or the meaning
+of either getter word. Neither observation is protocol proof or channel proof.
+
+### Offline semantic assessment
+
+The complete historical PCTestApp command inventory contains one
+`setServoPosition_btn_Click` call site (`Form1.cs:749-772`) and one
+`getServoPosition_btn_Click` call site (`Form1.cs:778`). The setter directly
+sends command `1E` with two parsed `uint16` values; the getter directly sends
+empty command `1D`. There is no adjacent apply/update/enable command, servo
+timer, cadence, retry, startup setter, cleanup, or command-specific response
+parser. The sample's heartbeat control is a separate `26 DisableHeartbeat`
+button, not part of the servo event path.
+
+This host source establishes intended standalone runtime get/set UI behavior,
+not installed controller behavior. Command `05 SetConfig` is a separate
+108-byte configuration write, while `1E` is four bytes, so the sample does not
+present `1E` as the stored configuration operation. However, the matching
+PCTestApp-era S/E controller handler is absent from all supplied source and
+159 reviewed firmware artifacts. No retained image simultaneously matches
+installed `53`/`45` framing, command layout, identity and response shapes.
+Therefore the installed `1E` handler could still apply a live target, update a
+cached target, reject or ignore it, or depend on a controller loop that is not
+represented in available artifacts.
+
+The corrected run does not distinguish those cases because its full restore
+started only 0.141 ms after the setter. No source establishes that the missing
+handler can emit a downstream servo packet synchronously inside that interval,
+and no target-state getter was taken before restore. The earlier word-0 run's
+audible engagement without visible motion remains external evidence only.
+
+The
+[AX-12+ vendor control table](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
+also excludes a direct wire-value assumption:
+native Goal Position is a volatile two-byte value `0..1023` for `0..300`
+degrees, Torque Enable is volatile and defaults OFF, ID and baud are EEPROM
+settings, and communication uses DYNAMIXEL Protocol 1.0 half-duplex packets.
+The legacy UI's `0..3000` values therefore require an unproved controller-side
+conversion if they are live positions. No matching artifact contains AX-12
+packet generation, servo IDs, bus baud, torque-enable writes, goal-position
+writes, or startup-zero logic.
+
+No further host servo command is justified by this evidence. The minimum
+offline next step is recovery of the matching PCTestApp-era S/E firmware or
+source containing the `1D`/`1E` handlers and downstream servo task. If a later
+separately reviewed physical investigation is still needed, the least
+semantically invasive discriminator is passive, high-impedance capture of the
+already-observed startup-zero downstream bus event, with no host command
+injection. That would still require an explicit physical test plan and fresh
+operator authorization.
