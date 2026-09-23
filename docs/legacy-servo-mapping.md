@@ -339,8 +339,24 @@ startup return-to-zero makes a controller-to-servo path likely, but does not
 establish Marvin connector pins, intermediate buffers or level conversion,
 bus branches, signal voltage, pull-up arrangement, servo ID or baud.
 
-No reviewed repository photo or wiring record identifies a safe Marvin probe
-point. **That is the attachment blocker.** Before any capture plan can be
+Ten operator-supplied local photos were reviewed offline. They show the main
+controller board and harnesses labelled for proximity/cliff sensors, ring,
+speaker, encoder, PC control, power/battery, USB cameras and PC front-panel
+functions. They do not show the AX-12 actuator connector and controller
+connector in one traceable view, identify a front-camera servo connector, or
+establish DATA and ground continuity. A visible six-position `SERIAL` footprint
+and other test points are not attributed to the servo bus and must not be used
+as probe points from appearance alone. The photos are not committed.
+
+The reviewed Yeapook ADS1013D photo proves only that this portable two-channel
+scope is available. No local manual or isolation/common-mode specification was
+available, and the channels appear to share a common reference. It must not be
+treated as an isolated differential probe or connected across two unknown
+nodes. Battery operation alone does not establish channel-to-channel or
+input-to-USB/charger isolation.
+
+No reviewed photo or wiring record therefore identifies a safe Marvin probe
+point. **That remains the attachment blocker.** Before any capture plan can be
 approved, supply:
 
 - sharp photos of both sides of the controller connector area, the complete
