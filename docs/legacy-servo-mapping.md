@@ -321,3 +321,195 @@ semantically invasive discriminator is passive, high-impedance capture of the
 already-observed startup-zero downstream bus event, with no host command
 injection. That would still require an explicit physical test plan and fresh
 operator authorization.
+
+## Passive AX-12 startup-bus capture plan
+
+This section is an offline procedure draft, not authorization to connect an
+instrument or power Marvin. It preserves the decision that no further live
+legacy `1E` delta is justified.
+
+### Established topology and blocker
+
+The
+[AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
+specifies a TTL-level, multidrop, half-duplex asynchronous serial bus with
+separate DATA, supply and ground conductors. DYNAMIXEL Protocol 1.0 uses one
+DATA wire for controller instructions and servo status packets. The reported
+startup return-to-zero makes a controller-to-servo path likely, but does not
+establish Marvin connector pins, intermediate buffers or level conversion,
+bus branches, signal voltage, pull-up arrangement, servo ID or baud.
+
+No reviewed repository photo or wiring record identifies a safe Marvin probe
+point. **That is the attachment blocker.** Before any capture plan can be
+approved, supply:
+
+- sharp photos of both sides of the controller connector area, the complete
+  front-camera servo harness and all visible labels, with power OFF and USB
+  disconnected;
+- the connector pin count and keyed orientation, without assigning functions
+  from wire color;
+- an all-power-removed continuity map from each harness conductor to the
+  AX-12+ actuator-side ground, DATA and supply contacts, plus confirmation that
+  no continuity measurement caused the actuator to move or become powered;
+- instrument make/model, input impedance/capacitance, maximum input and
+  common-mode ratings, logic thresholds, isolation method and whether any USB,
+  charger or earth connection exists during capture;
+- the controller/servo supply source, its configured and maximum possible
+  voltage, and a separate reviewed electrical-envelope measurement made with
+  an independently qualified isolated differential probe.
+
+Do not attach based on an AX-12 connector diagram alone: that diagram describes
+the actuator, not Marvin's controller connector or harness routing.
+
+### Non-driving instrument boundary
+
+The preferred observation is a rated differential probe into a battery-powered
+scope or a high-impedance receive-only buffer into a battery-powered logic
+analyzer. Reference the measurement between the established bus DATA conductor
+and the established bus ground at the same local connector. A logic analyzer
+still needs that reference; “one-wire bus” does not mean ground-free.
+
+Do not use an earth-grounded bench-scope ground clip. Do not connect a
+battery-powered instrument to a charging cable, host USB or another grounded
+instrument during capture. Do not enable analyzer pull-ups, open-drain output,
+pattern generation, protocol transmission or automatic voltage injection.
+Avoid bidirectional level shifters because their pull-ups and direction
+behavior can alter the bus.
+
+Electrical qualification is two-stage. The first powered attachment may use
+only an isolated high-impedance differential probe independently rated above
+the reviewed source's maximum possible voltage and common-mode/transient
+envelope; it measures DATA-to-local-ground idle, high, low and peak voltages
+without a logic analyzer attached. That characterization requires its own
+bounded operator approval. Only afterward may an analyzer, attenuator or
+receive-only buffer be selected by comparing its input rating, thresholds,
+leakage and loading with the retained envelope. “TTL” is not permission to
+assume a 5 V-safe probe or a particular logic threshold.
+
+A battery scope or logic analyzer can observe the half-duplex DATA line
+passively only when all of the following are true: its input is genuinely
+high-impedance and receive-only; its DATA and ground connections are proved;
+its normal and transient ratings exceed the retained bus envelope; and it
+remains electrically floating except for the local bus reference. If those
+facts are unavailable, do not connect it.
+
+### Initial capture settings
+
+Capture raw edges rather than trusting one UART decoder:
+
+- arm before the separately controlled Marvin power-on;
+- retain at least 100 ms before the first DATA transition and stop the capture
+  no later than 10 s after power-on; if motion or bus activity continues at the
+  limit, remove power rather than extending or retrying;
+- use a falling-edge DATA trigger if the verified idle state is high;
+  otherwise use an instrument-supported pulse/activity trigger and preserve
+  the pre-trigger record;
+- sample at least 20 MS/s with the largest available memory that covers the
+  window; preserve the native waveform/export, instrument settings and clock
+  accuracy before decoding;
+- do not probe the servo supply rail in the first capture. A second channel is
+  allowed only after its separate point and voltage rating are established.
+
+The AX-12+ manual documents 8N1 and these baud settings: 1,000,000 (factory
+default), 500,000, 400,000, 250,000, 200,000, 115,200, 57,600, 19,200 and
+9,600 bit/s. They are decode candidates, not claims about Marvin. Test each
+candidate offline against the same raw capture. Accept a candidate only when
+multiple complete packets have valid lengths and checksums; do not select a
+baud merely because a few bytes look plausible. Preserve undecoded timing in
+case Marvin uses another supported divisor.
+
+The first physical capture should inject no host USB/serial command and should
+not require manual displacement. It remains blocked until the operator supplies
+a reviewed starting-pose photo and a mechanical plan showing an unobstructed
+envelope for the complete plausible servo travel, a secured mechanism,
+exclusion zone and an independent cutoff threshold. Any startup motion outside
+that envelope requires immediate cutoff; motion continuing after the one
+expected return or approaching a stop is not allowed to run to the capture
+deadline. If repeating the visible return-to-zero is later judged necessary,
+the separate physical plan must additionally bound the power-OFF manual
+displacement; this document does not authorize it.
+
+### Protocol 1.0 offline decoding
+
+Per the
+[DYNAMIXEL Protocol 1.0 specification](https://emanual.robotis.com/docs/en/dxl/protocol1/),
+an instruction packet is:
+
+```text
+FF FF ID LENGTH INSTRUCTION PARAMETER... CHECKSUM
+```
+
+A status packet is:
+
+```text
+FF FF ID LENGTH ERROR PARAMETER... CHECKSUM
+```
+
+`LENGTH` equals parameter count plus two. For either packet:
+
+```text
+CHECKSUM = ~(ID + LENGTH + byte4 + every parameter) & FF
+```
+
+Decode and retain every packet, including malformed candidates, with start/end
+times, baud hypothesis and checksum result. Relevant instruction patterns are:
+
+- `03 WRITE`, address `18` hex (`24` decimal), one byte: Torque Enable;
+- `03 WRITE`, address `1E` hex (`30` decimal), two little-endian bytes:
+  Goal Position;
+- `02 READ`, address `24` or `30`, followed by requested byte count;
+- `04 REG_WRITE` followed later by `05 ACTION`;
+- `83 SYNC_WRITE`, commonly broadcast ID `FE`, with start address, per-servo
+  data width, then repeated servo ID/data groups.
+
+The AX-12+ manual defines Torque Enable `0` as OFF and `1` as ON. It defines
+native Goal Position as `0..1023` across `0..300` degrees; do not apply the
+legacy UI's `0..3000` scale to captured AX-12 words. Record servo ID, target
+word and packet timing without calling the target mechanically safe or
+calibrated.
+
+On a single DATA capture, transmitter identity is inferred, not electrically
+observed. Controller-origin candidates contain defined instruction bytes;
+servo status candidates place an error bitfield in byte 4 and normally follow
+an addressed instruction after a short turnaround. Broadcast instructions may
+produce no reply. Checksum, matching ID, request/return parameter lengths and
+turnaround timing strengthen a pairing, but cannot prove which physical device
+drove the wire. A second direction-enable or endpoint probe must not be added
+without separately identifying and reviewing that point.
+
+### Bounded operator checklist
+
+Before attachment, a separately authorized operator must confirm:
+
+1. Marvin, actuator power and host USB are OFF/disconnected; stored-energy
+   handling and independent cutoff are defined.
+2. Only the intended front-camera AX-12+ is connected; projector and other
+   actuators remain physically isolated as required by the reviewed setup.
+3. Photos and continuity results establish DATA and local ground without color
+   assumptions; the probe point cannot short adjacent conductors.
+4. The separately approved isolated differential-probe stage has retained the
+   DATA envelope. Capture-instrument ratings, thresholds and isolation are
+   reviewed against it; all transmitters, pull-ups and output modes are
+   disabled.
+5. The probe is attached while power is absent, mechanically strain-relieved,
+   and inspected for shorts or contact with adjacent conductors.
+6. The starting pose, complete plausible travel envelope, fixture, exclusion
+   zone and independent cutoff threshold have separate operator/reviewer
+   approval.
+7. Capture is armed before power-on. No robot USB/serial command is issued.
+8. The operator watches the mechanism and supply continuously with immediate
+   independent cutoff access. After the bounded capture, power is removed
+   before probes are detached.
+9. Raw waveform, setup screenshots/settings, operator observations and exact
+   wiring photos are retained separately; decoding never replaces the raw
+   capture.
+
+Abort before power-on for any unknown pin, missing rating, non-floating
+instrument, missing electrical-envelope record, enabled output/pull-up, exposed
+short risk, unreviewed starting pose/travel envelope or inability to secure the
+mechanism. Cut power immediately for motion outside the reviewed envelope,
+motion continuing after the single expected return, approach to a hard stop,
+collision, repeated hunting, abnormal sound beyond the already reported
+startup action, heat, odor, smoke, LED fault pattern, supply anomaly, probe
+upset or loss of capture/operator control. Do not retry in the same session,
+change baud, transmit a packet, or follow with a legacy `1E` command.
