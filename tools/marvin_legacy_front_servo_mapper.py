@@ -23,12 +23,15 @@ BASELINE = (2500, 2730)
 TARGET = (2490, 2730)
 WORD1_TARGET = (2500, 2720)
 WORD0_FIVE_DEGREE_TARGET = (2450, 2730)
+WORD1_FIVE_DEGREE_TARGET = (2500, 2680)
 BASELINE_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in BASELINE)
 TARGET_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in TARGET)
 WORD1_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD1_TARGET)
 WORD0_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD0_FIVE_DEGREE_TARGET)
+WORD1_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
+    value.to_bytes(2, "little") for value in WORD1_FIVE_DEGREE_TARGET)
 FIRST_SEQUENCE = 3500
 DWELL_SECONDS = 0.250
 RESPONSE_SECONDS = 0.500
@@ -57,6 +60,14 @@ WORD0_FIVE_DEGREE_STEPS = {
     "verify": get_servo_position_request(FIRST_SEQUENCE + 11),
 }
 WORD0_FIVE_DEGREE_TRANSCRIPT = tuple(WORD0_FIVE_DEGREE_STEPS.values())
+WORD1_FIVE_DEGREE_STEPS = {
+    "baseline": get_servo_position_request(FIRST_SEQUENCE + 12),
+    "set": encode_request(
+        FIRST_SEQUENCE + 13, 0x1E, WORD1_FIVE_DEGREE_TARGET_PAYLOAD),
+    "restore": encode_request(FIRST_SEQUENCE + 14, 0x1E, BASELINE_PAYLOAD),
+    "verify": get_servo_position_request(FIRST_SEQUENCE + 15),
+}
+WORD1_FIVE_DEGREE_TRANSCRIPT = tuple(WORD1_FIVE_DEGREE_STEPS.values())
 COMMON_ACKNOWLEDGMENTS = (
     "operator_present",
     "robot_secured",
@@ -82,14 +93,34 @@ WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS = (
     "exact_profile_baseline_2500_2730_target_2450_2730_word0_five_degree_dwell_0_25_seconds",
     "authorize_single_legacy_1e_front_camera_word0_five_degree_diagnostic_command",
 )
+WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS = (
+    *COMMON_ACKNOWLEDGMENTS,
+    "operator_confirmed_word1_five_degree_mechanical_clearance",
+    "exact_profile_baseline_2500_2730_target_2500_2680_word1_five_degree_dwell_0_25_seconds",
+    "authorize_single_legacy_1e_front_camera_word1_five_degree_diagnostic_command",
+)
 
 
-def _profile(word1_hypothesis, word0_five_degree):
+def _profile(word1_hypothesis, word0_five_degree, word1_five_degree):
     if any(type(value) is not bool for value in (
-            word1_hypothesis, word0_five_degree)):
+            word1_hypothesis, word0_five_degree, word1_five_degree)):
         raise ValueError("Fixed profile selections must be literal booleans.")
-    if word1_hypothesis and word0_five_degree:
+    if sum((word1_hypothesis, word0_five_degree, word1_five_degree)) > 1:
         raise ValueError("Select exactly one fixed front-servo diagnostic mode.")
+    if word1_five_degree:
+        return {
+            "name": "word1-five-degree-diagnostic",
+            "word": 1,
+            "target": WORD1_FIVE_DEGREE_TARGET,
+            "target_payload": WORD1_FIVE_DEGREE_TARGET_PAYLOAD,
+            "delta": -50,
+            "steps": WORD1_FIVE_DEGREE_STEPS,
+            "transcript": WORD1_FIVE_DEGREE_TRANSCRIPT,
+            "acknowledgments": WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS,
+            "success": "front_camera_servo_word1_five_degree_complete_protocol_only",
+            "first_sequence": FIRST_SEQUENCE + 12,
+            "mode_flag": "--word1-five-degree-diagnostic",
+        }
     if word0_five_degree:
         return {
             "name": "word0-five-degree-diagnostic",
@@ -133,8 +164,10 @@ def _profile(word1_hypothesis, word0_five_degree):
     }
 
 
-def prepare(*, word1_hypothesis=False, word0_five_degree=False):
-    profile = _profile(word1_hypothesis, word0_five_degree)
+def prepare(*, word1_hypothesis=False, word0_five_degree=False,
+            word1_five_degree=False):
+    profile = _profile(
+        word1_hypothesis, word0_five_degree, word1_five_degree)
     expected = (
         (profile["first_sequence"], 0x1D, b""),
         (profile["first_sequence"] + 1, 0x1E, profile["target_payload"]),
@@ -188,14 +221,23 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False):
                 "usbmon_dropped": 0,
                 "post_run_operator_report": "marvin_off_and_host_usb_disconnected",
                 "classification": "external_evidence_not_channel_proof",
-            }} if word0_five_degree else {}),
-        }} if word1_hypothesis or word0_five_degree else {}),
+            }} if word0_five_degree or word1_five_degree else {}),
+        }} if word1_hypothesis or word0_five_degree or word1_five_degree else {}),
+        **({"external_word0_five_degree_observation": {
+            "operator_report": "no_visible_movement_and_audible_servo_engagement",
+            "protocol_baseline_words_uint16": list(BASELINE),
+            "protocol_target_words_uint16": list(WORD0_FIVE_DEGREE_TARGET),
+            "setter_and_restore_host_submission": "established",
+            "restore_application_correlation": "not_established",
+            "physical_restoration": "unproved",
+            "classification": "external_evidence_not_channel_proof",
+        }} if word1_five_degree else {}),
         "legacy_ui_scale": "0..3000 maps AX-12+ 0..300 degrees; 10 units = 1 degree",
         **({"five_degree_safety_basis": (
             "50 legacy UI units equals 5 degrees on the declared AX-12+ scale "
             "and remains within 0..3000; this does not establish mechanical "
             "safety, which requires the separate operator clearance confirmation"
-        )} if word0_five_degree else {}),
+        )} if word0_five_degree or word1_five_degree else {}),
         "observation_seconds": DWELL_SECONDS,
         "post_restore_response_observation_seconds": RESPONSE_SECONDS,
         "overall_deadline_seconds": OVERALL_SECONDS,
@@ -311,6 +353,11 @@ class _Word1Transport(_Transport):
 class _Word0FiveDegreeTransport(_Transport):
     steps = WORD0_FIVE_DEGREE_STEPS
     success = "front_camera_servo_word0_five_degree_complete_protocol_only"
+
+
+class _Word1FiveDegreeTransport(_Transport):
+    steps = WORD1_FIVE_DEGREE_STEPS
+    success = "front_camera_servo_word1_five_degree_complete_protocol_only"
 
 
 def _submit(transport, report, step, *, deadline):
@@ -603,8 +650,10 @@ def _observe(transport, report, *, clock=time.monotonic):
 
 def run_diagnostic(output, *, expected_physical_port, run=False,
                    word1_hypothesis=False, word0_five_degree=False,
+                   word1_five_degree=False,
                    **acknowledgments):
-    profile = _profile(word1_hypothesis, word0_five_degree)
+    profile = _profile(
+        word1_hypothesis, word0_five_degree, word1_five_degree)
     required = profile["acknowledgments"]
     if run is not True or set(acknowledgments) != set(required):
         raise ValueError("Literal --run and the complete fixed front-servo scope are required.")
@@ -615,9 +664,11 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         expected_physical_port=expected_physical_port,
         review=prepare(
             word1_hypothesis=word1_hypothesis,
-            word0_five_degree=word0_five_degree),
+            word0_five_degree=word0_five_degree,
+            word1_five_degree=word1_five_degree),
         transport_type=(
-            _Word0FiveDegreeTransport if word0_five_degree
+            _Word1FiveDegreeTransport if word1_five_degree
+            else _Word0FiveDegreeTransport if word0_five_degree
             else _Word1Transport if word1_hypothesis else _Transport),
         observe=_observe,
         limits=zero._Limits(
@@ -626,13 +677,16 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             "_front_servo_mapper": True,
             "_front_servo_word1_mapper": word1_hypothesis,
             "_front_servo_word0_five_degree_mapper": word0_five_degree,
+            "_front_servo_word1_five_degree_mapper": word1_five_degree,
         },
         declarations={"operator_declarations": dict(acknowledgments)},
         expected_tx=lambda report: report["accepted_tx_bytes"],
         success_status=profile["success"],
         report_key="front_servo_mapping",
         authorizations={
-            ("single_legacy_1e_front_camera_word0_five_degree_authorized"
+            ("single_legacy_1e_front_camera_word1_five_degree_authorized"
+             if word1_five_degree
+             else "single_legacy_1e_front_camera_word0_five_degree_authorized"
              if word0_five_degree
              else "single_legacy_1e_front_camera_word1_hypothesis_authorized"
              if word1_hypothesis
@@ -647,16 +701,19 @@ def main(argv=None):
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--word1-front-camera-hypothesis", action="store_true")
     modes.add_argument("--word0-five-degree-diagnostic", action="store_true")
+    modes.add_argument("--word1-five-degree-diagnostic", action="store_true")
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--output", type=Path)
     all_acknowledgments = tuple(dict.fromkeys(
         (*ACKNOWLEDGMENTS, *WORD1_ACKNOWLEDGMENTS,
-         *WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS)))
+         *WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS,
+         *WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS)))
     for name in all_acknowledgments:
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
     args = parser.parse_args(argv)
     profile = _profile(
-        args.word1_front_camera_hypothesis, args.word0_five_degree_diagnostic)
+        args.word1_front_camera_hypothesis, args.word0_five_degree_diagnostic,
+        args.word1_five_degree_diagnostic)
     acknowledgments = {
         name: getattr(args, name) for name in profile["acknowledgments"]}
     unused_acknowledgments = set(all_acknowledgments) - set(profile["acknowledgments"])
@@ -668,7 +725,8 @@ def main(argv=None):
                 raise ValueError("Live-only arguments require --run.")
             result = prepare(
                 word1_hypothesis=args.word1_front_camera_hypothesis,
-                word0_five_degree=args.word0_five_degree_diagnostic)
+                word0_five_degree=args.word0_five_degree_diagnostic,
+                word1_five_degree=args.word1_five_degree_diagnostic)
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
@@ -678,6 +736,7 @@ def main(argv=None):
                 run=True,
                 word1_hypothesis=args.word1_front_camera_hypothesis,
                 word0_five_degree=args.word0_five_degree_diagnostic,
+                word1_five_degree=args.word1_five_degree_diagnostic,
                 **acknowledgments,
             )
     except (Exception, KeyboardInterrupt) as error:

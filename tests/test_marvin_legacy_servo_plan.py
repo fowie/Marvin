@@ -163,6 +163,47 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertIn(
             "--authorize-single-legacy-1e-front-camera-word0-five-degree-diagnostic-command",
             five_degree["required"])
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(
+                mapper.main(["--word1-five-degree-diagnostic"]), 0)
+        word1_five_degree = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (word1_five_degree["fixed_mode"],
+             word1_five_degree["candidate_wire_word"],
+             word1_five_degree["target_words_uint16"],
+             word1_five_degree["word1_delta"]),
+            ("word1-five-degree-diagnostic", 1, [2500, 2680], -50))
+        self.assertEqual(
+            word1_five_degree["external_word0_five_degree_observation"],
+            {
+                "operator_report": "no_visible_movement_and_audible_servo_engagement",
+                "protocol_baseline_words_uint16": [2500, 2730],
+                "protocol_target_words_uint16": [2450, 2730],
+                "setter_and_restore_host_submission": "established",
+                "restore_application_correlation": "not_established",
+                "physical_restoration": "unproved",
+                "classification": "external_evidence_not_channel_proof",
+            })
+        word1_five_degree_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in word1_five_degree["immutable_application_transcript_hex"]
+        ]
+        self.assertEqual(
+            [(frame.sequence, frame.command, frame.payload)
+             for frame in word1_five_degree_frames],
+            [
+                (3512, 0x1D, b""),
+                (3513, 0x1E, bytes.fromhex("c409780a")),
+                (3514, 0x1E, bytes.fromhex("c409aa0a")),
+                (3515, 0x1D, b""),
+            ])
+        self.assertIn(
+            "--operator-confirmed-word1-five-degree-mechanical-clearance",
+            word1_five_degree["required"])
+        self.assertIn(
+            "--authorize-single-legacy-1e-front-camera-word1-five-degree-diagnostic-command",
+            word1_five_degree["required"])
         evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
         evidence_report = {
             "setter_prewrite_monotonic": 1.0,
@@ -207,6 +248,16 @@ class LegacyServoPlanTests(unittest.TestCase):
                 word0_five_degree=True,
                 **dict.fromkeys(
                     mapper.WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS, False),
+            )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
+                self.assertRaisesRegex(ValueError, "acknowledgment"):
+            mapper.run_diagnostic(
+                Path(directory) / "evidence",
+                expected_physical_port="1-2",
+                run=True,
+                word1_five_degree=True,
+                **dict.fromkeys(
+                    mapper.WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS, False),
             )
 
         class Transport:

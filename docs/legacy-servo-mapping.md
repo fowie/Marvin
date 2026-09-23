@@ -217,3 +217,44 @@ acknowledgment or physical restoration. The operator separately reported no
 visible movement, hearing the servo engage, then immediately powering Marvin
 off and disconnecting host USB. That physical observation remains separate
 from protocol evidence and does not prove channel mapping or restoration.
+
+## Fixed word-1 five-degree diagnostic
+
+The next discriminator is a separate named profile only. It preserves word 0
+and changes `[2500,2730]` to `[2500,2680]`, then immediately makes the single
+full `[2500,2730]` restore attempt within the same 0.25-second setter-to-restore
+bound. Verification remains conditional on one clean correlated restore
+response. It does not expose arbitrary word, target, delta, dwell, retry,
+reconnect or resume controls.
+
+The two one-degree runs' lack of visible motion and the word-0 five-degree
+run's audible engagement without visible motion are external evidence only,
+not channel proof. For the word-0 five-degree run, setter and restore host
+submission are established, but restore application correlation and physical
+restoration remain unproved.
+
+Word-1 five-degree dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word1-five-degree-diagnostic
+```
+
+Exact word-1 five-degree live invocation:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word1-five-degree-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
+  --front-camera-servo-is-ax12-plus \
+  --operator-confirmed-word1-five-degree-mechanical-clearance \
+  --exact-profile-baseline-2500-2730-target-2500-2680-word1-five-degree-dwell-0-25-seconds \
+  --authorize-single-legacy-1e-front-camera-word1-five-degree-diagnostic-command \
+  --unprivileged-usbmon
+```
+
+This invocation is documentation only and is not authorization to execute it.
