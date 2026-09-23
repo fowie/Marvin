@@ -40,7 +40,7 @@ x86 host onto Jetson.
 |---|---|---|
 | Controller | Microsoft Marvin USB `045e:4444`; stable selector `/dev/serial/by-id/usb-Microsoft_Corp_2009_Microsoft_Marvin_12345678-if00`; legacy single-byte `S`/`E` framing works at 57600 8N1 with no flow control. Six getter IDs returned correlated, CRC-valid replies. | Exact firmware image is unknown. Preserve the legacy profile; successor EF/BE IDs collide with getters, motion, reset, and power operations. See [bring-up](marvin-bringup-plan.md) and [client](legacy-client.md). |
 | Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
-| Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. | Physical apertures, polarity, units, health, and useful thresholds remain unknown. See [cliff/proximity mapping](cliff-proximity-mapping.md). |
+| Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. A completed 13-sensor masked/exposed campaign established physical labels and locations, but no defensible field assignments. | Polarity, units, health, useful thresholds, and signal-to-aperture assignments remain unknown. Campaign-time proximity drift and strong cliff cross-coupling prevent mapping claims. See [sensor campaign](#completed-13-sensor-campaign) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
 | Tilt servos | Legacy getter `0x1D`, setter `0x1E`; baseline getter `[2500,2730]`. Clean one-degree word-0 and word-1 runs each restored and ended with a matching getter, with no visible movement. | Word assignment and physical restoration remain unproved; projector remains unmapped. See [servo status](#servo-result-and-boundary) and [servo mapping](legacy-servo-mapping.md). |
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
@@ -86,6 +86,42 @@ same numeric area has incompatible meanings, and that setter is neither a video
 transport nor evidence for this camera. Future capture needs a freshly matched
 `045e:0721` topology, fixed format and duration, explicit privacy consent, no
 retry, and private output.
+
+## Completed 13-sensor campaign
+
+The operator physically labelled P1-P13:
+
+| Label | Operator-reported location/orientation |
+|---|---|
+| P1 | Rear, angled slightly downward |
+| P2 / P3 | Left-rear / right-rear cliff |
+| P4 | Center-rear, rear-facing proximity |
+| P5 / P6 / P7 | Left-side proximity, rear / middle / front |
+| P8 / P9 / P10 | Left-front cliff / front-center sensor / right-front cliff |
+| P11 / P12 / P13 | Right-side proximity, front / next / third; P13 points directly right |
+
+All actuator power and control paths were operator-reported isolated and the
+chassis was supported. The campaign used an all-masked control followed by one
+exposed sensor per run. Each run issued five legacy `0x00` getters at two-second
+intervals, sequences 4096-4170, with sealed serial evidence, 50 accepted TX
+bytes, and zero uncertain TX bytes. Session-private evidence directory names
+are `cliff-sensor-baseline-20260922T1830`,
+`cliff-sensor-all-masked-20260922T1830`, and
+`cliff-sensor-p1-exposed-20260922T1830` through
+`cliff-sensor-p13-exposed-20260922T1830`; contents remain private.
+
+The P3, P5, P6, P8, and P9 outer runs failed only final usbmon queued/dropped
+accounting. Their sealed serial poll records still contain five matched
+134-byte replies with zero TX uncertainty. Nothing was retried. The operator
+stopped before a final all-masked recovery run.
+
+**No sensor-field mapping is established.** Proximity fields showed
+near-monotonic campaign-time/warm-up drift, so their changes cannot be assigned
+to physical apertures. Cliff responses were strongly cross-coupled: P2 strongly
+affected cliff3, P3 cliff5, P10 cliff1, P8 cliff2 and cliff5, while P1 was weak
+or ambiguous. These are candidates/confounds, not mappings. A useful follow-up
+needs contemporaneous blocked controls and recovery observations, or a less
+cross-coupled stimulus; do not repeat this matrix blindly.
 
 ## Microphone host/kernel state
 
@@ -159,10 +195,11 @@ assignment are not. Do not retry or issue a recovery command. PR
 
 ## Last reported physical state
 
-**Last operator report, not a durable fact:** Marvin was off and host USB was
-disconnected. The front AX-12+ was the isolated servo used in the latest work;
-the projector was physically disconnected during that testing. A future
-operator must physically re-verify all of this before relying on it.
+**Last operator report, not a durable fact:** Marvin was off, host USB was
+disconnected, all sensor masks were removed, and actuator power/control paths
+remained isolated. The earlier servo work used the front AX-12+ in isolation
+with the projector physically disconnected. A future operator must physically
+re-verify every condition before relying on it.
 
 ## Jetson AGX Orin migration
 
@@ -186,14 +223,15 @@ operator must physically re-verify all of this before relying on it.
    recording are validated on Jetson. Do not infer safety from matching bytes.
 8. Transfer only non-sensitive summaries/hashes unless the operator explicitly
    moves private evidence.
-9. Continue, in order: physical cliff/proximity mapping; servo word/mechanism
-   mapping; reviewed full-control validation; only then vision integration.
+9. Continue, in order: controlled cliff/proximity discrimination with
+   contemporaneous controls/recovery or a less cross-coupled stimulus; servo
+   word/mechanism mapping; reviewed full-control validation; only then vision
+   integration.
 
-The next cliff campaign is one aperture and one reversible stimulus per
-separately authorized run, using the existing bounded `0x00` collector and
-offline reducer, then power-off review before another channel. Do not duplicate
-the full procedure here; follow [PR #28](https://github.com/fowie/Marvin/pull/28)
-and [the current plan](cliff-proximity-mapping.md).
+Do not repeat the completed masked/exposed sensor matrix blindly. Design its
+successor from the [campaign limitations above](#completed-13-sensor-campaign),
+[PR #28](https://github.com/fowie/Marvin/pull/28), and the
+[current plan](cliff-proximity-mapping.md).
 
 ## Pull request map
 
