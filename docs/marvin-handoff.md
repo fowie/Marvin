@@ -40,7 +40,7 @@ x86 host onto Jetson.
 |---|---|---|
 | Controller | Microsoft Marvin USB `045e:4444`; stable selector `/dev/serial/by-id/usb-Microsoft_Corp_2009_Microsoft_Marvin_12345678-if00`; legacy single-byte `S`/`E` framing works at 57600 8N1 with no flow control. Six getter IDs returned correlated, CRC-valid replies. | Exact firmware image is unknown. Preserve the legacy profile; successor EF/BE IDs collide with getters, motion, reset, and power operations. See [bring-up](marvin-bringup-plan.md) and [client](legacy-client.md). |
 | Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
-| Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs now strongly map physical P4 to historical proximity8 at payload offset 18 and P5 to proximity1 at offset 4. | Physical units, firmware internals, health, and useful thresholds remain unknown. Other assignments remain unresolved; cliff fields can respond to proximity stimuli. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
+| Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
 | Tilt servos | Legacy getter `0x1D`, setter `0x1E`; baseline getter `[2500,2730]`. Clean one-degree word-0 and word-1 runs each restored and ended with a matching getter, with no visible movement. | Word assignment and physical restoration remain unproved; projector remains unmapped. See [servo status](#servo-result-and-boundary) and [servo mapping](legacy-servo-mapping.md). |
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
@@ -120,9 +120,9 @@ Proximity fields showed near-monotonic campaign-time/warm-up drift, so those
 changes cannot be assigned to physical apertures. Cliff responses were strongly
 cross-coupled: P2 strongly affected cliff3, P3 cliff5, P10 cliff1, P8 cliff2
 and cliff5, while P1 was weak or ambiguous. These are candidates/confounds,
-not mappings. The later controlled P4/P5 results below supersede that general
-proximity conclusion only for those two sensors. Do not repeat the original
-matrix blindly.
+not mappings. The later controlled perimeter campaign below supersedes that
+general proximity conclusion for the eight proximity sensors, with the stated
+confidence distinctions. Do not repeat the original matrix blindly.
 
 ## Sensor topology and mapping evidence
 
@@ -165,12 +165,33 @@ changed:
 | Recovery | 3-47, median 29 |
 
 This strongly maps physical P5 left-side rear proximity to historical
-proximity1. Every valid P4/P5 session contained five correlated 134-byte
+proximity1.
+
+The remaining perimeter campaign completed the ordered proximity field set.
+P6's local green output went clear -> 3.4 V with the card -> clear; P7's green
+output likewise reached 3.4 V with the target.
+
+| Physical sensor | Payload field / offset | Sequences and raw clear / target / recovery | Confidence |
+|---|---|---|---|
+| P5 left-side rear | proximity1 / 4 | 4236-4250; 10-40 / exactly 1023 / 3-47 | **Decisive** |
+| P6 left-side middle | proximity2 / 6 | 4251-4265; local green clear / 3.4 V card / clear. Proximity2 had late target spikes of 904 and 1023. | **Strong/provisional:** no independently clean single-field response; ordered adjacency supports it. Proximity1 also rose late: 57-143 / 151-756 / 121-227. |
+| P7 left-side front | proximity3 / 8 | 4266-4280; 243-278 / 246, 906, 1023, 1023, 1023 / 173-214 | **Strong:** proximity2 also rose from 97 to 778-893 during target, so adjacent cross-coupling remains. |
+| P9 front-center | proximity4 / 10 | 4281-4295; 103-246 / exactly 1023 / 225-260 | **Decisive** |
+| P11 right-side front | proximity5 / 12 | 4296-4310; 138-347 / exactly 1023 / 165-286 | **Decisive** |
+| P12 right-side next | proximity6 / 14 | 4311-4325; 142-296 / exactly 1023 / 192-342 | **Strong:** proximity5 also saturated (250-325 / 1023 / 228-282); P11 independently maps proximity5. |
+| P13 right-side third/right-facing | proximity7 / 16 | 4326-4340; 120-453 / exactly 1023 / 178-447 | **Decisive** |
+| P4 center-rear/rear-facing | proximity8 / 18 | 4216-4230; 412-597 / exactly 1023 / 518-616 | **Decisive** |
+
+This exact physical perimeter order strengthens the P6, P7, and P12
+assignments, but does not erase their delayed or adjacent cross-coupled
+responses. Session-private evidence directory names use
+`p6-payload-{clear,target,recovery}-*`, with the same pattern for P7, P9, P11,
+P12, and P13. Every valid phase above contained five correlated legacy `0x00`
 replies, 50 accepted TX bytes, zero uncertain TX bytes, a sealed record, and
-usbmon dropped count zero. The evidence remains in session-private storage;
-only directory names and reviewed summaries belong here. Raw payload values
-are not physical units, and neither mapping establishes firmware
-implementation, calibration, range, threshold, or sensor health.
+usbmon dropped count zero. Only directory names and reviewed summaries belong
+here. Raw payload values are not physical units, and these mappings do not
+establish firmware implementation, calibration, range, threshold, or sensor
+health.
 
 ## Microphone host/kernel state
 
@@ -272,11 +293,11 @@ re-verify every condition before relying on it.
    recording are validated on Jetson. Do not infer safety from matching bytes.
 8. Transfer only non-sensitive summaries/hashes unless the operator explicitly
    moves private evidence.
-9. Continue, in order: extend proximity mapping with the P4/P5
-   clear/target/recovery method and confirmed continuity; discriminate cliff
-   channels with contemporaneous controls/recovery or a less cross-coupled
-   stimulus; map servo words/mechanisms; perform reviewed full-control
-   validation; only then begin vision integration.
+9. Continue, in order: independently refine the provisional/cross-coupled
+   P6/P7/P12 proximity assignments if needed; discriminate cliff channels with
+   contemporaneous controls/recovery or a less cross-coupled stimulus; map
+   servo words/mechanisms; perform reviewed full-control validation; only then
+   begin vision integration.
 
 Do not repeat the completed masked/exposed sensor matrix blindly. Design its
 successor from the [campaign limitations above](#completed-13-sensor-campaign),
