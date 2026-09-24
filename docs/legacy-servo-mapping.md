@@ -229,9 +229,11 @@ python -m tools.marvin_legacy_front_servo_mapper
 
 The live recipes below are retained only as historical records of the executed
 profiles. **They are retired and must not be reused.** A later inspection of
-the actuator body established AX-12+ model identity, but it did not establish
-the legacy UI's angular conversion, J24 controller implementation or runtime
-`1E` semantics. No further live legacy `1E` delta is authorized.
+the actuator body established AX-12+ model identity. At the time of these
+recipes it had not established the legacy UI conversion, J24 controller
+implementation or runtime `1E` semantics. The later passive capture below
+establishes the tested word-0 path/value only. No further live legacy `1E`
+delta is authorized.
 
 Historical exact live invocation:
 
@@ -254,9 +256,58 @@ The clean word-0 run produced correlated raw-`82` setter/restore responses, a
 matching final `[2500,2730]` getter, accepted TX only, zero uncertain TX bytes,
 zero usbmon drops, and no operator-visible movement. Marvin was then reported
 OFF with host USB disconnected. Those run and operator reports are external
-evidence, not proof of channel assignment. A separate named word-1 hypothesis
-changes only `[2500,2730]` to `[2500,2720]`; it cannot accept arbitrary words
-or values.
+evidence that predated the later channel proof.
+
+### Word-0 J24 Goal Position proof
+
+A later freshly authorized execution of the same fixed word-0 profile used a
+passive ADS1013D capture on verified J24 green/black after startup. The host
+baseline was `[2500,2730]`, the setter was `[2490,2730]`, and the single
+restore attempt was `[2500,2730]`. Host evidence retained 38 accepted and zero
+uncertain TX bytes across the baseline getter, setter and restore. CRC-valid
+raw-`82` setter and restore replies are retained, and restore began
+`85.209 us` after setter start, within the fixed bound.
+
+The passive waveform contains this complete checksum-valid packet:
+
+```text
+FF FF 02 05 03 1E 3E 03 96
+```
+
+This is DYNAMIXEL Protocol 1.0 WRITE, ID 2, length 5, address `1E` hex
+(`30`, Goal Position), little-endian value `033E` hex (`830`), checksum `96`.
+This directly proves that the installed controller emitted an AX-12+ Goal
+Position write on J24 during the fixed legacy `[2490,2730]` setter. Because
+the only changed host word was word 0 and `2490 / 3 = 830`, the strongest
+source-consistent interpretation is that word 0 maps to that front-camera
+path with division by three for this tested value. One input/output pair does
+not uniquely prove the transformation, full conversion domain, units,
+rounding for other values, or word-1 routing. The retained window does not
+establish that no other downstream packet was sent. A later `FF FF 02` prefix
+is incomplete and unattributed; no AX-12+ status packet was decoded, so
+actuator acceptance and execution remain unproved.
+
+Final restore correlation failed only when a repeated identity check began
+too close to the response-window deadline and completed after it. The
+offline fix retains the full response window but reserves its final 100 ms
+from starting another potentially over-deadline identity check; it changes no
+write, retry, reconnect, correlation or uniqueness rule. The CRC-valid
+restore response remains preserved, but the run therefore sent no verification
+getter and physical restoration remains unproved. The operator
+reported no visible movement, immediately powered Marvin off, and removed the
+scope probes before USB export. The run's top-level manifest and nested
+capture manifest both verify. Preserved scope SHA-256:
+
+- waveform:
+  `b68477ccd301c8722684cd61181c9c13c44ccca295224180711b9f083430ce94`;
+- BMP:
+  `f2a3d2d7c7d53c66b71d53b80bf37c19a4b84d9adb872b803d331fe69a8705e0`;
+- PNG:
+  `16f8e240a50e010e779aa0cacfed31357ea951f18a518f69785c0f33fc2efe2a`.
+
+This proof does not authorize another live setter. A separate named word-1
+hypothesis changes only `[2500,2730]` to `[2500,2720]`; it cannot accept
+arbitrary words or values.
 
 Word-1 hypothesis dry run:
 

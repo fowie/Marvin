@@ -474,6 +474,23 @@ class LegacyServoPlanTests(unittest.TestCase):
             [error["step"] for error in late_report["finalization_errors"]],
             ["restore", "restore_bound"])
 
+        tail_transport = Mock(
+            fd=99, ingress=Mock(), serial_bytes=0, steps=mapper.STEPS)
+        tail_transport.read.return_value = None
+        tail_clock = Mock(side_effect=(.34, .34, .41, .41, .50, .50, .50))
+        with patch.object(mapper.select, "select", return_value=([], [], [])):
+            self.assertEqual(
+                mapper._set_restore_responses(
+                    tail_transport, {
+                        "protocol_evidence": [],
+                        "setter_prewrite_monotonic": 0,
+                        "restore_prewrite_monotonic": 0,
+                    },
+                    deadline=.5, clock=tail_clock),
+                {"set": 0, "restore": 0},
+            )
+        tail_transport.identity.assert_called_once_with(deadline=.5)
+
         for reached_prewrite in (False, True):
             setter = mapper._Transport.__new__(mapper._Transport)
             setter.completed = ["baseline"]
