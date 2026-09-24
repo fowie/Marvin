@@ -415,6 +415,51 @@ half-duplex DATA conductor. A steady meter reading captures no edge or frame,
 so it does not establish packet activity, baud, ID, transmitter direction,
 logic thresholds, transient envelope, or any relationship to legacy `1D`/`1E`.
 
+A subsequent passive startup capture used a separately confirmed gate:
+mechanically secured robot; J24 and the AX-12+ unplugged; host USB
+disconnected; ADS1013D on internal battery only with USB/charger disconnected;
+10x probe ground attached to independently verified controller ground and the
+probe tip attached only to J24 green. The operator armed one Single capture,
+physically powered Marvin on, then physically powered it off. No host command
+was issued.
+
+The `20 us/div` scope image reports `T = 99.6 us` between equivalent falling
+edges. Treating these as consecutive UART byte starts gives approximately
+`100.4 kbaud` (`10 / 99.6 us`). Offline extraction of the available
+proprietary sample window decodes:
+
+```text
+FF FF 02 05 03 22 50 01 ...
+```
+
+This is a DYNAMIXEL Protocol 1.0 instruction prefix addressed to ID 2:
+`LENGTH=5`, `WRITE=03`, RAM address `22` hex (`34`, Torque Limit), and
+little-endian value `0150` hex (`336`). The preceding observed bytes imply
+checksum `82` hex, because
+`~(02 + 05 + 03 + 22 + 50 + 01) & FF = 82`; the exported sample window
+truncates the checksum's upper bits, so `82` is inferred, not observed.
+
+Because the AX-12+ was unplugged, all captured traffic is controller-originated
+and there can be no actuator status response in this capture. The observed
+bytes and timing directly establish startup traffic on green that decodes as
+a DYNAMIXEL Protocol 1.0 WRITE prefix, with controller target ID 2 and
+approximately 100 kbaud. The missing checksum prevents classifying it as a
+complete checksum-validated packet. It does not independently read the
+actuator's EEPROM ID, show actuator acceptance, reveal other startup packets,
+or connect this traffic to legacy `1D`/`1E`.
+
+The preserved evidence remains outside the repository in
+`servo2-startup-capture`. SHA-256:
+
+- proprietary ADS1013D waveform:
+  `f645b975b3c85931dfae5ca0a606840f707a42007809a79aa9a22aa0a58d4dc2`;
+- `startup-100us-div.jpg`:
+  `71ece6c25848fa3115d4aa7df95a0096ef0ee2446e343e40904dbad999e317a2`;
+- `startup-20us-div.jpg`:
+  `e4e69c5d6d611149cedbb558c4aa6c475eeac98ac415c79e79adb6961259caf3`;
+- `README.txt`:
+  `ee3352eb2447b00309b2a2fd7406ef220653c35cf0886473e37c83c38ae05d94`.
+
 The authoritative
 [ROBOTIS AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
 specifies a `9.0..12.0 V` input (`11.1 V` recommended), digital packets and a
@@ -424,20 +469,20 @@ three-conductor harness therefore make supply, return and a Protocol 1.0
 half-duplex DATA path the source-backed interface expectation. They do not
 alone assign those roles to colors or J24 contacts. The independent board-side
 measurements now establish black as return and red as a 9 V supply in the
-observed state. Green's 5 V idle-high reading makes it the strong DATA
-candidate, but it remains unproved until activity consistent with the
-half-duplex interface is captured. ROBOTIS explicitly warns users to verify
-the pinout on both the actuator and board because connector pinout may vary by
-connector manufacturer.
+observed state. The passive startup capture establishes green as the
+controller's output carrying a Protocol 1.0-compatible WRITE prefix in that
+state. ROBOTIS explicitly warns users to verify the pinout on both the
+actuator and board because connector pinout may vary by connector
+manufacturer.
 
 The powered return to zero is consistent with a controller communicating with
 and enabling the AX-12+, especially because Torque Enable defaults OFF after
 power-on. It does not reveal the instruction sequence or prove that legacy
 `1E` caused any downstream packet. The remaining unknowns are red's upstream
-supply-path circuitry, green's half-duplex driver and activity, transient and
-logic-threshold envelope, actuator ID, configured baud and return delay,
-startup packets, controller conversion from legacy `0..3000`, and installed
-`1D`/`1E` handler semantics.
+supply-path circuitry, green's half-duplex driver details and transient
+envelope, the actuator's independently confirmed EEPROM ID, configured return
+delay, any other startup packets, controller conversion from legacy
+`0..3000`, and installed `1D`/`1E` handler semantics.
 
 Ten earlier operator-supplied local photos were reviewed offline. They show the main
 controller board and harnesses labelled for proximity/cliff sensors, ring,
@@ -446,7 +491,8 @@ functions. They did not identify the front-camera servo connector. The six
 later photos and disconnected continuity tests identify J24/SERVO2, both
 harness endpoints, three independent conductors and black as controller
 ground/return. The bounded voltage observation additionally identifies red as
-9 V supply and green as a 5 V idle-high logic candidate under the recorded
+9 V supply, and the passive startup capture identifies green as the controller
+output carrying a Protocol 1.0-compatible WRITE prefix under the recorded
 state. A visible
 six-position `SERIAL` footprint and other test points are not attributed to
 the actuator interface and must not be used as probe points from appearance
@@ -460,38 +506,20 @@ nodes. Battery operation alone does not establish channel-to-channel or
 input-to-USB/charger isolation.
 
 J24 evidence establishes black as local reference, red as 9 V actuator supply
-in the recorded state, and green as a 5 V idle-high logic candidate. It does
-not establish green's activity, driver, thresholds or transient envelope.
-**Those remain the capture-attachment blockers.** Before any passive activity
-capture can be approved, supply:
-
-- sharp straight-on photos of the unplugged J24 plug and header faces, the
-  actuator connector face and every actuator marking/model label, with power
-  OFF and host USB disconnected;
-- keyed orientation for the J24 face corresponding to the recorded
-  actuator-end order (key/latch up, mating openings viewed directly:
-  black-red-green left to right; no molded numbers);
-- an expanded all-power-removed board-side map tracing green toward accessible
-  nearby half-duplex driver/component contacts, using a reviewed
-  current-limited resistance/diode/continuity plan;
-- controller-board underside photos and a schematic/board file showing J24
-  traces and nearby drivers if available. If the required board-side map
-  cannot be established from reviewed files or measurements, powered
-  characterization remains prohibited;
-- instrument make/model, input impedance/capacitance, maximum input and
-  common-mode ratings, logic thresholds, isolation method and whether any USB,
-  charger or earth connection exists during capture;
-- the controller/servo supply source and its maximum possible voltage, plus a
-  separately reviewed transient and logic-envelope measurement made with an
-  independently qualified isolated differential probe.
+and green as the controller output carrying a Protocol 1.0-compatible WRITE
+prefix in the recorded startup state. The retained sample is bounded and
+incomplete; it does not establish a complete checksum-valid packet, the full
+startup transcript, actuator responses, or the signal's transient envelope.
+Any additional capture requires a new review rather than treating this result
+as standing authorization.
 
 The AX-12+ connector diagram is now relevant to the marked actuator, but is
 not by itself sufficient to assign the J24 contacts. Follow ROBOTIS's warning
-to verify both actuator and board pinouts. The retained measurements now
-verify black reference and red 9 V supply in the recorded state; green's 5 V
-idle-high state strongly supports DATA but is not packet evidence. Do not
-attach capture equipment until the green driver path, transient envelope and
-safe measurement point are separately reviewed.
+to verify both actuator and board pinouts. The retained measurements verify black reference and red 9 V supply in the
+recorded state; the passive sample verifies controller-originated Protocol 1.0
+compatible traffic on green. Do not attach capture equipment again without a
+separate review of the driver path, transient envelope, safe measurement point
+and specific evidence objective.
 
 ### Non-driving instrument boundary
 
@@ -527,10 +555,11 @@ that local reference. Pulse, analog, differential or motor-drive findings
 require a new reviewed measurement branch; this procedure intentionally does
 not improvise one.
 
-### Conditional digital capture settings after interface classification
+### Requirements for any additional capture
 
-Only for a proven compatible single-ended digital signal, capture raw edges
-rather than trusting one UART decoder:
+The completed capture is not standing authorization. Any additional capture
+must be separately reviewed and should preserve raw edges rather than trusting
+one UART decoder:
 
 - arm before the separately controlled Marvin power-on;
 - retain at least 100 ms before the first DATA transition and stop the capture
@@ -546,17 +575,18 @@ rather than trusting one UART decoder:
   allowed only after its separate point and voltage rating are established.
 
 Preserve undecoded timing and derive candidate symbol periods from repeated
-edges. For offline comparison only, the AX-12+ manual lists `1,000,000`
+edges. The retained startup instruction measures approximately 100 kbaud,
+which is not one of the common settings listed below and should not be rounded
+to another rate. For offline comparison only, the AX-12+ manual lists `1,000,000`
 (factory default), `500,000`, `400,000`, `250,000`, `200,000`, `115,200`,
 `57,600`, `19,200` and `9,600` bit/s. Do not configure or transmit any of
 them. Accept a decode only when multiple complete frames have consistent
 timing, lengths and checksums; a few plausible bytes are insufficient.
 
-The first physical capture should inject no host USB/serial command and should
-not require manual displacement. It remains blocked until the operator supplies
-a reviewed starting-pose photo and a mechanical plan showing an unobstructed
-envelope for the complete plausible servo travel, a secured mechanism,
-exclusion zone and an independent cutoff threshold. Any startup motion outside
+Any future actuator-connected capture must inject no host USB/serial command
+and requires a reviewed starting-pose photo and mechanical plan showing an
+unobstructed envelope for the complete plausible travel, a secured mechanism,
+exclusion zone and independent cutoff threshold. Any startup motion outside
 that envelope requires immediate cutoff; motion continuing after the one
 expected return or approaching a stop is not allowed to run to the capture
 deadline. If repeating the visible return-to-zero is later judged necessary,
@@ -598,14 +628,22 @@ Broadcast ID `FE` may produce no status reply, and configured Status Return
 Level may suppress write replies. None of those cases establishes how
 installed command `1E` maps to the AX-12+.
 
+For the retained startup capture, the addressed WRITE prefix and UART timing
+establish controller-originated traffic that decodes as Protocol 1.0 even
+though the proprietary export truncates the expected checksum byte. It is not
+a complete checksum-validated packet and is labelled accordingly. Addressed
+ID 2 is the controller's startup target ID, not an independent read of
+actuator EEPROM address 3.
+
 ### Bounded operator checklist
 
-Before attachment, a separately authorized operator must confirm:
+Before any future attachment, a separately authorized operator must confirm:
 
 1. Marvin, actuator power and host USB are OFF/disconnected; stored-energy
    handling and independent cutoff are defined.
-2. Only the intended front-camera actuator is connected; projector and other
-   actuators remain physically isolated as required by the reviewed setup.
+2. The reviewed plan explicitly declares whether the intended front-camera
+   actuator is disconnected or connected; projector and other actuators remain
+   physically isolated as required by that setup.
 3. The verified keyed conductor map, black ground/return, red 9 V supply and
    green 5 V idle-high observation are recorded; the expanded board-side map
    establishes green's driver and a reviewed measurement pair without relying
