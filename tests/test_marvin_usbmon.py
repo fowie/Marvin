@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import signal
 import stat
+import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -568,6 +570,47 @@ class PrivilegeTests(unittest.TestCase):
             self.assertEqual(opened.call_count, 1)
 
 
+class RecorderProfileSubprocessTests(unittest.TestCase):
+    def test_front_servo_recorder_admits_only_exact_profile_budget(self):
+        script = """
+import sys
+from tools import marvin_usbmon as module
+module.os.geteuid = lambda: 1000
+module.validate_privilege_drop = lambda *args, **kwargs: None
+module.read_identity = lambda path: (_ for _ in ()).throw(module.UsbmonError("budget-admitted"))
+raise SystemExit(module.main(sys.argv[1:]))
+"""
+        base = [
+            sys.executable, "-c", script,
+            "--usb-path", "/nonexistent-marvin-usb",
+            "--backend", "binary", "--binary-payload-limit", "4096",
+            "--max-line-bytes", "16384", "--coordinator-stop",
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            for name, seconds, getter_profile in (
+                    ("mapper", "18", False), ("getter", "17", True)):
+                command = [
+                    *base, "--output", str(Path(temporary) / name), "--seconds", seconds]
+                if getter_profile:
+                    command.append("--front-camera-servo-single-getter")
+                admitted = subprocess.run(
+                    command, cwd=ROOT, text=True, capture_output=True, check=False)
+                admitted_output = admitted.stdout + admitted.stderr
+                self.assertEqual(admitted.returncode, 1)
+                self.assertIn("budget-admitted", admitted_output)
+                self.assertNotIn("fixed full binary evidence budgets", admitted_output)
+
+                rejected = subprocess.run(
+                    [part if part != seconds else ("18" if seconds == "17" else "17")
+                     for part in command],
+                    cwd=ROOT, text=True, capture_output=True, check=False)
+                rejected_output = rejected.stdout + rejected.stderr
+                self.assertEqual(rejected.returncode, 1)
+                self.assertIn("fixed full binary evidence budgets", rejected_output)
+                self.assertNotIn("budget-admitted", rejected_output)
+
+
 class CaptureTests(LocalFilesTests):
     def setUp(self):
         super().setUp()
@@ -635,6 +678,10 @@ class CaptureTests(LocalFilesTests):
         declaration = {
             "front_camera_tilt_only_connected_projector_servo_physically_disconnected": True,
         }
+        with self.assertRaisesRegex(usbmon.UsbmonError, "requires the connected-servo"):
+            self.capture(front_camera_servo_single_getter=True)
+        with self.assertRaisesRegex(usbmon.UsbmonError, "must be booleans"):
+            self.capture(**(declaration | {"front_camera_servo_single_getter": 1}))
         for conflict in (
                 {"actuators_isolated": True},
                 {"motor_supply_off": True}):

@@ -978,6 +978,8 @@ def run_session(
     elif front_servo_profile:
         command.append(
             "--front-camera-tilt-only-connected-projector-servo-physically-disconnected")
+        if _front_servo_getter:
+            command.append("--front-camera-servo-single-getter")
     elif encoder_feedback_observation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.ENCODER_FLAGS)
     elif left_motor_powered_observation:

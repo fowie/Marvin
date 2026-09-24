@@ -158,6 +158,7 @@ class SessionTests(unittest.TestCase):
         self.assertIn(
             "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
             command)
+        self.assertNotIn("--front-camera-servo-single-getter", command)
         runner.assert_called_once()
         self.serial.assert_not_called()
 
@@ -181,6 +182,7 @@ class SessionTests(unittest.TestCase):
         self.assertIn(
             "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
             command)
+        self.assertIn("--front-camera-servo-single-getter", command)
         runner.assert_called_once()
 
     def test_word1_front_servo_mode_keeps_same_true_recorder_state(self):

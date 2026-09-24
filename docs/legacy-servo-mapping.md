@@ -142,6 +142,17 @@ manifest are retained even on failure. After the tool exits and evidence is
 sealed, the operator physically powers Marvin off immediately; the tool sends
 no power command. This tool has not been executed by the agent.
 
+The first operator live attempt on 2026-09-23 failed closed before recorder
+readiness because the session requested its exact 17-second USB recorder
+budget while the recorder still admitted only the mapper's exact 18-second
+profile. Marvin was physically powered off, the scope was stopped, and no
+unexpected condition was reported. The sealed observation is definitive:
+`status=not_started`, `accepted_tx_bytes=0`, `uncertain_tx_bytes=0`, and
+`write_status=not_attempted`. The top-level `metadata.json` SHA-256 is
+`fc0a5f2e668f3affbc33eaeaed9a2dc558e124034d566ca3307911d6fae60e98`.
+This is pre-write failure evidence, not a `1D` protocol observation and not
+authorization to retry.
+
 ## Fixed front-camera live mapper
 
 `tools.marvin_legacy_front_servo_mapper` is the only setter-capable legacy
