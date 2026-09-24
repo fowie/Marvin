@@ -161,6 +161,28 @@ class SessionTests(unittest.TestCase):
         runner.assert_called_once()
         self.serial.assert_not_called()
 
+        from tools.marvin_legacy_front_servo_getter import TRANSCRIPT as GETTER_TRANSCRIPT
+        runner.reset_mock()
+        self.output = self.output.parent / "getter-capture"
+        self.clock.now = 0
+        self.finished = False
+        self.process.returncode = None
+        result = self.run_capture(
+            seconds=7, actuators_isolated=False, baudrate=57600,
+            allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=runner, binary_payload_limit=4096,
+            usb_tail_seconds=5, usb_close_grace_seconds=5,
+            _front_servo_getter=True)
+        self.assertEqual(
+            result["requested_application_bytes"], sum(map(len, GETTER_TRANSCRIPT)))
+        self.assertEqual(result["probe_name"], "LegacyFrontCameraServoSingleGetter")
+        command = self.popen.call_args.args[0]
+        self.assertNotIn("--actuators-isolated", command)
+        self.assertIn(
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+            command)
+        runner.assert_called_once()
+
     def test_word1_front_servo_mode_keeps_same_true_recorder_state(self):
         from tools.marvin_legacy_front_servo_mapper import WORD1_TRANSCRIPT
         runner = Mock(side_effect=self.capture)

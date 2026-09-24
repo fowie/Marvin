@@ -11,12 +11,74 @@ from unittest.mock import Mock, patch
 
 from tests.test_marvin_legacy_protocol import frame
 from tools import marvin_legacy_protocol as protocol
+from tools import marvin_legacy_front_servo_getter as getter
 from tools import marvin_legacy_front_servo_mapper as mapper
 from tools import marvin_legacy_servo_plan as plan
 from tools.marvin_legacy_client import Received
 
 
 class LegacyServoPlanTests(unittest.TestCase):
+    def test_single_getter_is_fixed_read_only_and_preserves_response(self):
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(getter.main([]), 0)
+        dry_run = json.loads(stdout.getvalue())
+        packet = protocol.decode_packet(bytes.fromhex(
+            dry_run["immutable_application_transcript_hex"][0]))
+        self.assertEqual(
+            (packet.sequence, packet.command, packet.payload),
+            (getter.SEQUENCE, 0x1D, b""))
+        self.assertEqual(dry_run["maximum_writes"], 1)
+        self.assertEqual(dry_run["request_payload_bytes"], 0)
+        self.assertFalse(dry_run["automatic_retries"])
+        self.assertFalse(dry_run["automatic_reconnect"])
+        for option in ("sequence", "value", "setter", "retry"):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                getter.main(["--" + option, "1"])
+        blocked_transport = object.__new__(getter._Transport)
+        blocked_transport.writes = 1
+        with self.assertRaises(OSError):
+            blocked_transport._submit_once(getter.REQUEST, deadline=1e12)
+
+        evidence = getter._response_evidence(Mock())
+        evidence.submitted_at, evidence.deadline = 10, 11
+        evidence.feed(Received(frame(
+            sequence=getter.SEQUENCE, command=0x1D, status=0x82,
+            payload=bytes.fromhex("c409aa0a")), 10.1, 10.2), 10.3)
+        self.assertEqual(evidence.candidates, 1)
+        wrong_size = getter._response_evidence(Mock())
+        wrong_size.submitted_at, wrong_size.deadline = 10, 11
+        with self.assertRaisesRegex(OSError, "unexpected_servo_getter_payload_size"):
+            wrong_size.feed(Received(frame(
+                sequence=getter.SEQUENCE, command=0x1D, status=0x00,
+                payload=b"\x00\x00"), 10.1, 10.2), 10.3)
+
+        transport = Mock(
+            token=b"token", serial_bytes=14, writes=1,
+            last_write_started=10.0, last_write_sequence=getter.SEQUENCE,
+            event=Mock())
+        transport.revalidate.return_value = transport.token
+        transport.write.return_value = len(getter.REQUEST)
+        transport.close.return_value = None
+        raw = frame(
+            sequence=getter.SEQUENCE, command=0x1D, status=0x82,
+            payload=bytes.fromhex("c409aa0a"))
+
+        def observe_response(_, evidence, **__):
+            evidence.candidates = 1
+            evidence.events = [{"stream": {"raw_hex": raw.hex()}}]
+
+        report = {}
+        clock = Mock(side_effect=[9.0, 10.0, 10.1, 10.2])
+        with patch.object(getter.zero, "_observe_response", side_effect=observe_response):
+            getter._observe(transport, report, clock=clock)
+        self.assertEqual(report["status"], getter.SUCCESS)
+        self.assertEqual(report["raw_response_field_uint8"], 0x82)
+        self.assertEqual(report["raw_payload_hex"], "c409aa0a")
+        self.assertEqual(report["words_uint16_le"], [2500, 2730])
+        self.assertEqual(report["application_submission_attempts"], 1)
+        self.assertEqual(report["application_acknowledgment"], "not_established")
+
     def test_one_word_transcript_and_all_safety_gates(self):
         result = plan.prepare(
             word=0, baseline_words=(2500, 2730), target=2490,

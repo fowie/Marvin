@@ -246,6 +246,7 @@ def run_session(
     _front_servo_word1_mapper=False,
     _front_servo_word0_five_degree_mapper=False,
     _front_servo_word1_five_degree_mapper=False,
+    _front_servo_getter=False,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -339,8 +340,11 @@ def run_session(
             _isolated_zero_velocity, _motor_power_off_preparation,
             _front_servo_mapper, _front_servo_word1_mapper,
             _front_servo_word0_five_degree_mapper,
-            _front_servo_word1_five_degree_mapper)):
+            _front_servo_word1_five_degree_mapper, _front_servo_getter)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
+    front_servo_profile = _front_servo_mapper or _front_servo_getter
+    if _front_servo_mapper and _front_servo_getter:
+        raise ValueError("Select one front-servo diagnostic profile.")
     if _front_servo_word1_mapper and not _front_servo_mapper:
         raise ValueError("Word1 front-servo mode requires the front-servo mapper.")
     if _front_servo_word0_five_degree_mapper and not _front_servo_mapper:
@@ -476,7 +480,7 @@ def run_session(
         left_motor_powered_observation=left_motor_powered_observation,
         operator_at_external_cutoff=operator_at_external_cutoff,
     )
-    if _front_servo_mapper:
+    if front_servo_profile:
         if actuators_isolated or any(declarations.values()):
             raise ValueError(
                 "Front-servo mapping requires its own connected-servo profile, "
@@ -502,15 +506,15 @@ def run_session(
             _led_mapping_phase, _led_mapping_index, _led_mapping_baseline)):
         raise ValueError("Internal LED mapping fields require the literal LED mapping scope.")
     if powered_trial and (
-            _motor_power_off_preparation or _isolated_zero_velocity or _front_servo_mapper):
+            _motor_power_off_preparation or _isolated_zero_velocity or front_servo_profile):
         raise ValueError("Powered stop characterization forbids other diagnostic profiles.")
     preparation_consent = scope == "preparation"
     if preparation_consent != _motor_power_off_preparation or (
             _motor_power_off_preparation and (
-                _isolated_zero_velocity or _front_servo_mapper)):
+                _isolated_zero_velocity or front_servo_profile)):
         raise ValueError("Preparation consent is only valid for the separate fixed preparation profile.")
-    if _front_servo_mapper and (_isolated_zero_velocity or _motor_power_off_preparation):
-        raise ValueError("Front-servo mapping forbids other diagnostic profiles.")
+    if front_servo_profile and (_isolated_zero_velocity or _motor_power_off_preparation):
+        raise ValueError("Front-servo diagnostics forbid other diagnostic profiles.")
     observation = left_motor_powered_observation or encoder_feedback_observation
     if observation:
         declarations = {name: value for name, value in declarations.items()
@@ -562,10 +566,12 @@ def run_session(
                         allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
                 or probe_schedule != fixed_schedule or probe_delay):
             raise ValueError("Observation requires its scope's fixed legacy getter plan.")
-    elif not powered_trial and not _front_servo_mapper:
+    elif not powered_trial and not front_servo_profile:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
-    if _motor_power_off_preparation or powered_trial or _front_servo_mapper:
-        if _front_servo_mapper:
+    if _motor_power_off_preparation or powered_trial or front_servo_profile:
+        if _front_servo_getter:
+            from tools.marvin_legacy_front_servo_getter import TRANSCRIPT
+        elif _front_servo_mapper:
             from tools.marvin_legacy_front_servo_mapper import (
                 TRANSCRIPT as WORD0_TRANSCRIPT, WORD1_TRANSCRIPT,
                 WORD0_FIVE_DEGREE_TRANSCRIPT, WORD1_FIVE_DEGREE_TRANSCRIPT)
@@ -610,6 +616,7 @@ def run_session(
                 or (bytesize, parity, stopbits) != (8, "N", 1)
                 or seconds != (
                     15 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                    else 7 if _front_servo_getter
                     else 8 if _front_servo_mapper
                     else 10 if scope in (
                         motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
@@ -650,7 +657,7 @@ def run_session(
         probe_get_unit_info=probe_get_unit_info, probe_get_sensor_info=probe_get_sensor_info,
     )
     if actuators_isolated is not True and not (
-            _motor_power_off_preparation or observation or powered_trial or _front_servo_mapper):
+            _motor_power_off_preparation or observation or powered_trial or front_servo_profile):
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
@@ -663,7 +670,7 @@ def run_session(
     if (probe_profile != "modern" and probe_schedule is None
             and not (
                 _isolated_zero_velocity or _motor_power_off_preparation
-                or powered_trial or _front_servo_mapper)):
+                or powered_trial or front_servo_profile)):
         raise ValueError("Named coordinator probes require the modern profile.")
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
@@ -737,7 +744,7 @@ def run_session(
         "requested_application_bytes": (
             38 if led_mapping_runtime_policy else
             sum(map(len, TRANSCRIPT))
-            if _motor_power_off_preparation or powered_trial or _front_servo_mapper else
+            if _motor_power_off_preparation or powered_trial or front_servo_profile else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
             else len(probe) if probe is not None else 0
@@ -808,6 +815,16 @@ def run_session(
             metadata["probe_name"] = "LegacyFrontCameraServoWord1FiveDegree"
         metadata["limitations"][2] = (
             "Kernel-open line transitions remain possible; mapping uses an unflushed raw tty.")
+    if _front_servo_getter:
+        metadata.update(
+            probe_name="LegacyFrontCameraServoSingleGetter",
+            immutable_application_transcript_hex=[raw.hex() for raw in TRANSCRIPT],
+            requested_probe_hex=TRANSCRIPT[0].hex(),
+            unknown_command_authorized=True,
+            application_acknowledgment="not_established",
+        )
+        metadata["limitations"][2] = (
+            "Kernel-open line transitions remain possible; getter uses an unflushed raw tty.")
     if left_motor_powered_observation:
         metadata.update(**motor_consent.observation_history(declarations),
                         immutable_application_transcript_hex=["53000900000000bf0445"],
@@ -958,7 +975,7 @@ def run_session(
     ]
     if powered_trial:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.POWERED_TRIAL_SCOPES[scope])
-    elif _front_servo_mapper:
+    elif front_servo_profile:
         command.append(
             "--front-camera-tilt-only-connected-projector-servo-physically-disconnected")
     elif encoder_feedback_observation:

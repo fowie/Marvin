@@ -96,10 +96,56 @@ python -m tools.marvin_legacy_servo_plan \
   --profile-source REVIEWED_EVIDENCE_CITATION
 ```
 
+## Dedicated bounded read-only front-camera getter
+
+`tools.marvin_legacy_front_servo_getter` has one immutable application
+transcript: sequence `3516`, empty legacy `1D GetServoPosition`, request
+`53bc0d1d000000525445`. It exposes no setter, sequence, payload, value, retry,
+reconnect or follow-up option. It is offline by default:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_getter
+```
+
+The reviewed live invocation template is:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_getter \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-ax12-plus-connected-at-j24 \
+  --projector-servo-physically-disconnected \
+  --battery-only-passive-scope-on-verified-green-black-via-spare-cable \
+  --host-usb-connected --unprivileged-usbmon \
+  --authorize-one-read-only-legacy-1d-getter-only \
+  --authorize-immediate-physical-power-off-after-getter
+```
+
+This is a reviewable command, not standing authorization. `REVIEWED-PORT` must
+be the exact fresh physical USB topology and `NEWDIR` must not exist. The tool
+requires the scope flag to describe a concurrently attached battery-only
+passive scope on the already verified spare-cable green/black points; the
+template does not itself authorize attaching it or any powered procedure. It
+validates `045e:4444`, captures unprivileged binary usbmon evidence, permits
+one application write of ten bytes, waits at most 0.5 seconds for exactly one
+unique CRC-valid sequence/command-correlated response with exactly four
+payload bytes, and has a seven-second hard overall bound including up to two
+seconds reserved for cleanup. It
+records the raw response field and both little-endian words without treating
+USB completion or the response field as an ACK. Missing, malformed, duplicate,
+late, partial or uncertain evidence fails closed with no retry, reconnect or
+follow-up. The fresh output directory is immutable capture evidence: raw
+serial/USB artifacts, declarations, result metadata and the final SHA-256
+manifest are retained even on failure. After the tool exits and evidence is
+sealed, the operator physically powers Marvin off immediately; the tool sends
+no power command. This tool has not been executed by the agent.
+
 ## Fixed front-camera live mapper
 
-`tools.marvin_legacy_front_servo_mapper` is the only live-capable legacy servo
-tool. It is still offline by default and exposes no target, delta, range,
+`tools.marvin_legacy_front_servo_mapper` is the only setter-capable legacy
+servo tool. It is still offline by default and exposes no target, delta, range,
 dwell, word, command, stop, calibration, reset, flash or power-state option.
 Its historical reviewed profile was authorized under an operator declaration
 that the one physically connected front-camera actuator was AX-12+, with the
@@ -478,6 +524,39 @@ The preserved evidence remains outside the repository in
 - `README.txt`:
   `ca91f2479a9a7d0fa127eb532cb2bc64dcf2410ee6d7d96628800ee524763557`.
 
+A later separately gated connected-bus capture inserted the original harness
+into one keyed AX-12+ port and an insulated spare AX cable into the other.
+Power-off continuity through the actuator was straight-through
+green-to-green, red-to-red and black-to-black only. With host USB and charger
+disconnected, connectors seated, spare red insulated, the ADS1013D on battery
+only, ground on spare black and the probe tip only on spare green, the
+operator performed one `200 us/div` Single capture during physical power-on,
+then powered Marvin off after STOP. No host command was issued and there was
+no abort condition. The export contains the full checksum-valid frame:
+
+```text
+FF FF 02 05 03 22 50 01 82
+```
+
+This is a complete Protocol 1.0 WRITE to ID 2, `LENGTH=5`,
+`INSTRUCTION=03`, RAM Torque Limit address `22` hex, little-endian value
+`0150` hex (`336`), checksum `82`. After an idle interval another `FF FF`
+header begins, but the one-channel half-duplex capture cannot attribute its
+transmitter or decode the remaining bytes. It is consistent with either a
+status response or a next controller instruction; it is not evidence of an
+actuator reply. The complete controller instruction still does not establish
+actuator acceptance, the actuator's independently read EEPROM ID, or any
+legacy `1D`/`1E` translation.
+
+Connected-capture SHA-256:
+
+- proprietary ADS1013D waveform:
+  `56e2de78b8b5985a9b224fa25a0163108b16f1ffc35d4b6e5827835e164f9842`;
+- scope BMP:
+  `941149ccb6932f59c51ab51fcf35ef72c93ab6b0cf13303426a32e87c6dfafff`;
+- converted PNG:
+  `32c88cce05c9f8f12a811972e32167e687f2c199e446384e6894d727a5021a01`.
+
 The authoritative
 [ROBOTIS AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
 specifies a `9.0..12.0 V` input (`11.1 V` recommended), digital packets and a
@@ -524,18 +603,20 @@ nodes. Battery operation alone does not establish channel-to-channel or
 input-to-USB/charger isolation.
 
 J24 evidence establishes black as local reference, red as 9 V actuator supply
-and green as the controller output carrying a Protocol 1.0-compatible WRITE
-prefix in two bounded startup captures. Both retained samples are incomplete;
-they do not establish a complete checksum-valid packet, the full startup
-transcript, actuator responses, or the signal's transient envelope. No further
-repeat is justified. Any different capture requires a new review rather than
-treating this result as standing authorization.
+and green as the controller output carrying Protocol 1.0 traffic. Two
+actuator-disconnected captures preserve the same incomplete WRITE prefix; the
+connected-bus capture preserves the complete checksum-valid controller WRITE.
+None establishes an actuator response, the full startup transcript, or the
+signal's transient envelope. No further repeat is justified. Any different
+capture requires a new review rather than treating this result as standing
+authorization.
 
 The AX-12+ connector diagram is now relevant to the marked actuator, but is
 not by itself sufficient to assign the J24 contacts. Follow ROBOTIS's warning
 to verify both actuator and board pinouts. The retained measurements verify black reference and red 9 V supply in the
-recorded state; the passive sample verifies controller-originated Protocol 1.0
-compatible traffic on green. Do not attach capture equipment again without a
+recorded state; passive evidence includes a complete checksum-valid
+controller-originated Protocol 1.0 WRITE on green. Do not attach capture
+equipment again without a
 separate review of the driver path, transient envelope, safe measurement point
 and specific evidence objective.
 
