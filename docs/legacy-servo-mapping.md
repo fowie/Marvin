@@ -153,6 +153,35 @@ unexpected condition was reported. The sealed observation is definitive:
 This is pre-write failure evidence, not a `1D` protocol observation and not
 authorization to retry.
 
+A later retry proceeded only after fresh authorization and fresh physical
+gates. The operator reported Marvin physically OFF immediately afterward, the
+scope stopped, and no unexpected condition. The sealed execution contains the
+single fixed request `53bc0d1d000000525445`: 10 accepted TX bytes, zero
+uncertain TX bytes, one submission attempt, one 10-byte completed USB OUT, and
+no retry, reconnect or follow-up. It contains exactly one CRC-valid correlated
+sequence-3516/command-`1D` response:
+
+```text
+53bc0d1d800400c409aa0ac2b145
+```
+
+The observed raw response field is `80`; the four-byte payload is
+`c409aa0a`, yielding little-endian words `[2500,2730]`. The result retained
+one correlation candidate, 14 serial/USB IN bytes, no cleanup error, and final
+usbmon counters `queued=0`, `dropped=0`. This proves only one correlated
+legacy response shape and its raw data. Neither the raw `80` field nor USB
+completion is an application ACK, and the two words are not calibrated or
+measured angles. The evidence adds no setter or physical-position proof.
+
+The preserved output remains outside the repository at
+`servo2-getter-20260923T2220`. The independently read top-level
+`SHA256SUMS` file has SHA-256
+`38e806cd9fc98961aaea3eef6d09bf37669d929337a4bbeaf0b347d55cdd0a13`;
+that manifest records top-level `metadata.json` SHA-256
+`5727edea38db06f9eddccfbb42129ea584e2be539c2b838a000541dbb3b70c4e`.
+This completed read-only observation is not standing authorization for any
+further live action.
+
 ## Fixed front-camera live mapper
 
 `tools.marvin_legacy_front_servo_mapper` is the only setter-capable legacy
