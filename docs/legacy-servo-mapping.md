@@ -292,8 +292,14 @@ straight-through conductors: green-to-green, red-to-red and black-to-black.
 Every cross-pair was open/OL. This establishes that the apparent fourth J24
 conductor is not a fourth conductor in the tested harness; the visual source
 of that appearance remains unresolved. It does not assign any conductor
-function. The model marking makes AX-12+ electrical and protocol documentation
-directly relevant, but does not prove how J24 implements or energizes it.
+function. A subsequent all-power-off board-side test independently verified
+the J24 black contact as controller ground/return. Red showed a
+polarity-dependent semiconductor path to the labelled `+12V`/servo-power
+point; that does not prove a direct rail connection or any live voltage. Green
+remains the DATA candidate by elimination and the AX-12+ source model, not by
+direct electrical proof. The model marking makes AX-12+ electrical and
+protocol documentation directly relevant, but does not prove how J24
+implements or energizes it.
 
 ### Offline semantic assessment
 
@@ -367,6 +373,28 @@ a three-conductor, point-to-point harness with no measured conductor-to-
 conductor short. It does not establish supply, ground, command, data, feedback
 or motor drive; color names are identifiers only.
 
+With the same sources disconnected and J24 unplugged, a second test used an
+independently identified, clearly labelled controller `GND`/`0V` point and a
+clearly labelled `+12V`/servo-power point:
+
+- J24 black to controller `GND`/`0V` was near zero ohms with continuity;
+  J24 red and green to that point were open/OL.
+- J24 red to the labelled `+12V`/servo-power point measured approximately
+  500 ohms in one resistance-probe orientation and open/OL when reversed; the
+  resistance-mode lead orientation was not retained.
+- In diode mode, red meter lead on the labelled `+12V`/servo-power point and
+  black meter lead on J24 red measured `0.500 V`; reversing those exact leads
+  measured open/OL.
+- J24 green to the same labelled `+12V`/servo-power point was open/OL.
+
+The actuator-end keyed plug, viewed into its mating openings with key/latch up,
+is black, red, green from left to right; no molded contact numbers are visible.
+These measurements independently verify black as controller ground/return.
+The asymmetric red-to-rail result establishes a unidirectional semiconductor
+path, not a direct `+12V` rail, its circuit topology, or a live voltage. Green
+is the remaining AX-12+ DATA candidate by elimination and the vendor interface
+model, but has not been electrically identified as DATA.
+
 The authoritative
 [ROBOTIS AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
 specifies a `9.0..12.0 V` input (`11.1 V` recommended), digital packets and a
@@ -374,25 +402,29 @@ TTL-level multidrop half-duplex asynchronous serial connection using 8 data
 bits, one stop bit and no parity. The marked actuator and verified
 three-conductor harness therefore make supply, return and a Protocol 1.0
 half-duplex DATA path the source-backed interface expectation. They do not
-assign those roles to colors or J24 contacts. ROBOTIS explicitly warns users
-to verify the pinout on both the actuator and board because connector pinout
-may vary by connector manufacturer.
+alone assign those roles to colors or J24 contacts. The independent board-side
+measurement now establishes black as return; red is a supply-path candidate
+with intervening semiconductor circuitry, and green is the DATA candidate.
+Only black is electrically verified. ROBOTIS explicitly warns users to verify
+the pinout on both the actuator and board because connector pinout may vary by
+connector manufacturer.
 
 The powered return to zero is consistent with a controller communicating with
 and enabling the AX-12+, especially because Torque Enable defaults OFF after
 power-on. It does not reveal the instruction sequence or prove that legacy
-`1E` caused any downstream packet. The remaining unknowns are J24 pin mapping
-and driver circuit, actual supply and logic levels, bus idle/activity state,
-actuator ID, configured baud and return delay, startup packets, controller
-conversion from legacy `0..3000`, and installed `1D`/`1E` handler semantics.
+`1E` caused any downstream packet. The remaining unknowns are red's exact
+supply-path circuitry, green's DATA connection and half-duplex driver, actual
+supply and logic levels, bus idle/activity state, actuator ID, configured baud
+and return delay, startup packets, controller conversion from legacy
+`0..3000`, and installed `1D`/`1E` handler semantics.
 
 Ten earlier operator-supplied local photos were reviewed offline. They show the main
 controller board and harnesses labelled for proximity/cliff sensors, ring,
 speaker, encoder, PC control, power/battery, USB cameras and PC front-panel
 functions. They did not identify the front-camera servo connector. The six
-later photos and disconnected continuity test identify J24/SERVO2, both
-harness endpoints and three independent conductors, but no conductor
-functions. A visible
+later photos and disconnected continuity tests identify J24/SERVO2, both
+harness endpoints, three independent conductors and black as controller
+ground/return. A visible
 six-position `SERIAL` footprint and other test points are not attributed to
 the actuator interface and must not be used as probe points from appearance
 alone. The photos are not committed.
@@ -404,21 +436,21 @@ treated as an isolated differential probe or connected across two unknown
 nodes. Battery operation alone does not establish channel-to-channel or
 input-to-USB/charger isolation.
 
-J24 and the harness mapping narrow the physical path, but no reviewed evidence
-identifies a safe signal/reference pair or even proves that one conductor is a
-logic signal. **That remains the attachment blocker.** Before any powered
-capture plan can be approved, supply:
+J24 and the harness mapping establish black as the local reference, but no
+reviewed evidence proves green is DATA, identifies its driver, or establishes
+the red supply path and electrical envelope. **That remains the attachment
+blocker.** Before any powered capture plan can be approved, supply:
 
 - sharp straight-on photos of the unplugged J24 plug and header faces, the
   actuator connector face and every actuator marking/model label, with power
   OFF and host USB disconnected;
-- keyed orientation and contact numbers for both unplugged connector faces so
-  the verified three-conductor map can be recorded by contact rather than
-  color;
-- a board-side map from every J24 contact to independently identified
-  controller 0 V, relevant supply rails and accessible nearby
-  driver/component contacts, using a reviewed all-power-removed resistance
-  and continuity plan;
+- keyed orientation for the J24 face corresponding to the recorded
+  actuator-end order (key/latch up, mating openings viewed directly:
+  black-red-green left to right; no molded numbers);
+- an expanded all-power-removed board-side map tracing red's
+  polarity-dependent path toward the labelled servo-power rail and green
+  toward accessible nearby driver/component contacts, using a reviewed
+  current-limited resistance/diode/continuity plan;
 - controller-board underside photos and a schematic/board file showing J24
   traces and nearby drivers if available. If the required board-side map
   cannot be established from reviewed files or measurements, powered
@@ -431,10 +463,11 @@ capture plan can be approved, supply:
   an independently qualified isolated differential probe.
 
 The AX-12+ connector diagram is now relevant to the marked actuator, but is
-not sufficient to assign J24 or harness colors. Follow ROBOTIS's warning to
-verify both actuator and board pinouts. Do not attach a probe until the
-all-power-removed board-side map independently identifies supply, reference
-and DATA.
+not sufficient to assign the remaining J24 contacts. Follow ROBOTIS's warning
+to verify both actuator and board pinouts. Black is verified as reference;
+red is not yet a proven direct supply and green is not yet proven DATA. Do not
+attach a powered probe until the all-power-removed board-side map establishes
+those paths and their safe measurement points.
 
 ### Non-driving instrument boundary
 
@@ -549,10 +582,10 @@ Before attachment, a separately authorized operator must confirm:
    handling and independent cutoff are defined.
 2. Only the intended front-camera actuator is connected; projector and other
    actuators remain physically isolated as required by the reviewed setup.
-3. The verified three-conductor continuity result is recorded by keyed contact
-   number, and the board-side map establishes the interface class and reviewed
-   measurement pair without color assumptions; the probe point cannot short
-   adjacent conductors.
+3. The verified keyed three-conductor result and black ground/return are
+   recorded; the expanded board-side map establishes red's supply path,
+   green's DATA driver and a reviewed measurement pair without relying on
+   color; the probe point cannot short adjacent conductors.
 4. The separately approved isolated differential-probe stage has retained the
    signal envelope. Capture-instrument ratings, thresholds and isolation are
    reviewed against it; all transmitters, pull-ups and output modes are
