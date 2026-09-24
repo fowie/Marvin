@@ -101,8 +101,9 @@ python -m tools.marvin_legacy_servo_plan \
 `tools.marvin_legacy_front_servo_mapper` is the only live-capable legacy servo
 tool. It is still offline by default and exposes no target, delta, range,
 dwell, word, command, stop, calibration, reset, flash or power-state option.
-Its reviewed profile is fixed to one physically connected AX-12+ front-camera
-tilt servo with the projector servo disconnected: getter baseline
+Its historical reviewed profile was authorized under an operator declaration
+that the one physically connected front-camera actuator was AX-12+, with the
+projector servo disconnected: getter baseline
 `[2500,2730]`, one setter `[2490,2730]`, at most 0.25 seconds of observation,
 one complete `[2500,2730]` restore attempt, then one verification getter only
 after a correlated restore response. Raw response status is retained as an
@@ -115,7 +116,13 @@ Dry run:
 python -m tools.marvin_legacy_front_servo_mapper
 ```
 
-The exact live invocation is intentionally verbose:
+The live recipes below are retained only as historical records of the executed
+profiles. **They are retired and must not be reused.** The later actuator
+photos do not establish the AX-12+ identity or angular scale required by their
+literal acknowledgements, so those acknowledgements cannot currently be made
+truthfully. No further live legacy `1E` delta is authorized.
+
+Historical exact live invocation:
 
 ```sh
 python -m tools.marvin_legacy_front_servo_mapper \
@@ -130,8 +137,7 @@ python -m tools.marvin_legacy_front_servo_mapper \
   --unprivileged-usbmon
 ```
 
-This command is documentation only. Do not run it without a separately
-reviewed physical test plan and fresh operator authorization.
+This command is historical evidence only, not a current procedure.
 
 The clean word-0 run produced correlated raw-`82` setter/restore responses, a
 matching final `[2500,2730]` getter, accepted TX only, zero uncertain TX bytes,
@@ -148,7 +154,7 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --word1-front-camera-hypothesis
 ```
 
-Exact word-1 hypothesis live invocation:
+Historical exact word-1 hypothesis live invocation:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
@@ -167,24 +173,26 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
 The clean word-1 one-degree run likewise produced correlated raw-`82`
 setter/restore responses, a matching final `[2500,2730]` getter, accepted TX
 only, zero uncertain TX bytes, zero usbmon drops, and no operator-visible
-movement. The operator reported that the AX-12+ LED illuminated or blinked
+movement. The operator reported that the presumed AX-12+ LED illuminated or blinked
 during power-on, then Marvin was OFF with host USB disconnected. Both
 one-degree negative observations remain external evidence, not channel proof.
 
 A separate fixed word-0 five-degree diagnostic changes only `[2500,2730]` to
-`[2450,2730]`. Fifty legacy UI units equals five degrees under the declared
-AX-12+ `0..3000` to `0..300` scale and remains inside that UI range. Neither
+`[2450,2730]`. Fifty legacy UI units was treated as five degrees under the
+then-declared AX-12+ `0..3000` to `0..300` scale and remains inside that UI
+range. The later photos invalidate using that scale as installed-actuator
+evidence. Neither
 the scale nor the two negative observations establishes mechanical safety, so
 the mode requires a separate literal operator clearance confirmation.
 
-Five-degree dry run:
+Historically named five-degree dry run:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
   --word0-five-degree-diagnostic
 ```
 
-Exact five-degree live invocation:
+Historical exact five-degree live invocation:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
@@ -240,7 +248,7 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --word1-five-degree-diagnostic
 ```
 
-Exact word-1 five-degree live invocation:
+Historical exact word-1 five-degree live invocation:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
@@ -257,7 +265,8 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --unprivileged-usbmon
 ```
 
-This invocation is documentation only and is not authorization to execute it.
+This invocation is historical evidence only and is not authorization to
+execute it.
 
 ### Corrected-cable word-1 result and startup observation
 
@@ -268,11 +277,22 @@ was complete with zero uncertain bytes and zero usbmon drops. The operator
 reported no visible movement and no sound.
 
 Separately, with Marvin OFF, the operator manually displaced the connected
-AX-12+ front-camera tilt servo. On the next power-on it returned to its zero
-position. This is external physical evidence that startup can energize and
-communicate with the downstream servo path. It does not identify the AX-12+
-ID, baud, packets, controller command, runtime `1E` behavior, or the meaning
-of either getter word. Neither observation is protocol proof or channel proof.
+front-camera tilt actuator, which was then declared to be AX-12+. On the next
+power-on it returned to its zero position. This is external physical evidence
+that the startup actuation path can energize and reposition the mechanism. It
+does not establish a digital bus, AX-12+ identity, ID, baud, packets,
+controller command, runtime `1E` behavior, or the meaning of either getter
+word. Neither observation is protocol proof or channel proof.
+
+Later photos establish that the connected mechanism does not have a visibly
+identifiable AX-12+ enclosure; it is a black cylindrical geared actuator whose
+harness was operator-traced to `J24/SERVO2`. The three actuator-side
+conductors conflict with four visibly occupied J24 positions, so the
+end-to-end topology is unresolved. The earlier “AX-12+” identity was an
+operator declaration, not source or marking proof, and is now unconfirmed.
+This does not change the recorded protocol transcript, but it blocks reuse of
+any AX-12-specific scale, register or bus assumption for the installed
+actuator.
 
 ### Offline semantic assessment
 
@@ -302,16 +322,16 @@ handler can emit a downstream servo packet synchronously inside that interval,
 and no target-state getter was taken before restore. The earlier word-0 run's
 audible engagement without visible motion remains external evidence only.
 
-The
+If the actuator were an AX-12+, the
 [AX-12+ vendor control table](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
-also excludes a direct wire-value assumption:
+would exclude a direct wire-value assumption:
 native Goal Position is a volatile two-byte value `0..1023` for `0..300`
 degrees, Torque Enable is volatile and defaults OFF, ID and baud are EEPROM
 settings, and communication uses DYNAMIXEL Protocol 1.0 half-duplex packets.
 The legacy UI's `0..3000` values therefore require an unproved controller-side
-conversion if they are live positions. No matching artifact contains AX-12
-packet generation, servo IDs, bus baud, torque-enable writes, goal-position
-writes, or startup-zero logic.
+conversion if they are live positions; they do not prove AX-12 identity. No
+matching artifact contains AX-12 packet generation, servo IDs, bus baud,
+torque-enable writes, goal-position writes, or startup-zero logic.
 
 No further host servo command is justified by this evidence. The minimum
 offline next step is recovery of the matching PCTestApp-era S/E firmware or
@@ -322,7 +342,7 @@ already-observed startup-zero downstream bus event, with no host command
 injection. That would still require an explicit physical test plan and fresh
 operator authorization.
 
-## Passive AX-12 startup-bus capture plan
+## Passive actuator startup-interface capture plan
 
 This section is an offline procedure draft, not authorization to connect an
 instrument or power Marvin. It preserves the decision that no further live
@@ -330,23 +350,53 @@ legacy `1E` delta is justified.
 
 ### Established topology and blocker
 
+Six later operator-supplied photos materially revise the earlier AX-12
+assumption. They show the connected front-camera mechanism as a black
+cylindrical geared actuator, not a visibly identifiable AX-12+ enclosure. The
+operator reports continuously tracing that exact actuator, with no hidden
+splice or branch, to controller header `J24`, silkscreened `SERVO2`; adjacent
+`J3` is silkscreened `SERVO1`. This establishes the physical destination of
+the connected mechanism as operator/photo evidence. It does not identify its
+electrical interface.
+
+The operator reports three actuator conductors: green, red and black. The
+photos show three conductors terminating at the actuator-side plug, while
+close views show four separately occupied J24 positions: black, two green and
+red. That is a material conflict with the reported continuous path and absence
+of a splice or branch; it cannot be dismissed as perspective. Do not infer
+supply, ground, command, data, feedback or motor drive from color or header
+order.
+
+The most defensible current hypothesis is narrower: J24/SERVO2 is the
+controller-side harness endpoint associated with the front-camera geared
+mechanism, but the end-to-end topology and electrical interface remain
+unresolved. A three-contact integrated positional-actuator interface is a
+candidate at the actuator end. Half-duplex digital, pulse, analog,
+differential/motor-drive and proprietary interfaces remain possibilities
+until the fourth J24 contact is explained. AX-12 Protocol 1.0 is one
+conditional subordinate hypothesis, not the default decoder. The housing,
+`SERVO2` label, startup positioning and legacy UI scale do not distinguish
+these possibilities.
+
 The
 [AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
 specifies a TTL-level, multidrop, half-duplex asynchronous serial bus with
 separate DATA, supply and ground conductors. DYNAMIXEL Protocol 1.0 uses one
 DATA wire for controller instructions and servo status packets. The reported
-startup return-to-zero makes a controller-to-servo path likely, but does not
-establish Marvin connector pins, intermediate buffers or level conversion,
-bus branches, signal voltage, pull-up arrangement, servo ID or baud.
+startup return-to-zero makes a controller-to-actuator path likely, but no
+photo, marking or matching source establishes that this actuator is an AX-12,
+or establishes its pins, buffers, signal type, voltage, pull-up arrangement,
+ID or baud.
 
-Ten operator-supplied local photos were reviewed offline. They show the main
+Ten earlier operator-supplied local photos were reviewed offline. They show the main
 controller board and harnesses labelled for proximity/cliff sensors, ring,
 speaker, encoder, PC control, power/battery, USB cameras and PC front-panel
-functions. They do not show the AX-12 actuator connector and controller
-connector in one traceable view, identify a front-camera servo connector, or
-establish DATA and ground continuity. A visible six-position `SERIAL` footprint
-and other test points are not attributed to the servo bus and must not be used
-as probe points from appearance alone. The photos are not committed.
+functions. They did not identify the front-camera servo connector. The six
+later photos identify J24/SERVO2 and the actuator endpoints through operator
+tracing, but still do not establish contact count or functions. A visible
+six-position `SERIAL` footprint and other test points are not attributed to
+the actuator interface and must not be used as probe points from appearance
+alone. The photos are not committed.
 
 The reviewed Yeapook ADS1013D photo proves only that this portable two-channel
 scope is available. No local manual or isolation/common-mode specification was
@@ -355,18 +405,27 @@ treated as an isolated differential probe or connected across two unknown
 nodes. Battery operation alone does not establish channel-to-channel or
 input-to-USB/charger isolation.
 
-No reviewed photo or wiring record therefore identifies a safe Marvin probe
-point. **That remains the attachment blocker.** Before any capture plan can be
-approved, supply:
+J24 now narrows the controller-side connector, but no reviewed evidence
+identifies a safe signal/reference pair. **That remains the attachment
+blocker.** Before any capture plan can be approved, supply:
 
-- sharp photos of both sides of the controller connector area, the complete
-  front-camera servo harness and all visible labels, with power OFF and USB
-  disconnected;
-- the connector pin count and keyed orientation, without assigning functions
-  from wire color;
-- an all-power-removed continuity map from each harness conductor to the
-  AX-12+ actuator-side ground, DATA and supply contacts, plus confirmation that
-  no continuity measurement caused the actuator to move or become powered;
+- sharp straight-on photos of the unplugged J24 plug and header faces, the
+  actuator connector face and every actuator marking/model label, with power
+  OFF and host USB disconnected;
+- resolution of whether J24 has three or four populated contacts, with keyed
+  orientation and contact numbers defined from the connector geometry;
+- a connector-by-connector retrace and an all-power-removed,
+  actuator-disconnected continuity matrix from every J24 contact to every
+  actuator-connector contact, performed only under a reviewed,
+  current-limited meter plan; no pin function may be assigned from color;
+- a board-side map from every J24 contact to independently identified
+  controller 0 V, relevant supply rails and accessible nearby
+  driver/component contacts, using a reviewed all-power-removed resistance
+  and continuity plan;
+- controller-board underside photos and a schematic/board file showing J24
+  traces and nearby drivers if available. If the required board-side map
+  cannot be established from reviewed files or measurements, powered
+  characterization remains prohibited;
 - instrument make/model, input impedance/capacitance, maximum input and
   common-mode ratings, logic thresholds, isolation method and whether any USB,
   charger or earth connection exists during capture;
@@ -374,16 +433,17 @@ approved, supply:
   voltage, and a separate reviewed electrical-envelope measurement made with
   an independently qualified isolated differential probe.
 
-Do not attach based on an AX-12 connector diagram alone: that diagram describes
-the actuator, not Marvin's controller connector or harness routing.
+Do not attach or select a decoder based on an AX-12 connector diagram alone.
+It does not identify the photographed actuator or J24 circuit.
 
 ### Non-driving instrument boundary
 
-The preferred observation is a rated differential probe into a battery-powered
-scope or a high-impedance receive-only buffer into a battery-powered logic
-analyzer. Reference the measurement between the established bus DATA conductor
-and the established bus ground at the same local connector. A logic analyzer
-still needs that reference; “one-wire bus” does not mean ground-free.
+No powered observation method can be selected until the interface is
+classified and its reference, normal range, maximum possible voltage and
+transient envelope are established. A rated isolated differential probe into
+a battery-powered scope is the only candidate for the first bounded
+characterization. A high-impedance receive-only buffer or logic analyzer is a
+later option only for a proven compatible digital signal.
 
 Do not use an earth-grounded bench-scope ground clip. Do not connect a
 battery-powered instrument to a charging cable, host USB or another grounded
@@ -392,26 +452,28 @@ pattern generation, protocol transmission or automatic voltage injection.
 Avoid bidirectional level shifters because their pull-ups and direction
 behavior can alter the bus.
 
-Electrical qualification is two-stage. The first powered attachment may use
+Electrical qualification is staged. The first powered attachment may use
 only an isolated high-impedance differential probe independently rated above
 the reviewed source's maximum possible voltage and common-mode/transient
-envelope; it measures DATA-to-local-ground idle, high, low and peak voltages
-without a logic analyzer attached. That characterization requires its own
-bounded operator approval. Only afterward may an analyzer, attenuator or
-receive-only buffer be selected by comparing its input rating, thresholds,
-leakage and loading with the retained envelope. “TTL” is not permission to
-assume a 5 V-safe probe or a particular logic threshold.
+envelope. The exact pair measured depends on the completed classification; do
+not assume DATA-to-ground. That characterization requires its own bounded
+operator approval. Only afterward may an analyzer, attenuator or receive-only
+buffer be selected by comparing its input rating, thresholds, leakage and
+loading with the retained envelope. “TTL” is not permission to assume a 5
+V-safe probe or a particular logic threshold.
 
-A battery scope or logic analyzer can observe the half-duplex DATA line
-passively only when all of the following are true: its input is genuinely
-high-impedance and receive-only; its DATA and ground connections are proved;
-its normal and transient ratings exceed the retained bus envelope; and it
-remains electrically floating except for the local bus reference. If those
-facts are unavailable, do not connect it.
+If classification proves a single-ended digital command/data signal and local
+reference, a floating battery scope or logic analyzer may observe it passively
+only when its input is genuinely high-impedance and receive-only, its ratings
+exceed the retained envelope, and it remains electrically floating except for
+that local reference. Pulse, analog, differential or motor-drive findings
+require a new reviewed measurement branch; this procedure intentionally does
+not improvise one.
 
-### Initial capture settings
+### Conditional digital capture settings after interface classification
 
-Capture raw edges rather than trusting one UART decoder:
+Only for a proven compatible single-ended digital signal, capture raw edges
+rather than trusting one UART decoder:
 
 - arm before the separately controlled Marvin power-on;
 - retain at least 100 ms before the first DATA transition and stop the capture
@@ -426,7 +488,9 @@ Capture raw edges rather than trusting one UART decoder:
 - do not probe the servo supply rail in the first capture. A second channel is
   allowed only after its separate point and voltage rating are established.
 
-The AX-12+ manual documents 8N1 and these baud settings: 1,000,000 (factory
+Only if the preceding evidence establishes a one-wire digital interface
+consistent with DYNAMIXEL Protocol 1.0 should the AX-12 candidates below be
+used. The AX-12+ manual documents 8N1 and these baud settings: 1,000,000 (factory
 default), 500,000, 400,000, 250,000, 200,000, 115,200, 57,600, 19,200 and
 9,600 bit/s. They are decode candidates, not claims about Marvin. Test each
 candidate offline against the same raw capture. Accept a candidate only when
@@ -445,9 +509,10 @@ deadline. If repeating the visible return-to-zero is later judged necessary,
 the separate physical plan must additionally bound the power-OFF manual
 displacement; this document does not authorize it.
 
-### Protocol 1.0 offline decoding
+### Conditional Protocol 1.0 offline decoding
 
-Per the
+This decoder applies only after the electrical capture itself shows a
+Protocol 1.0-compatible UART stream. Per the
 [DYNAMIXEL Protocol 1.0 specification](https://emanual.robotis.com/docs/en/dxl/protocol1/),
 an instruction packet is:
 
@@ -499,12 +564,13 @@ Before attachment, a separately authorized operator must confirm:
 
 1. Marvin, actuator power and host USB are OFF/disconnected; stored-energy
    handling and independent cutoff are defined.
-2. Only the intended front-camera AX-12+ is connected; projector and other
+2. Only the intended front-camera actuator is connected; projector and other
    actuators remain physically isolated as required by the reviewed setup.
-3. Photos and continuity results establish DATA and local ground without color
+3. Connector and board-side maps resolve the J24 contact discrepancy and
+   establish the interface class and reviewed measurement pair without color
    assumptions; the probe point cannot short adjacent conductors.
 4. The separately approved isolated differential-probe stage has retained the
-   DATA envelope. Capture-instrument ratings, thresholds and isolation are
+   signal envelope. Capture-instrument ratings, thresholds and isolation are
    reviewed against it; all transmitters, pull-ups and output modes are
    disabled.
 5. The probe is attached while power is absent, mechanically strain-relieved,
