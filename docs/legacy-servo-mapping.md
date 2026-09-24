@@ -448,6 +448,20 @@ complete checksum-validated packet. It does not independently read the
 actuator's EEPROM ID, show actuator acceptance, reveal other startup packets,
 or connect this traffic to legacy `1D`/`1E`.
 
+A separately gated, one-second passive startup recapture under the same
+electrical and no-command conditions independently reproduced the same eight
+complete exported bytes:
+
+```text
+FF FF 02 05 03 22 50 01
+```
+
+The ADS1013D proprietary export retains only a centered 1,500-sample CH1
+window. Moving the on-screen trigger did not move that retained window far
+enough to preserve the checksum byte. The reproduction strengthens the byte
+decode and startup-repeatability evidence, but does not convert inferred
+checksum `82` into an observation. No further repeat is justified.
+
 The preserved evidence remains outside the repository in
 `servo2-startup-capture`. SHA-256:
 
@@ -457,8 +471,12 @@ The preserved evidence remains outside the repository in
   `71ece6c25848fa3115d4aa7df95a0096ef0ee2446e343e40904dbad999e317a2`;
 - `startup-20us-div.jpg`:
   `e4e69c5d6d611149cedbb558c4aa6c475eeac98ac415c79e79adb6961259caf3`;
+- recapture proprietary ADS1013D waveform:
+  `6599c77ba6c81d561cfe3f8f7e28f659ef9636cab4cb41ad6160727f7ef5fda6`;
+- recapture scope BMP:
+  `b9926accf845127fcec3fabbea0564540f84df46345e4ccfaac56f9332ff6342`;
 - `README.txt`:
-  `ee3352eb2447b00309b2a2fd7406ef220653c35cf0886473e37c83c38ae05d94`.
+  `ca91f2479a9a7d0fa127eb532cb2bc64dcf2410ee6d7d96628800ee524763557`.
 
 The authoritative
 [ROBOTIS AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
@@ -507,11 +525,11 @@ input-to-USB/charger isolation.
 
 J24 evidence establishes black as local reference, red as 9 V actuator supply
 and green as the controller output carrying a Protocol 1.0-compatible WRITE
-prefix in the recorded startup state. The retained sample is bounded and
-incomplete; it does not establish a complete checksum-valid packet, the full
-startup transcript, actuator responses, or the signal's transient envelope.
-Any additional capture requires a new review rather than treating this result
-as standing authorization.
+prefix in two bounded startup captures. Both retained samples are incomplete;
+they do not establish a complete checksum-valid packet, the full startup
+transcript, actuator responses, or the signal's transient envelope. No further
+repeat is justified. Any different capture requires a new review rather than
+treating this result as standing authorization.
 
 The AX-12+ connector diagram is now relevant to the marked actuator, but is
 not by itself sufficient to assign the J24 contacts. Follow ROBOTIS's warning
