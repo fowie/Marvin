@@ -207,6 +207,55 @@ that manifest records top-level `metadata.json` SHA-256
 This completed read-only observation is not standing authorization for any
 further live action.
 
+## Dedicated baseline-only restore verifier
+
+`tools.marvin_legacy_front_servo_baseline_restore` is a separate
+offline-default tool for one immutable legacy `1E SetServoPosition` request:
+sequence `3517`, payload `[2500,2730]`, request
+`53bd0d1e000400c409aa0a52a945`. It has no preliminary getter, target, delta,
+dwell, sequence, value, follow-up setter, retry or reconnect control.
+
+Dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_baseline_restore
+```
+
+Reviewed live template for a future separately authorized execution:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_baseline_restore \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-ax12-plus-connected-at-j24 \
+  --projector-servo-physically-disconnected \
+  --battery-only-passive-scope-on-verified-green-black-via-spare-cable \
+  --operator-confirmed-baseline-restore-clearance \
+  --host-usb-connected --unprivileged-usbmon \
+  --authorize-exactly-one-legacy-1e-baseline-2500-2730-restore-setter \
+  --authorize-immediate-physical-power-off-after-baseline-restore
+```
+
+This command is not standing authorization and has not been executed. It
+permits one 14-byte application write and one bounded response window, then
+closes with no follow-up command. The response must be exactly one unique
+CRC-valid sequence/command-correlated empty-payload frame. Its raw response
+field and USB completion remain observations, not ACK. The exact
+`045e:4444` identity and reviewed physical USB port are pinned, and fresh
+serial/usbmon evidence is sealed on every outcome.
+
+If the installed word-0 division-by-three interpretation generalizes from the
+single proved `2490 -> 830` observation, the passive J24 capture may contain
+an ID-2 Goal Position value near 833 for host baseline word 2500. Integer
+rounding, the exact value, the general conversion and whether any downstream
+packet is emitted are unproved; the capture is intended to test that
+hypothesis, not assume it. Even a matching packet would establish controller
+bus output, not actuator acceptance, execution, physical position or
+restoration. Immediate physical power-off remains an operator action after
+evidence sealing; the tool sends no power command.
+
 ## Fixed front-camera live mapper
 
 `tools.marvin_legacy_front_servo_mapper` is the only setter-capable legacy

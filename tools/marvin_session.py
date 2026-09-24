@@ -247,6 +247,7 @@ def run_session(
     _front_servo_word0_five_degree_mapper=False,
     _front_servo_word1_five_degree_mapper=False,
     _front_servo_getter=False,
+    _front_servo_baseline_restore=False,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -340,10 +341,14 @@ def run_session(
             _isolated_zero_velocity, _motor_power_off_preparation,
             _front_servo_mapper, _front_servo_word1_mapper,
             _front_servo_word0_five_degree_mapper,
-            _front_servo_word1_five_degree_mapper, _front_servo_getter)):
+            _front_servo_word1_five_degree_mapper, _front_servo_getter,
+            _front_servo_baseline_restore)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
-    front_servo_profile = _front_servo_mapper or _front_servo_getter
-    if _front_servo_mapper and _front_servo_getter:
+    front_servo_profile = (
+        _front_servo_mapper or _front_servo_getter or _front_servo_baseline_restore)
+    if sum(map(bool, (
+            _front_servo_mapper, _front_servo_getter,
+            _front_servo_baseline_restore))) > 1:
         raise ValueError("Select one front-servo diagnostic profile.")
     if _front_servo_word1_mapper and not _front_servo_mapper:
         raise ValueError("Word1 front-servo mode requires the front-servo mapper.")
@@ -569,7 +574,9 @@ def run_session(
     elif not powered_trial and not front_servo_profile:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
     if _motor_power_off_preparation or powered_trial or front_servo_profile:
-        if _front_servo_getter:
+        if _front_servo_baseline_restore:
+            from tools.marvin_legacy_front_servo_baseline_restore import TRANSCRIPT
+        elif _front_servo_getter:
             from tools.marvin_legacy_front_servo_getter import TRANSCRIPT
         elif _front_servo_mapper:
             from tools.marvin_legacy_front_servo_mapper import (
@@ -616,7 +623,7 @@ def run_session(
                 or (bytesize, parity, stopbits) != (8, "N", 1)
                 or seconds != (
                     15 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
-                    else 7 if _front_servo_getter
+                    else 7 if _front_servo_getter or _front_servo_baseline_restore
                     else 8 if _front_servo_mapper
                     else 10 if scope in (
                         motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
@@ -822,9 +829,20 @@ def run_session(
             requested_probe_hex=TRANSCRIPT[0].hex(),
             unknown_command_authorized=True,
             application_acknowledgment="not_established",
+            physical_restoration="not_established_by_protocol",
         )
         metadata["limitations"][2] = (
             "Kernel-open line transitions remain possible; getter uses an unflushed raw tty.")
+    if _front_servo_baseline_restore:
+        metadata.update(
+            probe_name="LegacyServoSingleBaselineRestore",
+            immutable_application_transcript_hex=[raw.hex() for raw in TRANSCRIPT],
+            requested_probe_hex=TRANSCRIPT[0].hex(),
+            unknown_command_authorized=True,
+            application_acknowledgment="not_established",
+        )
+        metadata["limitations"][2] = (
+            "Kernel-open line transitions remain possible; baseline restore uses an unflushed raw tty.")
     if left_motor_powered_observation:
         metadata.update(**motor_consent.observation_history(declarations),
                         immutable_application_transcript_hex=["53000900000000bf0445"],
@@ -980,6 +998,8 @@ def run_session(
             "--front-camera-tilt-only-connected-projector-servo-physically-disconnected")
         if _front_servo_getter:
             command.append("--front-camera-servo-single-getter")
+        elif _front_servo_baseline_restore:
+            command.append("--front-camera-servo-single-baseline-restore")
     elif encoder_feedback_observation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.ENCODER_FLAGS)
     elif left_motor_powered_observation:

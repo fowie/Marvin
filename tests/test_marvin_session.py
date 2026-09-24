@@ -185,6 +185,30 @@ class SessionTests(unittest.TestCase):
         self.assertIn("--front-camera-servo-single-getter", command)
         runner.assert_called_once()
 
+        from tools.marvin_legacy_front_servo_baseline_restore import (
+            TRANSCRIPT as RESTORE_TRANSCRIPT)
+        runner.reset_mock()
+        self.output = self.output.parent / "baseline-restore-capture"
+        self.clock.now = 0
+        self.finished = False
+        self.process.returncode = None
+        result = self.run_capture(
+            seconds=7, actuators_isolated=False, baudrate=57600,
+            allow_unknown_command=True, probe_profile="legacy",
+            capture_runner=runner, binary_payload_limit=4096,
+            usb_tail_seconds=5, usb_close_grace_seconds=5,
+            _front_servo_baseline_restore=True)
+        self.assertEqual(
+            result["requested_application_bytes"], sum(map(len, RESTORE_TRANSCRIPT)))
+        self.assertEqual(result["probe_name"], "LegacyServoSingleBaselineRestore")
+        command = self.popen.call_args.args[0]
+        self.assertIn(
+            "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
+            command)
+        self.assertIn("--front-camera-servo-single-baseline-restore", command)
+        self.assertNotIn("--front-camera-servo-single-getter", command)
+        runner.assert_called_once()
+
     def test_word1_front_servo_mode_keeps_same_true_recorder_state(self):
         from tools.marvin_legacy_front_servo_mapper import WORD1_TRANSCRIPT
         runner = Mock(side_effect=self.capture)

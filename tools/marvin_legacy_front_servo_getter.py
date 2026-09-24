@@ -101,10 +101,10 @@ def _response_evidence(record):
     )
 
 
-def _observe(transport, report, *, clock=time.monotonic):
+def _observe_fixed(transport, report, *, request, sequence, response, success,
+                   result_fields, noun, clock=time.monotonic):
     deadline = clock() + OVERALL_SECONDS
     active_deadline = deadline - CLEANUP_SECONDS
-    response = _response_evidence(transport.event)
     primary = None
     report.update(
         status="not_started",
@@ -117,18 +117,18 @@ def _observe(transport, report, *, clock=time.monotonic):
     try:
         if transport.revalidate(deadline=active_deadline) != transport.token:
             raise OSError("Fresh transport identity differs from the pinned connection.")
-        report.update(write_status="attempted", uncertain_tx_bytes=len(REQUEST))
-        count = transport.write(REQUEST, deadline=active_deadline)
-        if type(count) is not int or not 0 <= count <= len(REQUEST):
-            raise OSError("Unknown getter write result; no retry.")
-        report.update(accepted_tx_bytes=count, uncertain_tx_bytes=len(REQUEST) - count)
-        if count != len(REQUEST):
-            raise OSError("Partial getter write; no retry or suffix resend.")
+        report.update(write_status="attempted", uncertain_tx_bytes=len(request))
+        count = transport.write(request, deadline=active_deadline)
+        if type(count) is not int or not 0 <= count <= len(request):
+            raise OSError(f"Unknown {noun} write result; no retry.")
+        report.update(accepted_tx_bytes=count, uncertain_tx_bytes=len(request) - count)
+        if count != len(request):
+            raise OSError(f"Partial {noun} write; no retry or suffix resend.")
         observed_at = clock()
-        if (transport.last_write_sequence != SEQUENCE or
+        if (transport.last_write_sequence != sequence or
                 type(transport.last_write_started) not in (int, float) or
                 transport.last_write_started > observed_at):
-            raise OSError("Getter write boundary evidence is inconsistent.")
+            raise OSError(f"{noun.capitalize()} write boundary evidence is inconsistent.")
         response.submitted_at = transport.last_write_started
         response.deadline = min(active_deadline, response.submitted_at + RESPONSE_SECONDS)
         if response.deadline != response.submitted_at + RESPONSE_SECONDS:
@@ -142,17 +142,14 @@ def _observe(transport, report, *, clock=time.monotonic):
             transport, response, deadline=response.deadline, clock=clock)
         packet = decode_packet(bytes.fromhex(response.events[0]["stream"]["raw_hex"]))
         report.update(
-            status=SUCCESS,
+            status=success,
             sequence=packet.sequence,
             command=packet.command,
             raw_response_field_uint8=packet.response_field,
             raw_payload_hex=packet.payload.hex(),
-            words_uint16_le=[
-                int.from_bytes(packet.payload[0:2], "little"),
-                int.from_bytes(packet.payload[2:4], "little"),
-            ],
             response_events=response.events,
             response_classification="correlated_shape_only_not_ACK",
+            **result_fields(packet),
         )
     except BaseException as error:
         primary = error
@@ -189,7 +186,25 @@ def _observe(transport, report, *, clock=time.monotonic):
             if primary is None:
                 raise errors[0]
             for error in errors:
-                primary.add_note(f"Additional getter finalization error: {error}")
+                primary.add_note(f"Additional {noun} finalization error: {error}")
+
+
+def _observe(transport, report, *, clock=time.monotonic):
+    return _observe_fixed(
+        transport, report,
+        request=REQUEST,
+        sequence=SEQUENCE,
+        response=_response_evidence(transport.event),
+        success=SUCCESS,
+        result_fields=lambda packet: {
+            "words_uint16_le": [
+                int.from_bytes(packet.payload[0:2], "little"),
+                int.from_bytes(packet.payload[2:4], "little"),
+            ],
+        },
+        noun="getter",
+        clock=clock,
+    )
 
 
 def run_getter(output, *, expected_physical_port, run=False, **acknowledgments):

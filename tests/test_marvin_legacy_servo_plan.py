@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from tests.test_marvin_legacy_protocol import frame
 from tools import marvin_legacy_protocol as protocol
+from tools import marvin_legacy_front_servo_baseline_restore as baseline_restore
 from tools import marvin_legacy_front_servo_getter as getter
 from tools import marvin_legacy_front_servo_mapper as mapper
 from tools import marvin_legacy_servo_plan as plan
@@ -18,6 +19,75 @@ from tools.marvin_legacy_client import Received
 
 
 class LegacyServoPlanTests(unittest.TestCase):
+    def test_single_baseline_restore_is_fixed_and_preserves_raw_response(self):
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(baseline_restore.main([]), 0)
+        dry_run = json.loads(stdout.getvalue())
+        packet = protocol.decode_packet(bytes.fromhex(
+            dry_run["immutable_application_transcript_hex"][0]))
+        self.assertEqual(
+            (packet.sequence, packet.command, packet.payload),
+            (3517, 0x1E, bytes.fromhex("c409aa0a")))
+        self.assertEqual(dry_run["maximum_writes"], 1)
+        self.assertFalse(dry_run["automatic_retries"])
+        for option in ("sequence", "value", "dwell", "delta", "getter"):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                baseline_restore.main(["--" + option, "1"])
+
+        blocked = object.__new__(baseline_restore._Transport)
+        blocked.writes = 1
+        with self.assertRaises(OSError):
+            blocked._submit_once(baseline_restore.REQUEST, deadline=1e12)
+        blocked.writes = 0
+        arbitrary = protocol.encode_request(
+            baseline_restore.SEQUENCE, 0x1E, bytes.fromhex("ba09aa0a"))
+        with self.assertRaises(OSError):
+            blocked._submit_once(arbitrary, deadline=1e12)
+
+        evidence = baseline_restore._response_evidence(Mock())
+        evidence.submitted_at, evidence.deadline = 10, 11
+        evidence.feed(Received(frame(
+            sequence=baseline_restore.SEQUENCE, command=0x1E,
+            status=0x82, payload=b""), 10.1, 10.2), 10.3)
+        self.assertEqual(evidence.candidates, 1)
+        wrong_payload = baseline_restore._response_evidence(Mock())
+        wrong_payload.submitted_at, wrong_payload.deadline = 10, 11
+        with self.assertRaisesRegex(OSError, "unexpected_baseline_restore_payload"):
+            wrong_payload.feed(Received(frame(
+                sequence=baseline_restore.SEQUENCE, command=0x1E,
+                status=0x82, payload=b"\x00"), 10.1, 10.2), 10.3)
+
+        transport = Mock(
+            token=b"token", serial_bytes=10, writes=1,
+            last_write_started=10.0,
+            last_write_sequence=baseline_restore.SEQUENCE,
+            event=Mock())
+        transport.revalidate.return_value = transport.token
+        transport.write.return_value = len(baseline_restore.REQUEST)
+        transport.close.return_value = None
+        raw = frame(
+            sequence=baseline_restore.SEQUENCE, command=0x1E,
+            status=0x82, payload=b"")
+
+        def observe_response(_, evidence, **__):
+            evidence.candidates = 1
+            evidence.events = [{"stream": {"raw_hex": raw.hex()}}]
+
+        report = {}
+        clock = Mock(side_effect=[9.0, 10.0, 10.1, 10.2, 10.3])
+        with patch.object(
+                baseline_restore.zero, "_observe_response",
+                side_effect=observe_response):
+            baseline_restore._observe(transport, report, clock=clock)
+        self.assertEqual(report["status"], baseline_restore.SUCCESS)
+        self.assertEqual(report["raw_response_field_uint8"], 0x82)
+        self.assertEqual(report["raw_payload_hex"], "")
+        self.assertEqual(report["application_submission_attempts"], 1)
+        self.assertEqual(report["application_acknowledgment"], "not_established")
+        transport.write.assert_called_once_with(
+            baseline_restore.REQUEST, deadline=14.0)
+
     def test_single_getter_is_fixed_read_only_and_preserves_response(self):
         with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
                 redirect_stdout(io.StringIO()) as stdout:

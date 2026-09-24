@@ -589,11 +589,13 @@ raise SystemExit(module.main(sys.argv[1:]))
         ]
         with tempfile.TemporaryDirectory() as temporary:
             for name, seconds, getter_profile in (
-                    ("mapper", "18", False), ("getter", "17", True)):
+                    ("mapper", "18", None),
+                    ("getter", "17", "--front-camera-servo-single-getter"),
+                    ("restore", "17", "--front-camera-servo-single-baseline-restore")):
                 command = [
                     *base, "--output", str(Path(temporary) / name), "--seconds", seconds]
                 if getter_profile:
-                    command.append("--front-camera-servo-single-getter")
+                    command.append(getter_profile)
                 admitted = subprocess.run(
                     command, cwd=ROOT, text=True, capture_output=True, check=False)
                 admitted_output = admitted.stdout + admitted.stderr
@@ -680,6 +682,17 @@ class CaptureTests(LocalFilesTests):
         }
         with self.assertRaisesRegex(usbmon.UsbmonError, "requires the connected-servo"):
             self.capture(front_camera_servo_single_getter=True)
+        with self.assertRaisesRegex(usbmon.UsbmonError, "requires the connected-servo"):
+            self.capture(front_camera_servo_single_baseline_restore=True)
+        with self.assertRaisesRegex(usbmon.UsbmonError, "Select one front-servo"):
+            self.capture(**(declaration | {
+                "front_camera_servo_single_getter": True,
+                "front_camera_servo_single_baseline_restore": True,
+            }))
+        with self.assertRaisesRegex(usbmon.UsbmonError, "must be booleans"):
+            self.capture(**(declaration | {
+                "front_camera_servo_single_baseline_restore": 1,
+            }))
         with self.assertRaisesRegex(usbmon.UsbmonError, "must be booleans"):
             self.capture(**(declaration | {"front_camera_servo_single_getter": 1}))
         for conflict in (
