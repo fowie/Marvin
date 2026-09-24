@@ -173,6 +173,16 @@ legacy response shape and its raw data. Neither the raw `80` field nor USB
 completion is an application ACK, and the two words are not calibrated or
 measured angles. The evidence adds no setter or physical-position proof.
 
+After Marvin was physically powered off, the ADS1013D was still armed and
+waiting for its configured falling-edge trigger; it had retained no waveform
+or screenshot. The operator then disarmed it and, while Marvin remained OFF,
+removed both probe tip and ground before any scope USB connection. This is
+only an instrumentation-negative observation: no falling-edge trigger was
+captured across that armed interval. Probe contact and trigger sensitivity
+were not independently revalidated during or after this run, and expected
+startup traffic also did not trigger. It therefore cannot establish absence
+of AX-12+ traffic, controller-to-actuator activity, or cached `1D` behavior.
+
 The preserved output remains outside the repository at
 `servo2-getter-20260923T2220`. The independently read top-level
 `SHA256SUMS` file has SHA-256
