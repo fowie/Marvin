@@ -286,13 +286,16 @@ word. Neither observation is protocol proof or channel proof.
 
 Later photos establish that the connected mechanism does not have a visibly
 identifiable AX-12+ enclosure; it is a black cylindrical geared actuator whose
-harness was operator-traced to `J24/SERVO2`. The three actuator-side
-conductors conflict with four visibly occupied J24 positions, so the
-end-to-end topology is unresolved. The earlier “AX-12+” identity was an
-operator declaration, not source or marking proof, and is now unconfirmed.
-This does not change the recorded protocol transcript, but it blocks reuse of
-any AX-12-specific scale, register or bus assumption for the installed
-actuator.
+harness was operator-traced to `J24/SERVO2`. A later all-power-removed test,
+with both harness ends unplugged, established three independent straight-through
+conductors: green-to-green, red-to-red and black-to-black. Every cross-pair
+was open/OL. This establishes that the apparent fourth J24 conductor is not a
+fourth conductor in the tested harness; the visual source of that appearance
+remains unresolved. It does not assign any conductor function. The earlier
+“AX-12+” identity was an operator declaration, not source or marking proof,
+and is now unconfirmed. This does not change the recorded protocol transcript,
+but it blocks reuse of any AX-12-specific scale, register or bus assumption
+for the installed actuator.
 
 ### Offline semantic assessment
 
@@ -335,12 +338,10 @@ torque-enable writes, goal-position writes, or startup-zero logic.
 
 No further host servo command is justified by this evidence. The minimum
 offline next step is recovery of the matching PCTestApp-era S/E firmware or
-source containing the `1D`/`1E` handlers and downstream servo task. If a later
-separately reviewed physical investigation is still needed, the least
-semantically invasive discriminator is passive, high-impedance capture of the
-already-observed startup-zero downstream bus event, with no host command
-injection. That would still require an explicit physical test plan and fresh
-operator authorization.
+source containing the `1D`/`1E` handlers and downstream actuator task. If a
+later separately reviewed physical investigation is still needed, first
+classify the three-conductor electrical interface without energizing it.
+Passive powered capture is not yet a defined next step.
 
 ## Passive actuator startup-interface capture plan
 
@@ -359,41 +360,30 @@ splice or branch, to controller header `J24`, silkscreened `SERVO2`; adjacent
 the connected mechanism as operator/photo evidence. It does not identify its
 electrical interface.
 
-The operator reports three actuator conductors: green, red and black. The
-photos show three conductors terminating at the actuator-side plug, while
-close views show four separately occupied J24 positions: black, two green and
-red. That is a material conflict with the reported continuous path and absence
-of a splice or branch; it cannot be dismissed as perspective. Do not infer
-supply, ground, command, data, feedback or motor drive from color or header
-order.
+With battery, charger, host USB and all external power disconnected, and both
+the actuator-end and J24-end connectors unplugged, the operator verified:
+green-to-green continuity only, red-to-red only and black-to-black only. All
+green/red, green/black and red/black cross-pairs were open/OL. This establishes
+a three-conductor, point-to-point harness with no measured conductor-to-
+conductor short. It does not establish supply, ground, command, data, feedback
+or motor drive; color names are identifiers only.
 
-The most defensible current hypothesis is narrower: J24/SERVO2 is the
-controller-side harness endpoint associated with the front-camera geared
-mechanism, but the end-to-end topology and electrical interface remain
-unresolved. A three-contact integrated positional-actuator interface is a
-candidate at the actuator end. Half-duplex digital, pulse, analog,
-differential/motor-drive and proprietary interfaces remain possibilities
-until the fourth J24 contact is explained. AX-12 Protocol 1.0 is one
-conditional subordinate hypothesis, not the default decoder. The housing,
-`SERVO2` label, startup positioning and legacy UI scale do not distinguish
-these possibilities.
-
-The
-[AX-12+ manual](https://emanual.robotis.com/docs/en/dxl/ax/ax-12a/)
-specifies a TTL-level, multidrop, half-duplex asynchronous serial bus with
-separate DATA, supply and ground conductors. DYNAMIXEL Protocol 1.0 uses one
-DATA wire for controller instructions and servo status packets. The reported
-startup return-to-zero makes a controller-to-actuator path likely, but no
-photo, marking or matching source establishes that this actuator is an AX-12,
-or establishes its pins, buffers, signal type, voltage, pull-up arrangement,
-ID or baud.
+The most defensible current hypothesis is therefore a controller-managed
+front-camera positional actuator connected to J24/SERVO2 over three independent
+conductors. The actuator's powered return to zero supports positional control
+somewhere in that path, but the electrical form remains unknown. Integrated
+power/return/signal, pulse, analog, half-duplex digital and proprietary
+interfaces remain possible. The available photos, source and continuity
+result do not establish AX-12 identity or DYNAMIXEL Protocol 1.0, so AX-12 is
+removed as the presumptive capture model.
 
 Ten earlier operator-supplied local photos were reviewed offline. They show the main
 controller board and harnesses labelled for proximity/cliff sensors, ring,
 speaker, encoder, PC control, power/battery, USB cameras and PC front-panel
 functions. They did not identify the front-camera servo connector. The six
-later photos identify J24/SERVO2 and the actuator endpoints through operator
-tracing, but still do not establish contact count or functions. A visible
+later photos and disconnected continuity test identify J24/SERVO2, both
+harness endpoints and three independent conductors, but no conductor
+functions. A visible
 six-position `SERIAL` footprint and other test points are not attributed to
 the actuator interface and must not be used as probe points from appearance
 alone. The photos are not committed.
@@ -405,19 +395,17 @@ treated as an isolated differential probe or connected across two unknown
 nodes. Battery operation alone does not establish channel-to-channel or
 input-to-USB/charger isolation.
 
-J24 now narrows the controller-side connector, but no reviewed evidence
-identifies a safe signal/reference pair. **That remains the attachment
-blocker.** Before any capture plan can be approved, supply:
+J24 and the harness mapping narrow the physical path, but no reviewed evidence
+identifies a safe signal/reference pair or even proves that one conductor is a
+logic signal. **That remains the attachment blocker.** Before any powered
+capture plan can be approved, supply:
 
 - sharp straight-on photos of the unplugged J24 plug and header faces, the
   actuator connector face and every actuator marking/model label, with power
   OFF and host USB disconnected;
-- resolution of whether J24 has three or four populated contacts, with keyed
-  orientation and contact numbers defined from the connector geometry;
-- a connector-by-connector retrace and an all-power-removed,
-  actuator-disconnected continuity matrix from every J24 contact to every
-  actuator-connector contact, performed only under a reviewed,
-  current-limited meter plan; no pin function may be assigned from color;
+- keyed orientation and contact numbers for both unplugged connector faces so
+  the verified three-conductor map can be recorded by contact rather than
+  color;
 - a board-side map from every J24 contact to independently identified
   controller 0 V, relevant supply rails and accessible nearby
   driver/component contacts, using a reviewed all-power-removed resistance
@@ -433,8 +421,9 @@ blocker.** Before any capture plan can be approved, supply:
   voltage, and a separate reviewed electrical-envelope measurement made with
   an independently qualified isolated differential probe.
 
-Do not attach or select a decoder based on an AX-12 connector diagram alone.
-It does not identify the photographed actuator or J24 circuit.
+Do not attach a probe or select a decoder from an AX-12 connector diagram.
+Nothing currently identifies the photographed actuator or J24 circuit as
+AX-12-compatible.
 
 ### Non-driving instrument boundary
 
@@ -488,15 +477,10 @@ rather than trusting one UART decoder:
 - do not probe the servo supply rail in the first capture. A second channel is
   allowed only after its separate point and voltage rating are established.
 
-Only if the preceding evidence establishes a one-wire digital interface
-consistent with DYNAMIXEL Protocol 1.0 should the AX-12 candidates below be
-used. The AX-12+ manual documents 8N1 and these baud settings: 1,000,000 (factory
-default), 500,000, 400,000, 250,000, 200,000, 115,200, 57,600, 19,200 and
-9,600 bit/s. They are decode candidates, not claims about Marvin. Test each
-candidate offline against the same raw capture. Accept a candidate only when
-multiple complete packets have valid lengths and checksums; do not select a
-baud merely because a few bytes look plausible. Preserve undecoded timing in
-case Marvin uses another supported divisor.
+Do not preselect a baud rate or packet decoder. Preserve undecoded timing and
+derive candidate symbol periods from repeated edges. A protocol hypothesis
+requires multiple complete, internally consistent frames; a few plausible
+bytes are insufficient.
 
 The first physical capture should inject no host USB/serial command and should
 not require manual displacement. It remains blocked until the operator supplies
@@ -509,54 +493,14 @@ deadline. If repeating the visible return-to-zero is later judged necessary,
 the separate physical plan must additionally bound the power-OFF manual
 displacement; this document does not authorize it.
 
-### Conditional Protocol 1.0 offline decoding
+### Protocol identification after capture
 
-This decoder applies only after the electrical capture itself shows a
-Protocol 1.0-compatible UART stream. Per the
-[DYNAMIXEL Protocol 1.0 specification](https://emanual.robotis.com/docs/en/dxl/protocol1/),
-an instruction packet is:
-
-```text
-FF FF ID LENGTH INSTRUCTION PARAMETER... CHECKSUM
-```
-
-A status packet is:
-
-```text
-FF FF ID LENGTH ERROR PARAMETER... CHECKSUM
-```
-
-`LENGTH` equals parameter count plus two. For either packet:
-
-```text
-CHECKSUM = ~(ID + LENGTH + byte4 + every parameter) & FF
-```
-
-Decode and retain every packet, including malformed candidates, with start/end
-times, baud hypothesis and checksum result. Relevant instruction patterns are:
-
-- `03 WRITE`, address `18` hex (`24` decimal), one byte: Torque Enable;
-- `03 WRITE`, address `1E` hex (`30` decimal), two little-endian bytes:
-  Goal Position;
-- `02 READ`, address `24` or `30`, followed by requested byte count;
-- `04 REG_WRITE` followed later by `05 ACTION`;
-- `83 SYNC_WRITE`, commonly broadcast ID `FE`, with start address, per-servo
-  data width, then repeated servo ID/data groups.
-
-The AX-12+ manual defines Torque Enable `0` as OFF and `1` as ON. It defines
-native Goal Position as `0..1023` across `0..300` degrees; do not apply the
-legacy UI's `0..3000` scale to captured AX-12 words. Record servo ID, target
-word and packet timing without calling the target mechanically safe or
-calibrated.
-
-On a single DATA capture, transmitter identity is inferred, not electrically
-observed. Controller-origin candidates contain defined instruction bytes;
-servo status candidates place an error bitfield in byte 4 and normally follow
-an addressed instruction after a short turnaround. Broadcast instructions may
-produce no reply. Checksum, matching ID, request/return parameter lengths and
-turnaround timing strengthen a pairing, but cannot prove which physical device
-drove the wire. A second direction-enable or endpoint probe must not be added
-without separately identifying and reviewing that point.
+Protocol decoding remains offline and evidence-led. Only if a future qualified
+capture independently shows repeated DYNAMIXEL Protocol 1.0 framing and valid
+checksums should the AX-12 vendor decoder, register map or baud table be
+consulted. That would identify compatible traffic, not the actuator model or
+mechanical calibration. Until then, retain raw waveforms and do not label
+controller versus actuator transmissions from a single conductor.
 
 ### Bounded operator checklist
 
@@ -566,9 +510,10 @@ Before attachment, a separately authorized operator must confirm:
    handling and independent cutoff are defined.
 2. Only the intended front-camera actuator is connected; projector and other
    actuators remain physically isolated as required by the reviewed setup.
-3. Connector and board-side maps resolve the J24 contact discrepancy and
-   establish the interface class and reviewed measurement pair without color
-   assumptions; the probe point cannot short adjacent conductors.
+3. The verified three-conductor continuity result is recorded by keyed contact
+   number, and the board-side map establishes the interface class and reviewed
+   measurement pair without color assumptions; the probe point cannot short
+   adjacent conductors.
 4. The separately approved isolated differential-probe stage has retained the
    signal envelope. Capture-instrument ratings, thresholds and isolation are
    reviewed against it; all transmitters, pull-ups and output modes are
