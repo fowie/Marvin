@@ -173,15 +173,22 @@ legacy response shape and its raw data. Neither the raw `80` field nor USB
 completion is an application ACK, and the two words are not calibrated or
 measured angles. The evidence adds no setter or physical-position proof.
 
-After Marvin was physically powered off, the ADS1013D was still armed and
-waiting for its configured falling-edge trigger; it had retained no waveform
-or screenshot. The operator then disarmed it and, while Marvin remained OFF,
-removed both probe tip and ground before any scope USB connection. This is
-only an instrumentation-negative observation: no falling-edge trigger was
-captured across that armed interval. Probe contact and trigger sensitivity
-were not independently revalidated during or after this run, and expected
-startup traffic also did not trigger. It therefore cannot establish absence
-of AX-12+ traffic, controller-to-actuator activity, or cached `1D` behavior.
+Marvin was powered on and allowed to complete startup before the operator
+armed the ADS1013D specifically for the getter window. Under the declared
+10x, DC-coupled, `2 V/div`, `200 us/div`, falling-edge-near-`3 V` setup, the
+scope remained armed and waiting through the one getter and afterward: no
+falling low transition met the configured trigger and no waveform or
+screenshot was retained. After Marvin was physically powered off, the
+operator disarmed the scope and, while Marvin remained OFF, removed both
+probe tip and ground before any scope USB connection.
+
+This sequencing excludes the startup interval from this instrumentation-
+negative observation. It is evidence that legacy `1D` produced no
+scope-triggering low transition under that declared setup, which supports but
+does not prove controller-held or cached values rather than a getter-induced
+AX-12+ transaction. Probe contact, trigger sensitivity and capture
+effectiveness were not independently revalidated during or after the getter
+window, so the observation cannot establish absence of AX-12+ traffic.
 
 The preserved output remains outside the repository at
 `servo2-getter-20260923T2220`. The independently read top-level
