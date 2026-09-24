@@ -96,12 +96,16 @@ python -m tools.marvin_legacy_servo_plan \
   --profile-source REVIEWED_EVIDENCE_CITATION
 ```
 
-## Dedicated bounded read-only front-camera getter
+## Dedicated bounded read-only servo-position getter
 
 `tools.marvin_legacy_front_servo_getter` has one immutable application
 transcript: sequence `3516`, empty legacy `1D GetServoPosition`, request
-`53bc0d1d000000525445`. It exposes no setter, sequence, payload, value, retry,
-reconnect or follow-up option. It is offline by default:
+`53bc0d1d000000525445`. The command has no channel or servo selector:
+PCTestApp requests and returns both unlabeled LE16 words together. The tool
+name and connected-front-camera safety profile describe the physical test
+configuration, not command-level camera selection. It exposes no setter,
+sequence, payload, value, retry, reconnect or follow-up option. It is offline
+by default:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_getter
@@ -171,7 +175,10 @@ one correlation candidate, 14 serial/USB IN bytes, no cleanup error, and final
 usbmon counters `queued=0`, `dropped=0`. This proves only one correlated
 legacy response shape and its raw data. Neither the raw `80` field nor USB
 completion is an application ACK, and the two words are not calibrated or
-measured angles. The evidence adds no setter or physical-position proof.
+measured angles. The host/controller exchange was read-only and neither
+selected the camera or projector nor sent a downstream control signal to
+either. The evidence adds no setter, channel assignment or physical-position
+proof.
 
 Marvin was powered on and allowed to complete startup before the operator
 armed the ADS1013D specifically for the getter window. Under the declared
@@ -185,8 +192,9 @@ probe tip and ground before any scope USB connection.
 This sequencing excludes the startup interval from this instrumentation-
 negative observation. It is evidence that legacy `1D` produced no
 scope-triggering low transition under that declared setup, which supports but
-does not prove controller-held or cached values rather than a getter-induced
-AX-12+ transaction. Probe contact, trigger sensitivity and capture
+does not prove controller-held or cached aggregate values rather than a
+getter-induced AX-12+ transaction. It does not identify either returned word
+with the connected camera. Probe contact, trigger sensitivity and capture
 effectiveness were not independently revalidated during or after the getter
 window, so the observation cannot establish absence of AX-12+ traffic.
 
