@@ -268,9 +268,21 @@ identity, ALSA metadata and selected endpoint:
 
 ```sh
 python -m tools.marvin_microphone list \
-  --run --route ROUTE --hub-path CURRENT_HUB_PATH \
+  --run --route direct-host --usb-path CURRENT_MICROPHONE_USB_PATH \
   --device hw:CARD=Array,DEV=0
 ```
+
+Route requirements are closed and mutually exclusive:
+
+| Route | Required evidence | Recommendation |
+|---|---|---|
+| `direct-host` | Operator-supplied current `--usb-path`; that exact node must be `045e:fff0`; no parent hub accepted | Recommended for direct Jetson/host connection |
+| `marvin-internal` | Current `--hub-path` whose exact identity is `0451:2046`, with exactly one descendant `045e:fff0` | Retained for evidence compatibility; not recommended |
+| `historical-external` | Current `--hub-path` whose exact identity is `2109:2817`, with exactly one descendant `045e:fff0` | Historical external/other route; not recommended |
+
+Every route also requires exactly one selected ALSA Array card/device 0 and
+both its `cardN/device` and `pcmCND0c/device` ancestry beneath the exact
+microphone node. Paths are current operator evidence, never fixed defaults.
 
 Capture accepts only the proved native `S16_LE`, 16000 Hz, 8-channel profile,
 requires a new output path, and is limited to one through five seconds. The
@@ -280,8 +292,7 @@ bytes for WAV. For example, a five-second WAV is:
 ```sh
 python -m tools.marvin_microphone capture \
   --run --authorize-audio-capture \
-  --route ROUTE \
-  --hub-path CURRENT_HUB_PATH \
+  --route direct-host --usb-path CURRENT_MICROPHONE_USB_PATH \
   --device hw:CARD=Array,DEV=0 \
   --duration 5 --max-bytes 1280044 --type wav \
   --output /private/microphone-array-5s.wav
@@ -291,11 +302,21 @@ This command is an example, not authorization to record. Every live capture
 requires current user consent and an appropriate private destination. The
 command uses an independent seven-second subprocess timeout, rejects partial or
 oversized results, never overwrites a path, and writes successful output mode
-`0600`. It exposes ALSA errors rather than retrying or falling back to another
-device. The signed override containing both the DMA fix and exact device quirk
-is a prerequisite.
+`0600`. Capture is buffered before exclusive file creation, so timeout,
+interrupt or ALSA failure leaves no partial destination. It exposes ALSA errors
+rather than retrying or falling back to another device. The signed override
+containing both the DMA fix and exact device quirk is a prerequisite.
 
-## Operator work item: reconnect through Marvin
+The selected architecture connects the microphone and LifeCam directly to the
+Jetson/host to avoid the old Marvin hub path. Use `direct-host` for new work.
+The two hub routes remain documented so old evidence is interpretable; they
+must not be used as fallback paths.
+
+## Superseded internal-route work item
+
+The architecture decision above supersedes further internal-route microphone
+work. The procedure and stopped result below remain as evidence; do not execute
+or resume them.
 
 **Goal:** with Marvin unpowered, reconnect the intended Microsoft microphone
 array through its internal/harness USB connector, then prove that exactly one

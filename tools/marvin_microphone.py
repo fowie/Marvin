@@ -15,6 +15,9 @@ from tools.marvin_paths import new_output_path
 USB_ID = "045e:fff0"
 DISCOVERY_USB_PATH = "1-1.1.2.4"
 ROUTES = {
+    "direct-host": {
+        "description": "operator-selected direct host USB connection",
+    },
     "marvin-internal": {
         "hub_usb_id": "0451:2046",
         "description": "observed Marvin internal TUSB2046 branch",
@@ -96,10 +99,23 @@ def _route(route):
         raise ValueError(f"Route must be one of: {', '.join(ROUTES)}.") from error
 
 
-def _find_microphone(usb_root, route, hub_path, read_text, list_entries):
-    if not hub_path or "/" in hub_path or hub_path in (".", ".."):
-        raise ValueError("hub_path must be one sysfs USB device name.")
+def _find_microphone(usb_root, route, hub_path, usb_path, read_text, list_entries):
     profile = _route(route)
+    if route == "direct-host":
+        if hub_path is not None:
+            raise ValueError("Route direct-host forbids hub_path.")
+        if not usb_path or "/" in usb_path or usb_path in (".", "..") or ":" in usb_path:
+            raise ValueError("Route direct-host requires one USB device sysfs name as usb_path.")
+        microphone = usb_root / usb_path
+        identity = _identity(microphone, read_text)
+        if identity != USB_ID:
+            raise MicrophoneError(
+                f"Expected microphone {USB_ID} at {usb_path}; found {identity}.")
+        return None, microphone
+    if usb_path is not None:
+        raise ValueError(f"Route {route} forbids usb_path.")
+    if not hub_path or "/" in hub_path or hub_path in (".", ".."):
+        raise ValueError(f"Route {route} requires one sysfs USB device name as hub_path.")
     hub = usb_root / hub_path
     identity = _identity(hub, read_text)
     if identity != profile["hub_usb_id"]:
@@ -127,7 +143,8 @@ def _find_microphone(usb_root, route, hub_path, read_text, list_entries):
     return hub, candidates[0]
 
 
-def list_device(*, device, route, hub_path, run=False, read_text=None, runner=None,
+def list_device(*, device, route, hub_path=None, usb_path=None, run=False,
+                read_text=None, runner=None,
                 kernel_release=None, path_exists=None, list_entries=None,
                 resolve_path=None, usb_root=Path("/sys/bus/usb/devices"),
                 sound_root=Path("/sys/class/sound")):
@@ -147,7 +164,7 @@ def list_device(*, device, route, hub_path, run=False, read_text=None, runner=No
     resolve_path = resolve_path or Path.resolve
     profile = _route(route)
     hub, microphone = _find_microphone(
-        Path(usb_root), route, hub_path, read_text, list_entries)
+        Path(usb_root), route, hub_path, usb_path, read_text, list_entries)
     stream = _read("/proc/asound/Array/stream0", read_text)
     required = (
         "Format: S16_LE",
@@ -182,12 +199,10 @@ def list_device(*, device, route, hub_path, run=False, read_text=None, runner=No
         if microphone_node != node and microphone_node not in node.parents:
             raise MicrophoneError(
                 f"ALSA {label} {path} does not descend from USB microphone node {microphone.name}.")
-    return {
+    device_info = {
         "status": "ready",
         "route": route,
         "route_description": profile["description"],
-        "hub_usb_id": profile["hub_usb_id"],
-        "hub_path": hub.name,
         "usb_id": USB_ID,
         "usb_path": microphone.name,
         "alsa_device": device,
@@ -198,6 +213,10 @@ def list_device(*, device, route, hub_path, run=False, read_text=None, runner=No
         "channels": CHANNELS,
         "channel_map": CHANNEL_MAP.split(),
     }
+    if hub is not None:
+        device_info["hub_usb_id"] = profile["hub_usb_id"]
+        device_info["hub_path"] = hub.name
+    return device_info
 
 
 def expected_bytes(duration_seconds, file_type):
@@ -209,7 +228,8 @@ def expected_bytes(duration_seconds, file_type):
     return payload + (44 if file_type == "wav" else 0)
 
 
-def capture(output, *, device, route, hub_path, duration_seconds, max_bytes, file_type,
+def capture(output, *, device, route, duration_seconds, max_bytes, file_type,
+            hub_path=None, usb_path=None,
             run=False, authorize_audio_capture=False, read_text=None, runner=None,
             kernel_release=None, path_exists=None, list_entries=None,
             resolve_path=None, usb_root=Path("/sys/bus/usb/devices"),
@@ -222,7 +242,7 @@ def capture(output, *, device, route, hub_path, duration_seconds, max_bytes, fil
         raise ValueError(f"max_bytes must equal the exact bound {limit}.")
     destination = new_output_path(output)
     device_info = list_device(
-        device=device, route=route, hub_path=hub_path, run=True,
+        device=device, route=route, hub_path=hub_path, usb_path=usb_path, run=True,
         read_text=read_text, runner=runner,
         kernel_release=kernel_release, path_exists=path_exists, list_entries=list_entries,
         resolve_path=resolve_path, usb_root=usb_root, sound_root=sound_root)
@@ -272,13 +292,15 @@ def main(argv=None):
     list_parser.add_argument("--run", action="store_true")
     list_parser.add_argument("--device", required=True)
     list_parser.add_argument("--route", choices=ROUTES, required=True)
-    list_parser.add_argument("--hub-path", required=True)
+    list_parser.add_argument("--hub-path")
+    list_parser.add_argument("--usb-path")
     capture_parser = subparsers.add_parser("capture", help="capture one bounded native-profile file")
     capture_parser.add_argument("--run", action="store_true")
     capture_parser.add_argument("--authorize-audio-capture", action="store_true")
     capture_parser.add_argument("--device", required=True)
     capture_parser.add_argument("--route", choices=ROUTES, required=True)
-    capture_parser.add_argument("--hub-path", required=True)
+    capture_parser.add_argument("--hub-path")
+    capture_parser.add_argument("--usb-path")
     capture_parser.add_argument("--duration", type=int, required=True)
     capture_parser.add_argument("--max-bytes", type=int, required=True)
     capture_parser.add_argument("--type", choices=("raw", "wav"), required=True)
@@ -289,10 +311,12 @@ def main(argv=None):
             result = offline_status()
         elif args.command == "list":
             result = list_device(
-                device=args.device, route=args.route, hub_path=args.hub_path, run=args.run)
+                device=args.device, route=args.route, hub_path=args.hub_path,
+                usb_path=args.usb_path, run=args.run)
         else:
             result = capture(
                 args.output, device=args.device, route=args.route, hub_path=args.hub_path,
+                usb_path=args.usb_path,
                 duration_seconds=args.duration,
                 max_bytes=args.max_bytes, file_type=args.type, run=args.run,
                 authorize_audio_capture=args.authorize_audio_capture)

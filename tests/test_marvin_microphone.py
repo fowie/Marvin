@@ -34,6 +34,8 @@ class MicrophoneTests(unittest.TestCase):
         values = {
             "/usb/1-1.1.3/idVendor": "0451\n",
             "/usb/1-1.1.3/idProduct": "2046\n",
+            "/usb/1-1.1.3.4/idVendor": "045e\n",
+            "/usb/1-1.1.3.4/idProduct": "fff0\n",
             "/sys/bus/usb/devices/1-1.1.3.4/idVendor": "045e\n",
             "/sys/bus/usb/devices/1-1.1.3.4/idProduct": "fff0\n",
             "/proc/asound/Array/stream0": STREAM,
@@ -147,6 +149,30 @@ class MicrophoneTests(unittest.TestCase):
                     if key not in ("route", "hub_path")
                 })
 
+    def test_direct_host_requires_exact_path_without_hub(self):
+        listing = subprocess.CompletedProcess(
+            [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
+        options = {
+            key: value for key, value in self.live_options().items()
+            if key not in ("route", "hub_path")
+        }
+        with self.assertRaisesRegex(ValueError, "requires one USB device"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="direct-host",
+                run=True, runner=Mock(return_value=listing), **options)
+        with self.assertRaisesRegex(ValueError, "forbids hub_path"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="direct-host",
+                hub_path="1-1.1.3", usb_path="1-2.4", run=True,
+                runner=Mock(return_value=listing), **options)
+        result = microphone.list_device(
+            device=microphone.ALSA_DEVICE, route="direct-host",
+            usb_path="1-1.1.3.4", run=True, runner=Mock(return_value=listing),
+            **options)
+        self.assertEqual(result["route"], "direct-host")
+        self.assertNotIn("hub_path", result)
+        self.assertEqual(result["usb_path"], "1-1.1.3.4")
+
     def test_capture_is_bounded_exclusive_and_surfaces_failures(self):
         duration, file_type = 1, "raw"
         limit = microphone.expected_bytes(duration, file_type)
@@ -179,6 +205,13 @@ class MicrophoneTests(unittest.TestCase):
                 duration_seconds=duration, max_bytes=limit, file_type=file_type,
                 run=True, authorize_audio_capture=True, runner=failed, **self.live_options())
         self.assertFalse((self.root / "failed.pcm").exists())
+        interrupted = Mock(side_effect=[listing, KeyboardInterrupt()])
+        with self.assertRaises(KeyboardInterrupt):
+            microphone.capture(
+                self.root / "interrupted.pcm", device=microphone.ALSA_DEVICE,
+                duration_seconds=duration, max_bytes=limit, file_type=file_type,
+                run=True, authorize_audio_capture=True, runner=interrupted, **self.live_options())
+        self.assertFalse((self.root / "interrupted.pcm").exists())
 
     def test_cli_rejects_unbounded_or_unconsented_capture(self):
         for args in (
