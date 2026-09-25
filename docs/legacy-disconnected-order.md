@@ -1943,7 +1943,7 @@ respective source-field `+1000`, five-update, 50 ms cadence tests, while direct
 raw PWM moved both motors. This is a bounded empirical difference, not evidence
 of a particular enable, prerequisite, mode, or interpretation of raw `82`.
 
-### Prepared dual-motor raw-PWM forward proof
+### Dual-motor raw-PWM forward acceptance and unresolved cleanup state
 
 Both physical motors are connected to their correctly labelled opposite-side
 controller connectors; servos remain isolated, both encoders connected, wheels
@@ -1981,7 +1981,31 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
-This is software readiness, not live authorization.
+The September 25 installed-product acceptance used these exact sequences.
+Both wheels visibly moved forward and visibly stopped, then the operator cut
+power. The host exchange, in order, was:
+
+| Step | Exact response | Decoded result |
+|---|---|---|
+| baseline getter | `533b0d0a80080000000000000000000abb45` | raw `80`, words `[0,0,0,0]` |
+| forward setter | `533c0d0b820000e9f445` | opaque raw `82`, empty |
+| all-zero cleanup | `533d0d0b80000049e545` | opaque raw `80`, empty |
+| verification getter | `533e0d0a8008006400000064000000175545` | raw `80`, words `[100,0,100,0]` |
+
+Cleanup began 0.7513473349972628 seconds after setter prewrite. Serial and
+usbmon recorded four exact OUT/IN pairs, 56 accepted TX bytes, 56 RX bytes,
+zero uncertain TX, zero dropped records, zero queued records, valid sequence
+and CRC correlation, and no pairing fault. The final getter was therefore not
+carryover or response misattribution. It also matches earlier per-channel
+post-cleanup `100` observations.
+
+The empty cleanup response is not an application acknowledgment. Visible stop
+does not establish braking, de-energization, cleanup causation, or the meaning
+of the getter values. Live product drive and teleop are retired before hardware
+access; no further live motor run is justified. The remaining boundary is the
+meaning and reset/decay behavior of installed `GetRawMotorPWM`. Any successor
+diagnostic must be separately reviewed and read-only; this result does not
+authorize it.
 
 ## Proven fixed legacy getter survey
 

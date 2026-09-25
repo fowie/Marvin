@@ -237,11 +237,20 @@ class RawPwmPilotTests(unittest.TestCase):
             connected_2000_plan["status"],
             "retired_after_live_nonzero_post_cleanup_getter")
         self.assertFalse(connected_2000_plan["live_execution_authorized"])
-        with redirect_stderr(io.StringIO()), \
-                self.assertRaisesRegex(ValueError, "retired after reverse motion"):
-            pilot.run_diagnostic(
-                self.root / "retired", expected_physical_port="1-3", run=True,
-                **DECLARATIONS_2000_CONNECTED)
+        for retired_scope in pilot.RETIRED_SCOPES:
+            with self.subTest(retired_scope=retired_scope), \
+                    patch.object(
+                        session, "preflight",
+                        side_effect=AssertionError("hardware reached")), \
+                    patch.object(os, "open", side_effect=AssertionError("open reached")), \
+                    self.assertRaisesRegex(ValueError, "no further live execution"):
+                pilot.run_diagnostic(
+                    self.root / retired_scope,
+                    expected_physical_port="1-3",
+                    run=True,
+                    **dict.fromkeys(
+                        consent.POWERED_TRIAL_SCOPES[retired_scope], True),
+                )
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
                 patch.object(os, "open", side_effect=AssertionError("no open")), \
                 redirect_stdout(io.StringIO()) as stdout:
@@ -805,7 +814,7 @@ class RawPwmPilotTests(unittest.TestCase):
         connected_2000_harness.setUp()
         self.addCleanup(connected_2000_harness.doCleanups)
         with redirect_stderr(io.StringIO()), \
-                self.assertRaisesRegex(ValueError, "retired after reverse motion"):
+                self.assertRaisesRegex(ValueError, "no further live execution"):
             connected_2000_harness.run_capture(
                 seconds=10, baudrate=57600, allow_unknown_command=True,
                 probe_profile="legacy", capture_runner=Mock(),
@@ -1269,7 +1278,9 @@ class RawPwmPilotTests(unittest.TestCase):
                 self.assertEqual(drive_step.main([
                     "forward", "--duration", "0.25", "--raw-pwm", "2000",
                 ]), 0)
-            self.assertEqual(json.loads(stdout.getvalue())["status"], "dry_run")
+            self.assertEqual(
+                json.loads(stdout.getvalue())["status"],
+                "retired_after_live_nonzero_post_cleanup_getter")
 
         for invalid in (
                 {"direction": "forward", "duration": 0.5, "raw_pwm": 2000},

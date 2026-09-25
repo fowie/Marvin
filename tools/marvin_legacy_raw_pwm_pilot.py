@@ -332,6 +332,13 @@ SETTER_PAYLOADS = {
         LEFT_FORWARD_RIGHT_BACKWARD_2000),
     consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: DUAL_FORWARD_2000,
 }
+RETIRED_SCOPES = {
+    consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
+    consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
+    consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
+    consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
+}
 
 
 def transcript_for_scope(scope):
@@ -359,7 +366,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         if (packet.sequence, packet.command, packet.response_field, packet.payload) != (
                 fields[0], fields[1], 0, fields[2]):
             raise ValueError("Fixed raw-PWM transcript disagrees with the legacy decoder.")
-    retired = scope == consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE
+    retired = scope in RETIRED_SCOPES
     return {
         "status": (
             "retired_after_live_nonzero_post_cleanup_getter" if retired else "dry_run"),
@@ -446,7 +453,8 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             else "not_established"),
         "live_execution_authorized": not retired,
         "retired_reason": (
-            "live reverse motion followed by post-cleanup getter words [0,100,0,0]"
+            "connected raw-PWM motion followed by a nonzero post-cleanup getter; "
+            "installed getter semantics and stop causation remain unknown"
             if retired else None),
         "required": ["--run", "--expected-physical-port", "--output NEWDIR",
                      *("--" + name.replace("_", "-")
@@ -812,10 +820,10 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
     if run is not True or scope not in PROFILES:
         raise ValueError("Literal --run and one fixed raw-PWM word-0 scope are required.")
-    if scope == consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
+    if scope in RETIRED_SCOPES:
         raise ValueError(
-            "Connected raw-PWM 2000 is retired after reverse motion and a nonzero "
-            "post-cleanup getter; no further live execution is authorized.")
+            "Connected raw-PWM motion is retired after a nonzero post-cleanup "
+            "getter; no further live execution is authorized.")
     profile = PROFILES[scope]
     transport_type = {
         consent.RAW_PWM_PILOT_SCOPE: _RawPwmTransport,

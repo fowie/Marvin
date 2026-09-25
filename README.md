@@ -73,13 +73,12 @@ offline `2500 -> 3000` inverse-hypothesis plan, but live camera-down remains
 blocked until the installed linkage is observed. Use the external cutoff
 whenever cleanup or restoration is reported uncertain.
 
-`teleop` is a line-oriented wrapper over only the proved bounded drive and stop
-primitives: `w` forward, `s` backward, `a` rotate left, `d` rotate right, `x`
-stop, and `q` stop then quit. Live mode creates one `run-NNNN` evidence
-subdirectory per action. EOF and Ctrl-C make one stop request before exit when
-one has not just succeeded; a stop counts only after it returns successfully.
-Drive or stop failure/interrupt ends the loop without retry and is reported as
-failed rather than as a completed teleoperation session.
+`drive` and `teleop` now print offline plans only. Their live modes are retired
+before preflight or device access: the September 25 acceptance run visibly
+moved and stopped both wheels, but the final `GetRawMotorPWM` returned
+`[100,0,100,0]` after the one all-zero cleanup. Installed getter semantics and
+stop causation are therefore unresolved. Do not retry live drive or teleop.
+The separately evidenced fixed `stop` command remains available.
 
 Camera and projector use one internal two-word servo-axis implementation.
 Changing one axis constructs the complete setter pair from `[2500,2730]` and

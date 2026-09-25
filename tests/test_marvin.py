@@ -46,18 +46,17 @@ class MarvinFacadeTests(unittest.TestCase):
             baseline, "1-3", marvin.marvin_campaign.DESCRIPTOR_HASH)
         self.assertEqual(result["status"], "connected_ready")
 
-    def test_live_actions_delegate_only_fixed_profiles(self):
+    def test_live_actions_delegate_only_supported_profiles(self):
         robot = marvin.Marvin(
             run=True, expected_physical_port="1-3",
             output=Path("evidence/new"), safety_confirmed=True)
-        with patch.object(marvin.drive_step, "run_step",
-                          return_value={"status": "drive"}) as drive:
-            self.assertEqual(robot.drive("forward")["status"], "drive")
-        call = drive.call_args
-        self.assertEqual(call.kwargs["duration"], 0.25)
-        self.assertEqual(call.kwargs["raw_pwm"], 2000)
-        self.assertTrue(all(call.kwargs[name] is True
-                            for name in marvin.drive_step.COMMON_FLAGS))
+        with patch.object(
+                marvin.marvin_session, "preflight",
+                side_effect=AssertionError("hardware reached")), \
+                self.assertRaisesRegex(marvin.UnsupportedOperation, "Live drive is retired"):
+            robot.drive("forward")
+        with self.assertRaisesRegex(marvin.UnsupportedOperation, "Live teleop is retired"):
+            robot.teleop()
 
         with patch.object(marvin.servo, "run_diagnostic",
                           return_value={"status": "camera"}) as camera:
@@ -152,125 +151,6 @@ class MarvinFacadeTests(unittest.TestCase):
                     "--output", "new", "--confirm-safe-setup",
                 ]), 1)
 
-    def test_teleop_dispatches_actions_to_sequential_evidence_paths(self):
-        with tempfile.TemporaryDirectory() as directory:
-            robot = marvin.Marvin(
-                run=True, expected_physical_port="1-3",
-                output=Path(directory) / "teleop", safety_confirmed=True)
-            keys = iter(("w", "a", "x", "q"))
-            calls = []
-
-            def drive(instance, direction):
-                calls.append((direction, instance.output.name))
-                return {"status": "drive"}
-
-            def stop(instance):
-                calls.append(("stop", instance.output.name))
-                return {"status": "stop"}
-
-            with patch.object(marvin.Marvin, "drive", new=drive), \
-                    patch.object(marvin.Marvin, "stop", new=stop):
-                result = robot.teleop(
-                    input_fn=lambda prompt: next(keys), output_stream=io.StringIO())
-            self.assertEqual(result["actions"], 3)
-            self.assertEqual(calls, [
-                ("forward", "run-0001"),
-                ("rotate-left", "run-0002"),
-                ("stop", "run-0003"),
-            ])
-
-    def test_teleop_exit_paths_stop_once_and_action_failure_terminates(self):
-        for ending in ("q", EOFError(), KeyboardInterrupt()):
-            with self.subTest(ending=(
-                    ending if isinstance(ending, str) else type(ending).__name__
-            )), tempfile.TemporaryDirectory() as directory:
-                robot = marvin.Marvin(
-                    run=True, expected_physical_port="1-3",
-                    output=Path(directory) / "teleop", safety_confirmed=True)
-                stops = []
-
-                def stop(instance):
-                    stops.append(instance.output.name)
-                    return {"status": "stop"}
-
-                with patch.object(marvin.Marvin, "stop", new=stop):
-                    result = robot.teleop(
-                        input_fn=(
-                            (lambda prompt: ending)
-                            if isinstance(ending, str)
-                            else lambda prompt: (_ for _ in ()).throw(ending)
-                        ),
-                        output_stream=io.StringIO())
-                self.assertEqual(result["actions"], 1)
-                self.assertEqual(stops, ["run-0001"])
-
-        with tempfile.TemporaryDirectory() as directory:
-            robot = marvin.Marvin(
-                run=True, expected_physical_port="1-3",
-                output=Path(directory) / "teleop", safety_confirmed=True)
-            with patch.object(marvin.Marvin, "drive", side_effect=OSError("uncertain")), \
-                    patch.object(marvin.Marvin, "stop") as stop, \
-                    self.assertRaisesRegex(OSError, "uncertain"):
-                robot.teleop(
-                    input_fn=lambda prompt: "d", output_stream=io.StringIO())
-            stop.assert_not_called()
-
-    def test_teleop_action_interrupts_never_report_completion(self):
-        endings = {
-            "q": lambda prompt: "q",
-            "x": lambda prompt: "x",
-            "eof": lambda prompt: (_ for _ in ()).throw(EOFError()),
-            "input-interrupt": lambda prompt: (
-                _ for _ in ()).throw(KeyboardInterrupt()),
-        }
-        for name, input_fn in endings.items():
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
-                robot = marvin.Marvin(
-                    run=True, expected_physical_port="1-3",
-                    output=Path(directory) / "teleop", safety_confirmed=True)
-                attempts = []
-
-                def interrupted_stop(instance):
-                    attempts.append(instance.output.name)
-                    raise KeyboardInterrupt
-
-                with patch.object(marvin.Marvin, "stop", new=interrupted_stop), \
-                        self.assertRaises(KeyboardInterrupt):
-                    robot.teleop(
-                        input_fn=input_fn, output_stream=io.StringIO())
-                self.assertEqual(attempts, ["run-0001"])
-
-        with tempfile.TemporaryDirectory() as directory:
-            robot = marvin.Marvin(
-                run=True, expected_physical_port="1-3",
-                output=Path(directory) / "teleop", safety_confirmed=True)
-            attempts = []
-
-            def interrupted_drive(instance, direction):
-                attempts.append((direction, instance.output.name))
-                raise KeyboardInterrupt
-
-            with patch.object(marvin.Marvin, "drive", new=interrupted_drive), \
-                    patch.object(marvin.Marvin, "stop") as stop, \
-                    self.assertRaises(KeyboardInterrupt):
-                robot.teleop(
-                    input_fn=lambda prompt: "w",
-                    output_stream=io.StringIO())
-            self.assertEqual(attempts, [("forward", "run-0001")])
-            stop.assert_not_called()
-
-        stderr = io.StringIO()
-        with tempfile.TemporaryDirectory() as directory, \
-                patch.object(marvin.Marvin, "stop", side_effect=KeyboardInterrupt), \
-                patch("builtins.input", return_value="q"), \
-                redirect_stdout(io.StringIO()), redirect_stderr(stderr):
-            self.assertEqual(marvin.main([
-                "teleop", "--run", "--expected-physical-port", "1-3",
-                "--output", str(Path(directory) / "teleop"),
-                "--confirm-safe-setup",
-            ]), 130)
-        self.assertEqual(json.loads(stderr.getvalue())["status"], "failed")
-
     def test_led_plans_and_only_proved_live_action(self):
         robot = marvin.Marvin()
         status = robot.leds.status()
@@ -305,6 +185,7 @@ class MarvinFacadeTests(unittest.TestCase):
         self.assertIn("Live projector power is disabled", help_text)
         self.assertIn("fixed offline-only inverse", help_text)
         self.assertIn("teleop", help_text)
+        self.assertIn("live execution retired", help_text)
         self.assertIn("marvin leds wheel-blink", help_text)
 
         stdout = io.StringIO()
@@ -326,7 +207,19 @@ class MarvinFacadeTests(unittest.TestCase):
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             self.assertEqual(marvin.main(["teleop"]), 0)
-        self.assertIn("run-NNNN", json.loads(stdout.getvalue())["evidence_subdirectories"])
+        teleop = json.loads(stdout.getvalue())
+        self.assertIn("run-NNNN", teleop["evidence_subdirectories"])
+        self.assertFalse(teleop["live_execution_authorized"])
+
+        with patch.object(
+                marvin.marvin_session, "preflight",
+                side_effect=AssertionError("hardware reached")), \
+                redirect_stderr(io.StringIO()):
+            self.assertEqual(marvin.main([
+                "drive", "forward", "--run",
+                "--expected-physical-port", "1-3",
+                "--output", "new", "--confirm-safe-setup",
+            ]), 1)
 
         stdout = io.StringIO()
         with redirect_stdout(stdout):
