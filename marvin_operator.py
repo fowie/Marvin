@@ -41,9 +41,12 @@ class SensorSource(Protocol):
 class RuntimeManager(Protocol):
     def start(self) -> None: ...
     def status(self) -> dict: ...
+    def close(self) -> None: ...
+
+
+class ActionRuntimeManager(RuntimeManager, Protocol):
     def action(self, name: str, values: dict) -> dict: ...
     def tick(self, now: float) -> bool: ...
-    def close(self) -> None: ...
 
 
 class PersistentSensorSource:
@@ -253,7 +256,8 @@ class OperatorRuntime:
                 now = time.monotonic()
                 changed = False
                 for manager in self.managers.values():
-                    changed = manager.tick(now) or changed
+                    tick = getattr(manager, "tick", None)
+                    changed = (tick(now) if tick is not None else False) or changed
                 if changed:
                     with self._changed:
                         self._publish()
@@ -326,7 +330,10 @@ class OperatorRuntime:
                         manager = self.managers[manager_name]
                     except KeyError:
                         raise ValueError("Unknown runtime manager.") from None
-                    response = manager.action(action, value)
+                    manager_action = getattr(manager, "action", None)
+                    if manager_action is None:
+                        raise ValueError("Runtime manager does not expose actions.")
+                    response = manager_action(action, value)
                     with self._changed:
                         self._publish()
                     result.put((True, response))
@@ -507,12 +514,8 @@ class _Handler(BaseHTTPRequestHandler):
     def _event_type(status):
         if status.get("state") == "failed" or status.get("error"):
             return "error"
-        return (
-            "error" if any(
-                manager.get("error")
-                for manager in status.get("managers", {}).values())
-            else "status"
-        )
+        drive = status.get("managers", {}).get("drive", {})
+        return "error" if drive.get("error") else "status"
 
     def do_GET(self):
         if self.path.startswith("/api/") and not self._require_loopback_host():
