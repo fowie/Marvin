@@ -31,6 +31,8 @@ python -m marvin status
 python -m marvin drive forward
 python -m marvin camera up 5
 python -m marvin camera center
+python -m marvin projector status
+python -m marvin projector power on
 ```
 
 Live actions require `--run`, the reviewed physical USB port, a new evidence
@@ -54,6 +56,27 @@ standalone live-stop escape hatch. `stop` reports that physical standalone-stop
 semantics are not established. Camera down reports that increasing word 0 is
 only an inferred inverse and has not been exercised with the installed linkage.
 Use the external cutoff whenever cleanup or restoration is reported uncertain.
+
+Camera and projector use one internal two-word servo-axis implementation.
+Changing one axis constructs the complete setter pair from `[2500,2730]` and
+retains the sibling word. Camera is proved on word 0 near its 2500 baseline.
+The same-model projector is historically expected on word 1 near 2730, but it
+is physically disconnected and its routing, direction, and local scale have not
+been exercised. `projector status` and offline `projector center` expose that
+boundary; all live projector writes and projector movement are rejected.
+
+The legacy command map and recovered firmware establish dedicated command
+`0x27` with one byte: `1` requests projector power on and `0` requests power
+off. This is distinct from servo position and avoids the unrelated rails in
+the generic power mask. `projector power on|off` produces fixed offline plans.
+The only live form is `projector power on`: one exact ON request, a fixed
+10.0-second powered observation, then one OFF attempt from `finally` after
+normal completion, Ctrl-C, or any failure where ON may have applied. It
+revalidates identity before both writes, records and seals USB/serial evidence,
+does not retry or reconnect, and does not interpret a response field as an ACK.
+Standalone live OFF remains rejected. Source semantics and a correlated OFF
+response do not prove the physical power state; the external cutoff remains
+primary.
 
 Python API:
 

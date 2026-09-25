@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import marvin
+from tools import marvin_legacy_projector_power as projector_power
 
 
 class MarvinFacadeTests(unittest.TestCase):
@@ -17,6 +18,8 @@ class MarvinFacadeTests(unittest.TestCase):
         self.assertEqual(status["status"], "offline_ready")
         self.assertFalse(status["hardware_access"])
         self.assertEqual(status["capabilities"]["drive"], list(marvin.DRIVE_DIRECTIONS))
+        self.assertEqual(status["capabilities"]["servos"]["camera"]["word"], 0)
+        self.assertEqual(status["capabilities"]["servos"]["projector"]["word"], 1)
         expected = {
             "forward": [0, 2000, 0, 2000],
             "backward": [2000, 0, 2000, 0],
@@ -71,6 +74,143 @@ class MarvinFacadeTests(unittest.TestCase):
         with self.assertRaisesRegex(marvin.UnsupportedOperation, "unproved linearity"):
             robot.camera_up(1)
 
+    def test_shared_servo_axes_preserve_the_sibling_word(self):
+        self.assertEqual(marvin.CAMERA_AXIS.target_words(2000), (2000, 2730))
+        self.assertEqual(marvin.PROJECTOR_AXIS.target_words(2600), (2500, 2600))
+        status = marvin.Marvin().projector_status()
+        self.assertEqual(status["status"], "unavailable_unverified")
+        self.assertIsNone(status["units_per_degree"])
+        plan = marvin.Marvin().projector_center()
+        self.assertEqual(plan["target_words_uint16"], [2500, 2730])
+        self.assertEqual(plan["untouched_sibling_word"], 0)
+        with self.assertRaisesRegex(marvin.UnsupportedOperation, "physically disconnected"):
+            marvin.Marvin().projector_up(5)
+        with self.assertRaisesRegex(marvin.UnsupportedOperation, "routing"):
+            marvin.Marvin(
+                run=True, expected_physical_port="1-3",
+                output="new", safety_confirmed=True).projector_center()
+
+    def test_projector_power_is_fixed_and_offline_only(self):
+        on = marvin.Marvin().projector_power("on")
+        packets = [
+            marvin.marvin_legacy_protocol.decode_packet(bytes.fromhex(raw))
+            for raw in on["immutable_application_transcript_hex"]
+        ]
+        self.assertEqual(
+            [(packet.command, packet.payload) for packet in packets],
+            [(0x27, b"\x01"), (0x27, b"\x00")])
+        self.assertIn("finally", on["cleanup_policy"])
+        off = marvin.Marvin().projector_power("off")
+        self.assertEqual(off["payload_uint8"], 0)
+        self.assertEqual(off["maximum_writes"], 1)
+        robot = marvin.Marvin(
+            run=True, expected_physical_port="1-3",
+            output="new", safety_confirmed=True)
+        with patch.object(projector_power, "run_smoke",
+                          return_value={"status": "smoke"}) as smoke:
+            self.assertEqual(robot.projector_power("on")["status"], "smoke")
+        smoke.assert_called_once()
+        self.assertTrue(all(
+            smoke.call_args.kwargs[name] is True
+            for name in projector_power.ACKNOWLEDGMENTS))
+        with self.assertRaisesRegex(marvin.UnsupportedOperation, "Standalone live"):
+            robot.projector_power("off")
+        with self.assertRaises(ValueError):
+            marvin.marvin_legacy_protocol.projector_power_request(1, 1)
+
+    def test_projector_smoke_always_attempts_off_after_on_may_apply(self):
+        class Clock:
+            now = 10.0
+
+            def __call__(self):
+                return self.now
+
+        class Transport:
+            token = b"identity"
+            serial_bytes = 0
+
+            def __init__(self, *, wait_error=None, on_error=None, off_error=None,
+                         hold=projector_power.HOLD_SECONDS):
+                self.wait_error = wait_error
+                self.on_error = on_error
+                self.off_error = off_error
+                self.hold = hold
+                self.on_may_have_applied = False
+                self.off_attempted = False
+                self.writes = 0
+                self.steps = []
+                self.identities = 0
+
+            def revalidate(self, *, deadline):
+                return self.token
+
+            def identity(self, *, deadline):
+                self.identities += 1
+                return self.token
+
+            def submit(self, step, *, deadline):
+                self.steps.append(step)
+                self.writes += 1
+                if step == "on":
+                    self.on_may_have_applied = True
+                    if self.on_error:
+                        raise self.on_error
+                else:
+                    self.off_attempted = True
+                    if self.off_error:
+                        raise self.off_error
+                return len(projector_power.STEPS[step])
+
+            def wait(self, seconds):
+                if self.wait_error:
+                    raise self.wait_error
+                clock.now += self.hold
+
+            def close(self, *, deadline):
+                return None
+
+        def run(transport):
+            report = {}
+            with patch.object(projector_power, "_response", return_value=object()):
+                projector_power._observe(transport, report, clock=clock)
+            return report
+
+        clock = Clock()
+        normal = Transport()
+        report = run(normal)
+        self.assertEqual(normal.steps, ["on", "off"])
+        self.assertEqual(normal.identities, 2)
+        self.assertEqual(report["actual_hold_seconds"], 10.0)
+        self.assertTrue(report["off_correlated"])
+
+        for error in (KeyboardInterrupt(), OSError("uncertain on")):
+            clock = Clock()
+            transport = (
+                Transport(wait_error=error)
+                if isinstance(error, KeyboardInterrupt)
+                else Transport(on_error=error)
+            )
+            with self.subTest(error=type(error).__name__), \
+                    self.assertRaises(type(error)):
+                run(transport)
+            self.assertEqual(transport.steps, ["on", "off"])
+            self.assertTrue(transport.off_attempted)
+
+        clock = Clock()
+        failed_off = Transport(off_error=OSError("off uncertain"))
+        with self.assertRaisesRegex(OSError, "off uncertain"):
+            run(failed_off)
+        self.assertEqual(failed_off.steps, ["on", "off"])
+        self.assertTrue(failed_off.off_attempted)
+
+        clock = Clock()
+        overrun = Transport(
+            hold=projector_power.HOLD_SECONDS
+            + projector_power.MAX_HOLD_OVERRUN_SECONDS + 0.001)
+        with self.assertRaisesRegex(OSError, "missed its fixed"):
+            run(overrun)
+        self.assertEqual(overrun.steps, ["on", "off"])
+
     def test_cli_help_plans_and_failure_surface(self):
         stdout = io.StringIO()
         with redirect_stdout(stdout):
@@ -84,6 +224,16 @@ class MarvinFacadeTests(unittest.TestCase):
         self.assertEqual(failure["status"], "failed")
         self.assertIn("mandatory all-zero cleanup attempt", failure["error"])
         self.assertIn("If a write may have applied", failure["safety"])
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(marvin.main(["projector", "status"]), 0)
+        self.assertEqual(
+            json.loads(stdout.getvalue())["status"], "unavailable_unverified")
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(marvin.main(["projector", "power", "on"]), 0)
+        self.assertEqual(json.loads(stdout.getvalue())["command"], 0x27)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ and uncertain-write paths.
 """
 
 import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import subprocess
@@ -16,12 +17,52 @@ from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_front_servo_baseline_restore as servo_center
 from tools import marvin_legacy_front_servo_mapper as servo
 from tools import marvin_legacy_probe
+from tools import marvin_legacy_protocol
+from tools import marvin_legacy_projector_power as projector_power
 from tools import marvin_probe
 from tools import marvin_session
 
 
 DRIVE_DIRECTIONS = tuple(drive_step.DIRECTIONS)
 CAMERA_UP_DEGREES = 5
+
+
+@dataclass(frozen=True)
+class _ServoAxis:
+    name: str
+    word: int
+    baseline: int
+    live_up_degrees: tuple[int, ...] = ()
+    units_per_degree: int | None = None
+    routing: str = "unverified"
+
+    def target_words(self, value):
+        if type(value) is not int or not 0 <= value <= 65535:
+            raise ValueError("Servo target must fit uint16.")
+        words = list(SERVO_BASELINE)
+        words[self.word] = value
+        return tuple(words)
+
+    def status(self):
+        return {
+            "word": self.word,
+            "baseline": self.baseline,
+            "routing": self.routing,
+            "units_per_degree": self.units_per_degree,
+            "live_up_degrees": list(self.live_up_degrees),
+        }
+
+
+SERVO_BASELINE = servo.BASELINE
+CAMERA_AXIS = _ServoAxis(
+    "camera", 0, SERVO_BASELINE[0], (CAMERA_UP_DEGREES,), 100,
+    "directly_observed_installed_camera",
+)
+PROJECTOR_AXIS = _ServoAxis(
+    "projector", 1, SERVO_BASELINE[1],
+    routing="historical_expected_word1_not_directly_exercised",
+)
+PROJECTOR_POWER_SEQUENCE = 3600
 
 
 class UnsupportedOperation(ValueError):
@@ -50,9 +91,14 @@ class Marvin:
         capabilities = {
             "drive": list(DRIVE_DIRECTIONS),
             "drive_step_seconds": drive_step.DURATION_SECONDS,
-            "camera_up_degrees": [CAMERA_UP_DEGREES],
-            "camera_center": True,
-            "camera_down": False,
+            "servos": {
+                CAMERA_AXIS.name: CAMERA_AXIS.status(),
+                PROJECTOR_AXIS.name: {
+                    **PROJECTOR_AXIS.status(),
+                            "power_plan": True,
+                            "live_power_smoke": True,
+                },
+            },
             "standalone_motor_stop": False,
         }
         if not self.run:
@@ -99,11 +145,103 @@ class Marvin:
 
     def camera_up(self, degrees):
         """Run the directly observed five-degree camera-up profile and restore."""
-        if type(degrees) is not int or degrees != CAMERA_UP_DEGREES:
+        return self._servo_move(CAMERA_AXIS, "up", degrees)
+
+    def camera_down(self, degrees):
+        return self._servo_move(CAMERA_AXIS, "down", degrees)
+
+    def camera_center(self):
+        """Write the locally proved camera baseline while retaining word 1."""
+        return self._servo_center(CAMERA_AXIS)
+
+    def projector_status(self):
+        """Report historical projector mapping without authorizing a write."""
+        return {
+            "status": "unavailable_unverified",
+            "connected": False,
+            **PROJECTOR_AXIS.status(),
+            "reason": (
+                "The projector is physically disconnected; word-1 live routing "
+                "and local units-per-degree have not been directly exercised."
+            ),
+        }
+
+    def projector_up(self, degrees):
+        return self._servo_move(PROJECTOR_AXIS, "up", degrees)
+
+    def projector_down(self, degrees):
+        return self._servo_move(PROJECTOR_AXIS, "down", degrees)
+
+    def projector_center(self):
+        return self._servo_center(PROJECTOR_AXIS)
+
+    def projector_power(self, state):
+        """Return a fixed offline power plan; live execution is not authorized."""
+        if state not in ("on", "off"):
+            raise ValueError("Projector power state must be 'on' or 'off'.")
+        if self.run:
+            if state != "on":
+                raise UnsupportedOperation(
+                    "Standalone live projector OFF is not exposed; the live surface "
+                    "is one fixed ON, 10.0-second observation, then OFF smoke test.")
+            self._require_live_action()
+            return projector_power.run_smoke(
+                self.output,
+                expected_physical_port=self.expected_physical_port,
+                run=True,
+                **dict.fromkeys(projector_power.ACKNOWLEDGMENTS, True),
+            )
+        if state == "on":
+            return projector_power.prepare()
+        enabled = state == "on"
+        requests = [
+            marvin_legacy_protocol.projector_power_request(
+                PROJECTOR_POWER_SEQUENCE, enabled)
+        ]
+        if enabled:
+            requests.append(marvin_legacy_protocol.projector_power_request(
+                PROJECTOR_POWER_SEQUENCE + 1, False))
+        return {
+            "status": "offline_unverified",
+            "operation": f"projector_power_{state}",
+            "command": marvin_legacy_protocol.SET_PROJECTOR_POWER,
+            "payload_uint8": int(enabled),
+            "source_semantics": "1=on, 0=off",
+            "reversible_in_source": True,
+            "live_execution_authorized": False,
+            "immutable_application_transcript_hex": [
+                request.hex() for request in requests
+            ],
+            "maximum_writes": len(requests),
+            "automatic_retries": False,
+            "cleanup_policy": (
+                "If power-on may apply, one fixed power-off attempt runs in finally."
+                if enabled else "single fixed power-off request; no retry"
+            ),
+            "evidence": (
+                "recovered firmware source and existing command catalog only; "
+                "no installed-hardware execution or response evidence"
+            ),
+        }
+
+    def _servo_move(self, axis, direction, degrees):
+        if axis is PROJECTOR_AXIS:
+            raise UnsupportedOperation(
+                f"Projector {direction} is not exposed: historical word 1, "
+                "direction, routing, and units-per-degree have not been directly "
+                "exercised, and the projector is physically disconnected.")
+        if direction == "down":
+            raise UnsupportedOperation(
+                "Camera down is not exposed: increasing word 0 is only an inferred "
+                "inverse and has not been exercised with the installed linkage.")
+        if type(degrees) is not int or degrees not in axis.live_up_degrees:
             raise UnsupportedOperation(
                 "Only camera up 5 is supported: 2500 -> 2000 was directly "
                 "observed as approximately five degrees upward. Other angles "
                 "would assume unproved linearity.")
+        if axis.target_words(axis.baseline - degrees * axis.units_per_degree) != (
+                servo.WORD0_500_UNIT_TARGET):
+            raise ValueError("Camera axis configuration differs from the proved profile.")
         if not self.run:
             return servo.prepare(word0_500_unit=True)
         self._require_live_action()
@@ -115,8 +253,23 @@ class Marvin:
             **dict.fromkeys(servo.WORD0_500_UNIT_ACKNOWLEDGMENTS, True),
         )
 
-    def camera_center(self):
-        """Write the locally proved [2500, 2730] camera baseline once."""
+    def _servo_center(self, axis):
+        target = axis.target_words(axis.baseline)
+        if axis is PROJECTOR_AXIS:
+            if self.run:
+                raise UnsupportedOperation(
+                    "Live projector center is not exposed: word-1 routing has not "
+                    "been directly exercised and the projector is disconnected.")
+            return {
+                "status": "offline_unverified",
+                "axis": axis.name,
+                "target_words_uint16": list(target),
+                "untouched_sibling_word": CAMERA_AXIS.word,
+                "live_execution_authorized": False,
+                "reason": "historical word-1 baseline only; routing unverified",
+            }
+        if target != tuple(servo_center.WORDS):
+            raise ValueError("Camera center configuration differs from the proved profile.")
         if not self.run:
             return servo_center.prepare()
         self._require_live_action()
@@ -126,11 +279,6 @@ class Marvin:
             run=True,
             **dict.fromkeys(servo_center.ACKNOWLEDGMENTS, True),
         )
-
-    def camera_down(self, degrees):
-        raise UnsupportedOperation(
-            "Camera down is not exposed: increasing word 0 is only an inferred "
-            "inverse and has not been exercised with the installed linkage.")
 
     def stop(self):
         raise UnsupportedOperation(
@@ -163,6 +311,25 @@ def _live_arguments(parser, *, safety=True):
                  "encoders connected, required servo isolation, and ordinary-user usbmon")
 
 
+def _servo_subcommands(parser, *, status=False):
+    actions = parser.add_subparsers(dest="servo_command", required=True)
+    if status:
+        state = actions.add_parser("status", help="show axis evidence status")
+        _live_arguments(state, safety=False)
+        power = actions.add_parser(
+            "power", help="show the offline-only fixed projector power plan")
+        power.add_argument("state", choices=("on", "off"))
+        _live_arguments(power)
+    up = actions.add_parser("up", help="tilt up by a supported angle")
+    up.add_argument("degrees", type=int)
+    _live_arguments(up)
+    down = actions.add_parser("down", help="tilt down by a supported angle")
+    down.add_argument("degrees", type=int)
+    _live_arguments(down)
+    center = actions.add_parser("center", help="center this axis")
+    _live_arguments(center)
+
+
 def _parser():
     parser = argparse.ArgumentParser(
         prog="python -m marvin",
@@ -172,6 +339,8 @@ def _parser():
   python -m marvin drive forward
   python -m marvin camera up 5
   python -m marvin camera center
+  python -m marvin projector status
+  python -m marvin projector power on
   python -m marvin drive rotate-left --run --expected-physical-port 1-3 \\
       --output evidence/left-001 --confirm-safe-setup
 
@@ -189,15 +358,10 @@ observed 5-degree profile and always attempts baseline restore.""",
     stop = actions.add_parser("stop", help="report standalone-stop evidence gap")
     _live_arguments(stop)
     camera = actions.add_parser("camera", help="control front-camera tilt")
-    camera_actions = camera.add_subparsers(dest="camera_command", required=True)
-    up = camera_actions.add_parser("up", help="tilt up by the proved five degrees")
-    up.add_argument("degrees", type=int)
-    _live_arguments(up)
-    down = camera_actions.add_parser("down", help="report camera-down evidence gap")
-    down.add_argument("degrees", type=int)
-    _live_arguments(down)
-    center = camera_actions.add_parser("center", help="write baseline [2500,2730]")
-    _live_arguments(center)
+    _servo_subcommands(camera)
+    projector = actions.add_parser(
+        "projector", help="inspect the unverified projector-servo surface")
+    _servo_subcommands(projector, status=True)
     return parser
 
 
@@ -216,12 +380,22 @@ def main(argv=None):
             result = marvin.drive(args.direction)
         elif args.command == "stop":
             result = marvin.stop()
-        elif args.camera_command == "up":
+        elif args.command == "camera" and args.servo_command == "up":
             result = marvin.camera_up(args.degrees)
-        elif args.camera_command == "down":
+        elif args.command == "camera" and args.servo_command == "down":
             result = marvin.camera_down(args.degrees)
-        else:
+        elif args.command == "camera":
             result = marvin.camera_center()
+        elif args.servo_command == "status":
+            result = marvin.projector_status()
+        elif args.servo_command == "power":
+            result = marvin.projector_power(args.state)
+        elif args.servo_command == "up":
+            result = marvin.projector_up(args.degrees)
+        elif args.servo_command == "down":
+            result = marvin.projector_down(args.degrees)
+        else:
+            result = marvin.projector_center()
     except (OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt) as error:
         details = {
             "status": "failed",

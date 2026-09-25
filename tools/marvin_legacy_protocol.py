@@ -48,6 +48,7 @@ GET_LED_BLINK = 0x19
 GET_SERVO_POSITION = 0x1D
 GET_SENSOR_INFO = 0x1F
 GET_BATTERY_INFO = 0x28
+SET_PROJECTOR_POWER = 0x27
 GET_CONFIG_PAYLOAD_BYTES = 108
 GETTER_RESPONSE_FIELD = 0x80
 GET_CONFIG_RESPONSE_FIELD = GETTER_RESPONSE_FIELD
@@ -139,6 +140,13 @@ def get_sensor_info_request(sequence=0):
 def get_battery_info_request(sequence=0):
     """PCTestApp Form1.cs sends an empty legacy 28; installed reply shape unknown."""
     return _empty_request(GET_BATTERY_INFO, sequence)
+
+
+def projector_power_request(sequence, enabled):
+    """Build the source-defined legacy projector power setter without sending it."""
+    if type(enabled) is not bool:
+        raise ValueError("Projector power must be a literal boolean.")
+    return encode_request(sequence, SET_PROJECTOR_POWER, bytes((int(enabled),)))
 
 
 @dataclass(frozen=True)
