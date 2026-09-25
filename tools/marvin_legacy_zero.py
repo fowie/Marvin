@@ -8,6 +8,7 @@ import argparse
 from collections import deque
 from dataclasses import dataclass
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -148,12 +149,21 @@ def prepare():
     }
 
 
-def _observe_response(transport, response, *, deadline, clock=time.monotonic):
+def _observe_response(
+        transport, response, *, deadline, clock=time.monotonic,
+        identity_reserve_seconds=0):
     """Observe a complete bounded window without owning open, write or close."""
+    if (not isinstance(identity_reserve_seconds, (int, float))
+            or isinstance(identity_reserve_seconds, bool)
+            or not math.isfinite(identity_reserve_seconds)
+            or identity_reserve_seconds < 0):
+        raise ValueError("Identity reserve must be finite and nonnegative.")
     for _ in range(4096):
         if clock() >= response.deadline:
             break
-        transport.identity(deadline=deadline)
+        if (identity_reserve_seconds == 0
+                or response.deadline - clock() > identity_reserve_seconds):
+            transport.identity(deadline=deadline)
         transport.ingress.pump()
         remaining = response.deadline - clock()
         if remaining <= 0:

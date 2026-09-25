@@ -88,6 +88,33 @@ class LegacyServoPlanTests(unittest.TestCase):
         transport.write.assert_called_once_with(
             baseline_restore.REQUEST, deadline=14.0)
 
+        tail_response = Mock(deadline=.5, candidates=1)
+        tail_transport = Mock(fd=99, ingress=Mock())
+        tail_clock = Mock(side_effect=(
+            .34, .34, .41, .41, .41, .41, .45, .45, .50, .50))
+        with patch.object(baseline_restore.zero.select, "select",
+                          return_value=([99], [], [])), \
+                patch.object(
+                    tail_transport, "read", return_value=b"tail") as tail_read:
+            baseline_restore.zero._observe_response(
+                tail_transport, tail_response, deadline=.5, clock=tail_clock,
+                identity_reserve_seconds=.1)
+        tail_transport.identity.assert_called_once_with(deadline=.5)
+        self.assertEqual(tail_transport.ingress.pump.call_count, 2)
+        self.assertEqual(tail_read.call_count, 2)
+        tail_response.feed.assert_called_with(b"tail", .45)
+        tail_response.finish.assert_called_once_with(.5)
+
+        default_response = Mock(deadline=.5, candidates=1)
+        default_transport = Mock(fd=99, ingress=Mock())
+        default_clock = Mock(side_effect=(.49, .5, .5, .5))
+        with patch.object(baseline_restore.zero.select, "select",
+                          return_value=([], [], [])):
+            baseline_restore.zero._observe_response(
+                default_transport, default_response, deadline=.5,
+                clock=default_clock)
+        default_transport.identity.assert_called_once_with(deadline=.5)
+
     def test_single_getter_is_fixed_read_only_and_preserves_response(self):
         with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
                 redirect_stdout(io.StringIO()) as stdout:

@@ -221,7 +221,7 @@ Dry run:
 python3 -m tools.marvin_legacy_front_servo_baseline_restore
 ```
 
-Reviewed live template for a future separately authorized execution:
+The separately authorized live invocation was:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_baseline_restore \
@@ -238,23 +238,50 @@ python3 -m tools.marvin_legacy_front_servo_baseline_restore \
   --authorize-immediate-physical-power-off-after-baseline-restore
 ```
 
-This command is not standing authorization and has not been executed. It
-permits one 14-byte application write and one bounded response window, then
+This command is historical evidence, not standing authorization. It permits
+one 14-byte application write and one bounded response window, then
 closes with no follow-up command. The response must be exactly one unique
 CRC-valid sequence/command-correlated empty-payload frame. Its raw response
 field and USB completion remain observations, not ACK. The exact
 `045e:4444` identity and reviewed physical USB port are pinned, and fresh
 serial/usbmon evidence is sealed on every outcome.
 
-If the installed word-0 division-by-three interpretation generalizes from the
-single proved `2490 -> 830` observation, the passive J24 capture may contain
-an ID-2 Goal Position value near 833 for host baseline word 2500. Integer
-rounding, the exact value, the general conversion and whether any downstream
-packet is emitted are unproved; the capture is intended to test that
-hypothesis, not assume it. Even a matching packet would establish controller
-bus output, not actuator acceptance, execution, physical position or
-restoration. Immediate physical power-off remains an operator action after
-evidence sealing; the tool sends no power command.
+The execution retained one 14-byte accepted request, zero uncertain bytes,
+one submission, and exactly one unique CRC-valid correlated empty raw-`82`
+response `53bd0d1e820000f3e945`; serial RX was 10 bytes and cleanup errors were
+empty. A final identity validation nevertheless exceeded the response
+deadline after the response was retained, so the tool reported failure.
+Marvin was physically powered off immediately, the operator reported no
+visible movement, and scope probes were removed before USB export.
+
+The passive J24 waveform contains the complete checksum-valid packet:
+
+```text
+FF FF 02 05 03 1E 41 03 93
+```
+
+This is Protocol 1.0 WRITE to ID 2, Goal Position address `1E` hex, value
+`0341` hex (`833`), checksum `93`. Combined with the earlier observed
+`2490 -> 830`, the installed controller outputs the integer-division-by-three
+results for both tested values: `2490 / 3 = 830` and `2500 / 3 = 833`.
+This proves the baseline setter emitted the front-camera J24 Goal Position
+command with value 833. It still does not prove the conversion outside these
+two values, actuator acceptance/execution, visible motion or physical
+restoration. The later `FF FF` prefix is incomplete and unattributed.
+
+The independently verified preserved scope SHA-256 values are:
+
+- waveform:
+  `d22129a17f9624ac3ed6f13551916e2d34b7703f37d7a9c21d008a84ee0a3383`;
+- BMP:
+  `2a7d95022c5a38125635481bacc7972298a7632982dc0be82746165fa09b9bbb`;
+- PNG:
+  `61b28bbeb63fc0d3394fdc8404163c5ebe9b942762448995bd30eb08770e8253`.
+
+The offline fix applies the same response-tail policy as the mapper: the full
+0.5-second observation remains, but its final 100 ms cannot start another
+potentially over-deadline identity validation. No write, retry, reconnect,
+response uniqueness or cleanup rule changes. No live rerun is authorized.
 
 ## Fixed front-camera live mapper
 

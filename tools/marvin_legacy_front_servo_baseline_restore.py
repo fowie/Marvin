@@ -20,6 +20,7 @@ WORDS = (2500, 2730)
 REQUEST = encode_request(SEQUENCE, COMMAND, struct.pack("<HH", *WORDS))
 TRANSCRIPT = (REQUEST,)
 SUCCESS = "servo_baseline_single_restore_complete_protocol_only"
+IDENTITY_CHECK_RESERVE_SECONDS = 0.1
 ACKNOWLEDGMENTS = (
     "operator_present",
     "robot_secured",
@@ -58,6 +59,7 @@ def prepare():
         "automatic_reconnect": False,
         "follow_up_command": False,
         "response_seconds": one_shot.RESPONSE_SECONDS,
+        "response_tail_identity_reserve_seconds": IDENTITY_CHECK_RESERVE_SECONDS,
         "overall_seconds": one_shot.OVERALL_SECONDS,
         "cleanup_seconds": one_shot.CLEANUP_SECONDS,
         "response_policy": (
@@ -65,9 +67,9 @@ def prepare():
             "preserve raw response field; USB completion and response field are not ACK"
         ),
         "physical_restoration": "unproved",
-        "expected_unproved_ax_interpretation": (
-            "ID2 Goal Position near 833 only if installed word0 division-by-three "
-            "behavior generalizes; passive capture tests rather than assumes this"
+        "observed_ax_interpretation": (
+            "Passive J24 capture observed ID2 Goal Position 833 for this fixed "
+            "baseline; actuator acceptance, execution and physical position remain unproved"
         ),
         "required": [
             "--run", "--expected-physical-port REVIEWED-PORT", "--output NEWDIR",
@@ -102,6 +104,8 @@ def _response_evidence(record):
 
 
 def _observe(transport, report, *, clock=one_shot.time.monotonic):
+    report["response_tail_identity_reserve_seconds"] = (
+        IDENTITY_CHECK_RESERVE_SECONDS)
     return one_shot._observe_fixed(
         transport, report,
         request=REQUEST,
@@ -110,6 +114,7 @@ def _observe(transport, report, *, clock=one_shot.time.monotonic):
         success=SUCCESS,
         result_fields=lambda _packet: {},
         noun="baseline restore",
+        identity_reserve_seconds=IDENTITY_CHECK_RESERVE_SECONDS,
         clock=clock,
     )
 
