@@ -330,14 +330,24 @@ full range.
 One later sealed installed-camera fixed run directly changed word0 from 2500 to
 2000. The operator observed the installed camera tilt **upward approximately
 5 degrees**, return to baseline, and then confirmed Marvin physically powered
-off. This directly establishes decreasing word0 -> camera upward at the tested
+off. Host evidence retained 48 accepted and zero uncertain TX bytes across four
+submissions. Baseline and final getters both returned `[2500,2730]`; setter and
+restore each had one unique correlated empty raw-`82` response. Actual hold was
+**0.250516458 seconds** and setter-to-restore start was
+**0.269865906 seconds**. Restore correlation and getter re-verification were
+true, finalization errors were empty, USB OUT completed all 48 bytes, and
+usbmon retained zero dropped, queued, or pending events.
+
+The top-level manifest SHA-256 is
+`aa957634552e0d6b581048e17f1e7de35448952296986573e33b26ddef90c235`;
+`metadata.json` SHA-256 is
+`df01386107730b7d83e1c969a455e19c85d5cd8a8fa8dcd61fef249e436fd019`.
+This directly establishes decreasing word0 -> camera upward at the tested
 500-unit point and supports local scaling of approximately 100 legacy units per
 degree. It does not establish precision, linearity away from the tested local
 range, endpoints, or full range. Increasing word0 -> downward remains an
-untested inverse inference. PR
-[#34](https://github.com/fowie/Marvin/pull/34) is the authoritative location for
-the sealed manifest and timing details once published; this handoff does not
-invent or duplicate unavailable values.
+untested inverse inference. See [PR #34](https://github.com/fowie/Marvin/pull/34)
+for the evidence directory and detailed procedure.
 
 Projector/word1 remains unproved. PR
 [#34](https://github.com/fowie/Marvin/pull/34) contains the evidence directory
