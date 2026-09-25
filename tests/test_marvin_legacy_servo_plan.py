@@ -483,6 +483,38 @@ class LegacyServoPlanTests(unittest.TestCase):
             "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
         ])
         self.assertTrue(mapper._Word0Plus500UnitTransport.direction_hold)
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(
+                mapper.main([
+                    "--word1-minus-500-unit-projector-diagnostic"]), 0)
+        projector = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (projector["fixed_mode"], projector["target_words_uint16"],
+             projector["expected_ax_goal_position"],
+             projector["candidate_wire_word"]),
+            ("word1-minus-500-unit-projector-characterization",
+             [2500, 2230], 743, 1))
+        projector_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in projector["immutable_application_transcript_hex"]]
+        self.assertEqual(
+            [(packet.sequence, packet.command, packet.payload)
+             for packet in projector_frames],
+            [(3530, 0x1D, b""),
+             (3531, 0x1E, bytes.fromhex("c409b608")),
+             (3532, 0x1E, bytes.fromhex("c409aa0a")),
+             (3533, 0x1D, b"")])
+        self.assertTrue(projector["expected_ax_goal_within_range"])
+        self.assertTrue(projector["camera_word0_preserved"])
+        self.assertEqual(projector["projector_routing"],
+                         "hypothesis_until_live")
+        self.assertEqual(projector["required"], [
+            "--run", "--expected-physical-port", "--output NEW-SESSION-DIR",
+            "--word1-minus-500-unit-projector-diagnostic",
+            "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
+        ])
+        self.assertTrue(mapper._Word1Projector500UnitTransport.direction_hold)
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
             root = Path(directory) / "session"
             with patch.object(

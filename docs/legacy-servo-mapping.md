@@ -864,6 +864,50 @@ the profile provides no larger target and does not establish the physical
 camera endpoint, clearance beyond the tested approximately 5-degree motion,
 or full-range calibration.
 
+### Offline projector word-1 minus-500 profile
+
+This first projector profile preserves camera word 0 at 2500 and changes only
+word 1 from 2730 to 2230. If the observed word-0 integer division generalizes,
+the candidate AX Goal is `2230 // 3 = 743`; projector routing, direction and
+scaling all remain hypotheses until a separately authorized live run. The
+projector is currently disconnected, and no hardware was accessed while
+preparing this profile.
+
+Dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word1-minus-500-unit-projector-diagnostic
+```
+
+Future live template:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word1-minus-500-unit-projector-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEW-SESSION-DIR \
+  --authorize-unchanged-setup-session-after-fresh-safety-confirmation
+```
+
+The setup-scoped `RUN`/`END`, actual 0.250-second hold, mandatory baseline
+restore from `finally`, correlated-restore gate for the final getter, pinned
+identity checks and no-retry/no-reconnect rules are unchanged. The immutable
+sequences are 3530 through 3533:
+
+```text
+53ca0d1d000000590245
+53cb0d1e000400c409b608399c45
+53cc0d1e000400c409aa0a014745
+53cd0d1d00000058b545
+```
+
+Their concatenated SHA-256 is
+`01b094a7d9654c9f4545e521d26f1cf3a027f542973c4ee6ecf7477b62400054`.
+A word-1 plus-500 profile is deliberately absent: 3230 would imply Goal
+`3230 // 3 = 1076`, exceeding the AX `0..1023` range. Any future
+opposite-direction characterization must stay below that boundary, and the
+word-1 conversion itself still requires live evidence.
+
 ## Historically named word-1 50-unit diagnostic
 
 The next discriminator is a separate named profile only. It preserves word 0

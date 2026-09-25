@@ -711,6 +711,7 @@ def _coordinator_stop_requested(output):
 @motor_consent.powered_faults
 def capture(usb_path, output, *, seconds, actuators_isolated=False,
             front_camera_tilt_only_connected_projector_servo_physically_disconnected=False,
+            projector_servo_only_connected_front_camera_servo_physically_disconnected=False,
             front_camera_servo_single_getter=False,
             front_camera_servo_single_baseline_restore=False,
             drop_to_invoking_user=False, max_bytes=DEFAULT_MAX_BYTES,
@@ -929,14 +930,19 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         left_motor_powered_observation=left_motor_powered_observation,
         operator_at_external_cutoff=operator_at_external_cutoff,
     )
-    front_servo_profile = (
-        front_camera_tilt_only_connected_projector_servo_physically_disconnected)
-    if (type(front_servo_profile) is not bool
+    front_servo_profiles = (
+        front_camera_tilt_only_connected_projector_servo_physically_disconnected,
+        projector_servo_only_connected_front_camera_servo_physically_disconnected,
+    )
+    if (any(type(value) is not bool for value in front_servo_profiles)
             or type(front_camera_servo_single_getter) is not bool
             or type(front_camera_servo_single_baseline_restore) is not bool):
         raise UsbmonError("Front-servo declarations must be booleans.")
+    if sum(front_servo_profiles) > 1:
+        raise UsbmonError("Select exactly one connected-servo recorder profile.")
+    front_servo_profile = any(front_servo_profiles)
     if (front_camera_servo_single_getter or front_camera_servo_single_baseline_restore
-            ) and not front_servo_profile:
+            ) and not front_camera_tilt_only_connected_projector_servo_physically_disconnected:
         raise UsbmonError("Front-servo one-shot recording requires the connected-servo declaration.")
     if front_camera_servo_single_getter and front_camera_servo_single_baseline_restore:
         raise UsbmonError("Select one front-servo one-shot recorder profile.")
@@ -1064,17 +1070,29 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 metadata.update(**motor_consent.powered_trial_history(declarations),
                                 consent_profile=scope)
             if front_servo_profile:
+                projector_profile = (
+                    projector_servo_only_connected_front_camera_servo_physically_disconnected)
                 metadata.update(
                     consent_profile=(
                         "front_camera_servo_single_baseline_restore"
                         if front_camera_servo_single_baseline_restore else
                         "front_camera_servo_single_getter"
                         if front_camera_servo_single_getter else
+                        "projector_servo_only_connected_"
+                        "front_camera_servo_physically_disconnected"
+                        if projector_profile else
                         "front_camera_tilt_only_connected_"
                         "projector_servo_physically_disconnected"),
                     actuators_isolated=False,
-                    connected_servo="front-camera-tilt-only",
-                    projector_servo="physically_disconnected",
+                    connected_servo=(
+                        "projector-only" if projector_profile
+                        else "front-camera-tilt-only"),
+                    projector_servo=(
+                        "connected" if projector_profile
+                        else "physically_disconnected"),
+                    front_camera_servo=(
+                        "physically_disconnected" if projector_profile
+                        else "connected"),
                 )
             framer = _Framer(max_line_bytes, (identity["busnum"], identity["devnum"]))
             failure = None
@@ -1337,6 +1355,9 @@ def main(argv=None):
     parser.add_argument(
         "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
         action="store_true")
+    parser.add_argument(
+        "--projector-servo-only-connected-front-camera-servo-physically-disconnected",
+        action="store_true")
     parser.add_argument("--front-camera-servo-single-getter", action="store_true")
     parser.add_argument("--front-camera-servo-single-baseline-restore", action="store_true")
     motor_consent.add_arguments(parser)
@@ -1357,6 +1378,7 @@ def main(argv=None):
     if args.analyze:
         if (args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated
                 or args.front_camera_tilt_only_connected_projector_servo_physically_disconnected
+                or args.projector_servo_only_connected_front_camera_servo_physically_disconnected
                 or args.front_camera_servo_single_getter
                 or args.front_camera_servo_single_baseline_restore
                 or args.coordinator_stop or any(motor_consent.arguments(args).values())
@@ -1394,6 +1416,8 @@ def main(argv=None):
             actuators_isolated=args.actuators_isolated,
             front_camera_tilt_only_connected_projector_servo_physically_disconnected=(
                 args.front_camera_tilt_only_connected_projector_servo_physically_disconnected),
+            projector_servo_only_connected_front_camera_servo_physically_disconnected=(
+                args.projector_servo_only_connected_front_camera_servo_physically_disconnected),
             front_camera_servo_single_getter=args.front_camera_servo_single_getter,
             front_camera_servo_single_baseline_restore=(
                 args.front_camera_servo_single_baseline_restore),

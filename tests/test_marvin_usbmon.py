@@ -695,6 +695,11 @@ class CaptureTests(LocalFilesTests):
             }))
         with self.assertRaisesRegex(usbmon.UsbmonError, "must be booleans"):
             self.capture(**(declaration | {"front_camera_servo_single_getter": 1}))
+        with self.assertRaisesRegex(
+                usbmon.UsbmonError, "exactly one connected-servo"):
+            self.capture(**(declaration | {
+                "projector_servo_only_connected_front_camera_servo_physically_disconnected": True,
+            }))
         for conflict in (
                 {"actuators_isolated": True},
                 {"motor_supply_off": True}):

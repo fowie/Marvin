@@ -148,7 +148,7 @@ are additionally unjustified on their own terms.
 | `24` | Enum/Drive `SyncProjectorSignal`; Head blank | `0 -> 0` | `0 -> 0` (NYI) | Output/state change; source-only |
 | `25` | Enum/Drive `SetProjectorInversion`; Head blank | `2 UInt8Arg -> 0` | `0 -> 0` (NYI) | Output setter; source-only |
 | `26` | Enum/Drive `GetProjectorVersion`; Head blank | `0 -> 1 UInt8Arg` | `0 -> 0` (NYI) | Nominal read; **host-only** successor-framed OUT, no application RX |
-| `27` | Enum/Drive `SetProjectorPower`; Head blank | `1 UInt8Arg -> 0` | `0 -> 0` (NYI) | Power setter; deliberately avoided |
+| `27` | Enum/Drive `SetProjectorPower`; Head blank | `1 UInt8Arg -> 0` | `0 -> 0` (NYI) | **Protocol mismatch:** installed legacy `27` is PCTestApp `ResetMotorPositions`, not projector power; the prior one-byte trial is retained only as an inconclusive collision experiment |
 | `28` | Enum/Drive `MoveProjectorVerticalImage`; Head blank | `1 UInt8Arg -> 0` | `0 -> 0` (NYI) | Output setter; source-only |
 | `29` | no enum member; Drive `ClearProjectorEEPRom`; Head blank | `0 -> 0` | `0 -> 0` (NYI) | Persistent erase; deliberately avoided |
 | `2A` | Enum/Drive `GoToProjectorHomePosition`; Head blank | `0 -> 0` | `0 -> 0` (NYI) | Motion/output setter; deliberately avoided |
