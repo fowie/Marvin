@@ -81,9 +81,12 @@ state, and errors. New private mode-`0600` staged output is atomically finalized
 only after graceful SIGINT or natural completion plus a successful
 structural/diagnostic check. ffmpeg's documented SIGINT exit `255` is accepted
 only when the manager sent that SIGINT; other nonzero exits remain failures.
-Likewise, arecord exit `1` is accepted only after the manager's SIGINT, only
-with the known `pcm_read: Interrupted system call` diagnostic, and only when the
-RIFF size and final nonempty `data` chunk exactly consume the staged file.
+arecord writes through an inherited descriptor for the already-reserved private
+seekable staging file (`/proc/self/fd/N`) rather than unseekable stdout or a
+reopened path, so it can rewrite RIFF/data lengths during graceful shutdown
+without weakening exclusive creation. Audio publication requires exit `0`,
+exact RIFF/file length, and a final nonempty `data` chunk that exactly consumes
+the staged file.
 Video's internal duration is 299 seconds so normal mux finalization can finish
 inside the manager's hard 300-second cap. Any terminate/kill escalation,
 unexpected nonzero exit, failure, or shutdown removes partial files. Direct-host

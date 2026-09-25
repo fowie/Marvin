@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+import shutil
 
 import marvin_managers
 import marvin_operator
@@ -165,20 +166,28 @@ class ManagerTests(unittest.TestCase):
             root = Path(directory)
 
             def popen_with(payload, stderr=b"", exit_code=0):
-                def start(_argv, **options):
+                def start(argv, **options):
+                    write_payload = (
+                        "open(path,'wb').write(payload)"
+                        if options["stdout"] == subprocess.DEVNULL
+                        else "os.write(1,payload)"
+                    )
                     script = (
                         "import os,signal,sys,time\n"
                         f"payload={payload!r}\n"
                         f"detail={stderr!r}\n"
+                        f"path={str(argv[-1])!r}\n"
                         "def done(*_):\n"
-                        f" os.write(1,payload); os.write(2,detail); sys.exit({exit_code})\n"
+                        f" {write_payload}\n"
+                        f" os.write(2,detail); sys.exit({exit_code})\n"
                         "signal.signal(signal.SIGINT,done)\n"
                         "time.sleep(30)\n"
                     )
                     return subprocess.Popen(
                         [sys.executable, "-c", script],
                         stdin=options["stdin"], stdout=options["stdout"],
-                        stderr=options["stderr"], close_fds=options["close_fds"])
+                        stderr=options["stderr"], close_fds=options["close_fds"],
+                        pass_fds=options.get("pass_fds", ()))
                 return start
 
             wave = wave_bytes()
@@ -194,20 +203,6 @@ class ManagerTests(unittest.TestCase):
             audio.action("stop", {})
             self.assertEqual(wav.stat().st_mode & 0o777, 0o600)
             self.assertEqual(wav.stat().st_size, len(wave))
-
-            interrupted = marvin_managers.MicrophoneManager(
-                device_check=lambda **_options: {"status": "ready"},
-                popen=popen_with(
-                    wave, b"arecord: pcm_read: Interrupted system call\n",
-                    exit_code=1))
-            interrupted.start()
-            interrupted_wav = root / "interrupted.wav"
-            interrupted.action("start", {
-                "output": str(interrupted_wav), "usb_path": "1-2.3",
-                "privacy_authorized": True})
-            time.sleep(0.1)
-            interrupted.action("stop", {})
-            self.assertEqual(interrupted_wav.read_bytes(), wave)
 
             candidate = {
                 "node": "/dev/video-test", "rejected": False,
@@ -250,17 +245,19 @@ class ManagerTests(unittest.TestCase):
             wave = wave_bytes()
 
             def process(script):
-                def start(_argv, **options):
+                def start(argv, **options):
+                    script_with_path = f"path={str(argv[-1])!r}\n" + script
                     return subprocess.Popen(
-                        [sys.executable, "-c", script],
+                        [sys.executable, "-c", script_with_path],
                         stdin=options["stdin"], stdout=options["stdout"],
-                        stderr=options["stderr"], close_fds=options["close_fds"])
+                        stderr=options["stderr"], close_fds=options["close_fds"],
+                        pass_fds=options.get("pass_fds", ()))
                 return start
 
             nonzero = (
                 "import os,signal,sys,time\n"
                 f"payload={wave!r}\n"
-                "def done(*_): os.write(1,payload); sys.exit(7)\n"
+                "def done(*_): open(path,'wb').write(payload); sys.exit(7)\n"
                 "signal.signal(signal.SIGINT,done)\ntime.sleep(30)\n"
             )
             failed = marvin_managers.MicrophoneManager(
@@ -277,7 +274,7 @@ class ManagerTests(unittest.TestCase):
 
             unexpected = (
                 "import os,sys\n"
-                f"os.write(1,{wave!r})\n"
+                f"open(path,'wb').write({wave!r})\n"
                 "os.write(2,b'arecord: pcm_read: Interrupted system call\\n')\n"
                 "sys.exit(1)\n"
             )
@@ -296,7 +293,7 @@ class ManagerTests(unittest.TestCase):
             malformed = (
                 "import os,signal,sys,time\n"
                 "def done(*_):\n"
-                " os.write(1,b'RIFF\\x24\\0\\0\\0WAVEfmt ')\n"
+                " open(path,'wb').write(b'RIFF\\x24\\0\\0\\0WAVEfmt ')\n"
                 " os.write(2,b'arecord: pcm_read: Interrupted system call\\n')\n"
                 " sys.exit(1)\n"
                 "signal.signal(signal.SIGINT,done)\ntime.sleep(30)\n"
@@ -372,6 +369,29 @@ class ManagerTests(unittest.TestCase):
                 self.assertFalse(output.exists())
                 self.assertEqual(
                     list(root.glob(f".video-{outcome}.mkv.*.tmp")), [])
+
+    @unittest.skipUnless(shutil.which("arecord"), "arecord is not installed")
+    def test_real_arecord_null_writes_complete_reserved_seekable_wave(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "null.wav"
+            descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                completed = subprocess.run([
+                    "arecord", "--device=null", "--file-type=wav",
+                    "--format=S16_LE", "--rate=16000", "--channels=8",
+                    "--duration=1", f"/proc/self/fd/{descriptor}",
+                ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE, timeout=5, check=False,
+                    pass_fds=(descriptor,))
+            finally:
+                os.close(descriptor)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+            data = output.read_bytes()
+            self.assertEqual(data[:4], b"RIFF")
+            self.assertEqual(data[8:12], b"WAVE")
+            self.assertEqual(int.from_bytes(data[4:8], "little") + 8, len(data))
+            self.assertIn(b"data", data[:44])
 
 
 if __name__ == "__main__":

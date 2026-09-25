@@ -392,19 +392,26 @@ class _RecorderManager:
                 owned["destination_path"].unlink(missing_ok=True)
             raise
 
-    def _spawn(self, destination, stage, stage_fd, argv):
+    def _spawn(self, destination, stage, stage_fd, argv, *, direct_output=False):
         stream = None
         diagnostic = None
         try:
-            stream = os.fdopen(stage_fd, "wb")
+            if direct_output:
+                argv = [*argv[:-1], f"/proc/self/fd/{stage_fd}"]
+            else:
+                stream = os.fdopen(stage_fd, "wb")
             diagnostic = tempfile.TemporaryFile()
             process = self._popen(
-                argv, stdin=subprocess.DEVNULL, stdout=stream,
-                stderr=diagnostic, close_fds=True)
+                argv, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL if direct_output else stream,
+                stderr=diagnostic, close_fds=True,
+                **({"pass_fds": (stage_fd,)} if direct_output else {}))
+            if direct_output:
+                os.close(stage_fd)
         except BaseException:
             if stream is None:
                 os.close(stage_fd)
-            else:
+            elif stream is not None:
                 stream.close()
             if diagnostic is not None:
                 diagnostic.close()
@@ -455,8 +462,9 @@ class _RecorderManager:
             self._stderr = self._stderr_stream.read()
             self._stderr_stream.close()
             self._stderr_stream = None
-            self._stream.close()
-            self._stream = None
+            if self._stream is not None:
+                self._stream.close()
+                self._stream = None
             if stop_result in ("terminate", "kill"):
                 raise OSError(
                     f"{self.kind} recorder required {stop_result}; "
@@ -522,26 +530,21 @@ class MicrophoneManager(_RecorderManager):
             usb_path=values["usb_path"], run=True)
         destination, stage, fd = self._reserve(values["output"])
         argv = [
-            "arecord", "--quiet", f"--device={marvin_microphone.ALSA_DEVICE}",
+            "arecord", f"--device={marvin_microphone.ALSA_DEVICE}",
             "--file-type=wav", f"--format={marvin_microphone.FORMAT}",
             f"--rate={marvin_microphone.RATE}",
             f"--channels={marvin_microphone.CHANNELS}",
-            f"--duration={MEDIA_LIMIT_SECONDS}", "-",
+            f"--duration={MEDIA_LIMIT_SECONDS}", str(stage),
         ]
-        return self._spawn(destination, stage, fd, argv)
+        return self._spawn(destination, stage, fd, argv, direct_output=True)
 
-    def _validate_output(self, returncode, stop_result):
+    def _validate_output(self, returncode, _stop_result):
         size = self._stage.stat().st_size
         maximum = (
             MEDIA_LIMIT_SECONDS * marvin_microphone.RATE
             * marvin_microphone.CHANNELS * marvin_microphone.SAMPLE_BYTES + 44
         )
-        detail = self._stderr.decode(errors="replace").lower()
-        expected_sigint = (
-            stop_result == "sigint" and returncode == 1
-            and "pcm_read" in detail and "interrupted system call" in detail
-        )
-        if ((returncode and not expected_sigint) or not 44 <= size <= maximum
+        if (returncode or not 44 <= size <= maximum
                 or not self._complete_wave(size)):
             raise OSError(
                 f"Invalid bounded WAV result (exit {returncode}, {size} bytes).")
