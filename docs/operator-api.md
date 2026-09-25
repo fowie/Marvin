@@ -99,8 +99,10 @@ listed.
 | POST | `/api/media/video/stop` | none |
 
 SSE publishes the complete runtime status as `status` events and switches to an
-`error` event while the runtime or any manager reports an error.
-Each newly observed sensor snapshot is also sent as a `sensor` event.
+`error` event only for a runtime failure or drive-manager error. LED and media
+errors remain visible in ordinary status events, so they do not falsely signal
+a transport failure or release an active dead-man lease. Each newly observed
+sensor snapshot is also sent as a `sensor` event.
 
 ## Drive boundary
 
@@ -166,10 +168,10 @@ presenting video recording as verified.
    `http://127.0.0.1:8765/`, all controls are disabled, and no device is opened.
 2. Review the exact controller, microphone, and LifeCam topology paths. Create
    separate mode-`0700` evidence and media directories.
-3. Secure Marvin on blocks, isolate the declared actuator power/signals, arrange
-   an operator at the external cutoff, and start the installed CLI once
-   with all live flags above. Do not retry after an identity, write, cleanup, or
-   evidence failure.
+3. Secure Marvin on blocks with both motors and both encoder-feedback paths
+   connected as declared, keep the servos isolated, arrange an operator at the
+   external cutoff, and start the installed CLI once with all live flags above.
+   Do not retry after an identity, write, cleanup, or evidence failure.
 4. Verify sensor freshness and start/stop one JSONL recording. Inspect only its
    private path and sealed evidence outside the dashboard.
 5. Exercise each dead-man direction briefly, releasing by pointer/key, then test
