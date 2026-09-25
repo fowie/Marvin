@@ -391,6 +391,15 @@ WHEEL_LED_BLINK_FLAGS = (
     "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+ATTENTION_LED_CHECK_SCOPE = "disconnected_load_attention_led_check"
+ATTENTION_LED_CHECK_ONLY_FLAGS = (
+    ATTENTION_LED_CHECK_SCOPE, "authorize_unvalidated_attention_led_check",
+)
+ATTENTION_LED_CHECK_FLAGS = (
+    *ATTENTION_LED_CHECK_ONLY_FLAGS, "motor_power_plugs_disconnected",
+    "servos_isolated", "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 POWERED_TRIAL_SCOPES = {
     "powered_left_stop_characterization": POWERED_TRIAL_FLAGS,
     MAPPING_TRIAL_SCOPE: MAPPING_TRIAL_FLAGS,
@@ -427,6 +436,7 @@ POWERED_TRIAL_SCOPES = {
     DISCONNECTED_LED_STATE_SCOPE: DISCONNECTED_LED_STATE_FLAGS,
     LED_MAPPING_SCOPE: LED_MAPPING_FLAGS,
     WHEEL_LED_BLINK_SCOPE: WHEEL_LED_BLINK_FLAGS,
+    ATTENTION_LED_CHECK_SCOPE: ATTENTION_LED_CHECK_FLAGS,
 }
 ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *ENCODER_ONLY_FLAGS, *POWERED_TRIAL_ONLY_FLAGS,
@@ -457,7 +467,8 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
                                 *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                                 *DISCONNECTED_LED_STATE_ONLY_FLAGS,
-                                *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS)))
+                                *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS,
+                                *ATTENTION_LED_CHECK_ONLY_FLAGS)))
 
 
 def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
@@ -526,6 +537,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_led_mapping_phase=False,
              disconnected_load_wheel_led_blink_pilot=False,
              authorize_unvalidated_wheel_led_blink_pilot=False,
+             disconnected_load_attention_led_check=False,
+             authorize_unvalidated_attention_led_check=False,
              **declarations):
     """Keep validate's historical boolean contract; classify the new scope separately."""
     new = dict(left_motor_powered_observation=left_motor_powered_observation,
@@ -651,7 +664,11 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                  disconnected_load_wheel_led_blink_pilot=(
                      disconnected_load_wheel_led_blink_pilot),
                  authorize_unvalidated_wheel_led_blink_pilot=(
-                     authorize_unvalidated_wheel_led_blink_pilot))
+                     authorize_unvalidated_wheel_led_blink_pilot),
+                 disconnected_load_attention_led_check=(
+                     disconnected_load_attention_led_check),
+                 authorize_unvalidated_attention_led_check=(
+                     authorize_unvalidated_attention_led_check))
     if any(type(value) is not bool for value in (actuators_isolated, *trial.values(), *new.values(),
                                                 *encoder.values(), *declarations.values())):
         raise ValueError("All operator declarations must be literal booleans.")
@@ -755,7 +772,7 @@ def add_powered_trial_arguments(parser):
                  *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
                  *DISCONNECTED_LED_STATE_ONLY_FLAGS, *LED_MAPPING_ONLY_FLAGS,
-                 *WHEEL_LED_BLINK_ONLY_FLAGS):
+                 *WHEEL_LED_BLINK_ONLY_FLAGS, *ATTENTION_LED_CHECK_ONLY_FLAGS):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
 
 
@@ -786,7 +803,8 @@ def powered_trial_arguments(args):
         *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
         *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
-        *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS)}
+        *LED_MAPPING_ONLY_FLAGS, *WHEEL_LED_BLINK_ONLY_FLAGS,
+        *ATTENTION_LED_CHECK_ONLY_FLAGS)}
 
 
 def observation_arguments(args):
@@ -889,6 +907,19 @@ def powered_trial_history(declarations):
                 "reverse_order_exact_blink_then_led_state_once_after_possible_setter_syscall"),
             "restoration_verification": (
                 "getter_only_after_raw80_else_physical_confirmation_and_power_cycle_required"),
+            "host_can_remove_energy": False,
+            "physical_stop": "not_established",
+        }
+    if scope == ATTENTION_LED_CHECK_SCOPE:
+        return {
+            **encoder_history(declarations),
+            "scope": scope,
+            "load_scope": "MOTOR_POWER_PLUGS_DISCONNECTED",
+            "outcome_meaning": "fixed_attention_led_protocol_and_operator_observation",
+            "unvalidated_attention_led_check_authorized": True,
+            "planned_restore_policy": (
+                "exact_baseline_once_after_each_possible_setter_submission"),
+            "restoration_verification": "final_getter_must_equal_exact_baseline",
             "host_can_remove_energy": False,
             "physical_stop": "not_established",
         }

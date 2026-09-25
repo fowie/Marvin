@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tools import marvin_legacy_led_mapper as mapper
+from tools import marvin_legacy_attention_check as attention
 from tools import marvin_legacy_wheel_led_blink as wheel_blink
 from tools import marvin_motor_power_off_consent as consent
 
@@ -55,22 +56,18 @@ class MarvinLEDs:
                 name: {"index": led.index, "observed_effect": led.observed_effect}
                 for name, led in LEDS.items()
             },
-            "live_actions": ["wheel-blink"],
+            "live_actions": ["attention-check", "wheel-blink"],
             "unsupported": [
                 "arbitrary payloads", "arbitrary intensity", "arbitrary color",
                 "arbitrary animation or timing", "standalone off",
-                "live named steady LEDs",
+                "arbitrary live named steady LEDs",
             ],
             "evidence_boundary": (
                 "Named effects were observed only for exclusive index-at-255 mapping "
                 "rounds. Raw 0x82 is opaque and does not prove application acknowledgment."
             ),
-            "missing_live_proof": (
-                "One fixed named steady-LED smoke in a single process: verify the "
-                "captured command-0x17 baseline, set one mapped index to 255, then "
-                "restore that exact baseline once from finally after every possible "
-                "setter submission, with visible effect and restoration recorded."
-            ),
+            "attention_check": (
+                "fixed acceptance sweep only; not a general live setter"),
         }
 
     def full_intensity_plan(self, name):
@@ -110,4 +107,23 @@ class MarvinLEDs:
             expected_physical_port=self.expected_physical_port,
             run=True,
             **dict.fromkeys(consent.WHEEL_LED_BLINK_FLAGS, True),
+        )
+
+    def attention_check(self):
+        """Run or plan the fixed mapped attention-LED acceptance sweep."""
+        if not self.run:
+            return attention.prepare()
+        if not self.expected_physical_port or self.output is None:
+            raise ValueError(
+                "Live attention check requires expected_physical_port and a new "
+                "output directory.")
+        if not self.safety_confirmed:
+            raise ValueError(
+                "Live attention check requires safety_confirmed=True after confirming "
+                "the reviewed disconnected-load setup and external cutoff.")
+        return attention.run_diagnostic(
+            self.output,
+            expected_physical_port=self.expected_physical_port,
+            run=True,
+            **dict.fromkeys(consent.ATTENTION_LED_CHECK_FLAGS, True),
         )

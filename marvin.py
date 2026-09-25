@@ -380,6 +380,9 @@ observed 5-degree profile and always attempts baseline restore.""",
     led_blink = led_actions.add_parser(
         "wheel-blink", help="plan the fixed three-second wheel blink pilot")
     _live_arguments(led_blink)
+    attention = led_actions.add_parser(
+        "attention-check", help="plan the fixed mapped attention-LED sweep")
+    _live_arguments(attention)
     return parser
 
 
@@ -408,6 +411,8 @@ def main(argv=None):
             result = marvin.leds.status()
         elif args.command == "leds" and args.led_command == "plan":
             result = marvin.leds.full_intensity_plan(args.led)
+        elif args.command == "leds" and args.led_command == "attention-check":
+            result = marvin.leds.attention_check()
         elif args.command == "leds":
             result = marvin.leds.wheel_blink()
         elif args.servo_command == "status":

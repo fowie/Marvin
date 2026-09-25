@@ -785,7 +785,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             disconnected_load_led_mapping_phase=False,
             authorize_unvalidated_led_mapping_phase=False,
             disconnected_load_wheel_led_blink_pilot=False,
-            authorize_unvalidated_wheel_led_blink_pilot=False):
+            authorize_unvalidated_wheel_led_blink_pilot=False,
+            disconnected_load_attention_led_check=False,
+            authorize_unvalidated_attention_led_check=False):
     """Capture a new private evidence directory; never follows address changes.
 
     Opt-in coordinator_stop accepts only an empty regular COORDINATOR_STOP_FILE
@@ -909,6 +911,9 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         disconnected_load_wheel_led_blink_pilot=disconnected_load_wheel_led_blink_pilot,
         authorize_unvalidated_wheel_led_blink_pilot=(
             authorize_unvalidated_wheel_led_blink_pilot),
+        disconnected_load_attention_led_check=disconnected_load_attention_led_check,
+        authorize_unvalidated_attention_led_check=(
+            authorize_unvalidated_attention_led_check),
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -963,6 +968,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                 17 if (front_camera_servo_single_getter
                        or front_camera_servo_single_baseline_restore)
                 else 18 if front_servo_profile
+                else 35 if scope == motor_consent.ATTENTION_LED_CHECK_SCOPE
                 else 25 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
                 else 20 if scope in (
                     motor_consent.DISCONNECTED_GETTER_SURVEY_SCOPE,
