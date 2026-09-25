@@ -112,6 +112,11 @@ async function acquireHeld(direction,token,acquireLease,releaseLease,sendPulse){
   if(token.cancelled){await releaseLease(candidate);return null}
   return candidate
 }
+function sseRequiresRelease(event){
+  if(!event.data)return true;
+  const failed=JSON.parse(event.data);
+  return Boolean(failed.error||failed.managers?.drive?.error)
+}
 """
 
 JS = DEADMAN_CORE + r"""
@@ -136,8 +141,8 @@ function setDisabled(){
   const led=managers.leds, active=led?.active_channel;document.querySelectorAll("[data-led]").forEach(input=>{input.disabled=!led||led.state!=="ready"||(active&&active!==input.dataset.led)});
   $("led-reset").disabled=!led||led.state!=="ready";
   const audio=managers.microphone,video=managers.camera;
-  $("audio-start").disabled=!audio||audio.state!=="ready"||!$("audio-consent").checked;$("audio-stop").disabled=!audio||audio.state!=="recording";
-  ["video-start","frame-capture"].forEach(id=>$(id).disabled=!video||video.state!=="ready"||!$("video-consent").checked);$("video-stop").disabled=!video||video.state!=="recording";
+  $("audio-start").disabled=!audio||!["ready","failed"].includes(audio.state)||!$("audio-consent").checked;$("audio-stop").disabled=!audio||audio.state!=="recording";
+  ["video-start","frame-capture"].forEach(id=>$(id).disabled=!video||!["ready","failed"].includes(video.state)||!$("video-consent").checked);$("video-stop").disabled=!video||video.state!=="recording";
 }
 function renderStatus(next){
   status=next;config=next.configuration||config;const rows={Server:next.state,Controller:next.connection?.status,Fresh:next.freshness?.fresh,Error:next.error||"none",Cleanup:next.state==="stopped"?"complete":"owned by runtime"};
@@ -172,6 +177,6 @@ function media(kind,action,suffix){const consent=$(`${kind}-consent`).checked;if
 $("audio-start").addEventListener("click",()=>media("audio","start","wav"));$("audio-stop").addEventListener("click",()=>safe("/api/media/audio/stop"));
 $("video-start").addEventListener("click",()=>media("video","start","mkv"));$("video-stop").addEventListener("click",()=>safe("/api/media/video/stop"));$("frame-capture").addEventListener("click",()=>media("video","capture","jpg"));
 for(const id of ["audio-consent","video-consent"])$(id).addEventListener("change",setDisabled);
-const events=new EventSource("/api/events");events.addEventListener("status",event=>renderStatus(JSON.parse(event.data)));events.addEventListener("sensor",event=>renderSensor(JSON.parse(event.data)));events.addEventListener("error",event=>{if(event.data){const failed=JSON.parse(event.data);renderStatus(failed);error(failed.error||Object.values(failed.managers||{}).map(value=>value.error).find(Boolean)||"Operator runtime error.")}else error("Operator event stream failed; motion release requested.");release("SSE error");refreshFreshness()});
+const events=new EventSource("/api/events");events.addEventListener("status",event=>renderStatus(JSON.parse(event.data)));events.addEventListener("sensor",event=>renderSensor(JSON.parse(event.data)));events.addEventListener("error",event=>{if(event.data){const failed=JSON.parse(event.data);renderStatus(failed);error(failed.error||failed.managers?.drive?.error||"Operator runtime error.")}else error("Operator event stream failed; motion release requested.");if(sseRequiresRelease(event))release("SSE error");refreshFreshness()});
 fetch("/api/status").then(r=>r.json()).then(renderStatus).catch(e=>error(e.message));setInterval(refreshFreshness,1000);
 """

@@ -119,6 +119,80 @@ result.then(value=>{
             ["node", "-e", script], check=True, timeout=5,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    def test_sse_release_only_for_transport_drive_or_runtime_failure(self):
+        script = marvin_dashboard.DEADMAN_CORE + """
+const cases=[
+  [{data:""},true],
+  [{data:JSON.stringify({error:"runtime",managers:{}})},true],
+  [{data:JSON.stringify({error:null,managers:{drive:{error:"stop"}}})},true],
+  [{data:JSON.stringify({error:null,managers:{camera:{error:"media"}}})},false],
+  [{data:JSON.stringify({error:null,managers:{leds:{error:"restore"}}})},false]
+];
+if(cases.some(([event,want])=>sseRequiresRelease(event)!==want))process.exit(1);
+"""
+        subprocess.run(
+            ["node", "-e", script], check=True, timeout=5,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(
+            marvin_operator._event_name({
+                "error": None,
+                "managers": {"camera": {"error": "retryable"}}}),
+            "status")
+        self.assertEqual(
+            marvin_operator._event_name({
+                "error": None,
+                "managers": {"drive": {"error": "unsafe"}}}),
+            "error")
+
+    def test_drive_cleanup_ignores_expired_admission_window(self):
+        self.assertGreaterEqual(
+            marvin_operator.OPERATOR_SESSION_SECONDS
+            - marvin_operator.OPERATOR_ACTIVE_SECONDS,
+            20)
+        now = [5.0]
+
+        class Transport:
+            token = b"identity"
+            def wait(self, _seconds): now[0] = 7.0
+
+        owner = marvin_operator.ProductionControllerOwner(
+            Transport(), {}, clock=lambda: now[0], operation_deadline=6.0)
+        owner.started = True
+        submitted = []
+        owner._setter = submitted.append
+        owner.drive_step("forward")
+        self.assertEqual(submitted[0], marvin_operator.pilot.ZERO_PWM)
+        self.assertNotEqual(submitted[1], marvin_operator.pilot.ZERO_PWM)
+        self.assertEqual(submitted[2], marvin_operator.pilot.ZERO_PWM)
+
+    def test_runtime_failure_stops_http_server(self):
+        class FailedSource:
+            reads = 0
+            def start(self): return None
+            def read(self):
+                self.reads += 1
+                if self.reads > 1:
+                    raise OSError("sensor deadline")
+                return {}
+            def close(self): return None
+
+        runtime = marvin_operator.OperatorRuntime(
+            FailedSource(), poll_seconds=0.5)
+        errors = []
+
+        def run():
+            try:
+                marvin_operator.serve(runtime, port=0)
+            except Exception as error:
+                errors.append(error)
+
+        thread = Thread(target=run, daemon=True)
+        thread.start()
+        thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(runtime.status()["state"], "failed")
+
     def test_real_http_events_recording_and_cleanup(self):
         source = Source()
         runtime = marvin_operator.OperatorRuntime(

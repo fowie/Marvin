@@ -37,6 +37,7 @@ MAX_BODY_BYTES = 4096
 MAX_REQUESTS = 65536
 STARTUP_SECONDS = 30.0
 OPERATOR_SESSION_SECONDS = 90
+OPERATOR_ACTIVE_SECONDS = 60
 RAW_PWM_COMMAND = protocol.decode_packet(
     pilot.STEPS_DUAL_FORWARD_2000_CONNECTED["set"]).command
 LED_SET_COMMAND = protocol.decode_packet(
@@ -120,7 +121,8 @@ class ProductionControllerOwner:
         "rotate-right": pilot.LEFT_FORWARD_RIGHT_BACKWARD_2000,
     }
 
-    def __init__(self, transport, report, *, first_sequence=4096):
+    def __init__(self, transport, report, *, first_sequence=4096,
+                 clock=time.monotonic, operation_deadline=None):
         self.transport = transport
         self.report = report
         self.expected_identity = transport.token
@@ -128,6 +130,8 @@ class ProductionControllerOwner:
         self.sequence = first_sequence
         self.requests = []
         self.started = False
+        self.clock = clock
+        self.operation_deadline = operation_deadline
 
     def start(self):
         if self.started:
@@ -214,6 +218,10 @@ class ProductionControllerOwner:
             payload = self._DRIVE_PAYLOADS[direction]
         except KeyError:
             raise ValueError("Unsupported proved drive direction.") from None
+        if (self.operation_deadline is not None
+                and self.clock() >= self.operation_deadline):
+            raise OSError(
+                "Operator motion admission window ended; no nonzero request was submitted.")
         may_have_applied = False
         try:
             self._setter(pilot.ZERO_PWM)
@@ -280,7 +288,9 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         "physical_stop": "not_established",
     }
     def observe(transport, shared_report):
-        owner = ProductionControllerOwner(transport, shared_report)
+        owner = ProductionControllerOwner(
+            transport, shared_report,
+            operation_deadline=time.monotonic() + OPERATOR_ACTIVE_SECONDS)
         runtime = OperatorRuntime(
             owner, poll_seconds=poll_seconds, chunk_seconds=chunk_seconds,
             managers=managers_for_owner(
@@ -291,7 +301,9 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
                     media_directory and configuration.get("camera_usb_path"))),
             configuration=configuration)
         shared_report["status"] = "serving"
-        serve(runtime, port=port, ready=ready)
+        serve(
+            runtime, port=port, ready=ready,
+            maximum_seconds=OPERATOR_ACTIVE_SECONDS)
         shared_report["status"] = "operator_shutdown_complete"
 
     return zero._run_diagnostic(
@@ -988,9 +1000,18 @@ class _Handler(BaseHTTPRequestHandler):
     do_PUT = do_DELETE = do_PATCH = do_OPTIONS
 
 
-def serve(runtime, *, port=8765, ready=None):
+def _event_name(status):
+    drive = status.get("managers", {}).get("drive", {})
+    return "error" if status.get("error") or drive.get("error") else "status"
+
+
+def serve(runtime, *, port=8765, ready=None, maximum_seconds=None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise ValueError("port must be an integer between 0 and 65535.")
+    if (maximum_seconds is not None
+            and (type(maximum_seconds) not in (int, float)
+                 or maximum_seconds <= 0)):
+        raise ValueError("maximum_seconds must be positive.")
     server = OperatorServer(("127.0.0.1", port), runtime)
     try:
         runtime.start()
@@ -1003,6 +1024,29 @@ def serve(runtime, *, port=8765, ready=None):
     if ready is not None:
         ready(server.server_address)
     previous = {}
+    finished = Event()
+
+    def stop_on_failure():
+        revision = -1
+        while not finished.is_set():
+            status = runtime.wait_event(revision)
+            revision = status["revision"]
+            if status["state"] in ("failed", "stopped"):
+                server.shutdown()
+                return
+
+    monitor = Thread(
+        target=stop_on_failure, name="marvin-operator-failure-monitor",
+        daemon=True)
+    monitor.start()
+    if maximum_seconds is not None:
+        def stop_at_limit():
+            if not finished.wait(maximum_seconds):
+                server.shutdown()
+
+        Thread(
+            target=stop_at_limit, name="marvin-operator-session-limit",
+            daemon=True).start()
     try:
         if current_thread() is main_thread():
             def stop_server(_signum, _frame):
@@ -1012,6 +1056,7 @@ def serve(runtime, *, port=8765, ready=None):
                 previous[signum] = signal.signal(signum, stop_server)
         server.serve_forever(poll_interval=0.2)
     finally:
+        finished.set()
         server.server_close()
         runtime.close()
         for signum, handler in previous.items():

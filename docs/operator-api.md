@@ -61,6 +61,14 @@ prevent live startup. Missing media paths omit those managers, so their controls
 remain visibly disabled. The CLI opens no device until all required live
 configuration is present and does not fall back to a weaker serial path.
 
+The production coordinator admits live controls for 60 seconds inside a
+90-second serial/USB evidence envelope. At the admission limit it shuts down the
+HTTP server and runtime, leaving 30 seconds for priority stop, LED baseline
+restore, transport close, and evidence finalization. Motion admission expiry
+never applies to the mandatory all-zero stop path. Any runtime/cleanup failure
+closes the listener and seals a failed result rather than leaving a success-like
+dashboard running.
+
 ## JSON and SSE routes
 
 All routes bind to `127.0.0.1`. Request bodies must contain exactly the fields
