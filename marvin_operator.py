@@ -44,7 +44,9 @@ OPERATOR_EVIDENCE_SECONDS = (
     OPERATOR_SESSION_SECONDS + OPERATOR_CLEANUP_RESERVE_SECONDS)
 OPERATOR_USB_MAX_BYTES = 64 * 1024 * 1024
 OPERATOR_USB_MAX_RECORDS = 1_000_000
-OPERATOR_MAX_APPLICATION_BYTES = MAX_REQUESTS * (10 + 18)
+OPERATOR_FIRST_SEQUENCE = 4096
+OPERATOR_MAX_APPLICATION_BYTES = (
+    (65536 - OPERATOR_FIRST_SEQUENCE) * (10 + 18))
 RAW_PWM_COMMAND = protocol.decode_packet(
     pilot.STEPS_DUAL_FORWARD_2000_CONNECTED["set"]).command
 LED_SET_COMMAND = protocol.decode_packet(
@@ -139,7 +141,7 @@ class ProductionControllerOwner:
         "rotate-right": pilot.LEFT_FORWARD_RIGHT_BACKWARD_2000,
     }
 
-    def __init__(self, transport, report, *, first_sequence=4096,
+    def __init__(self, transport, report, *, first_sequence=OPERATOR_FIRST_SEQUENCE,
                  clock=time.monotonic, operation_deadline=None):
         self.transport = transport
         self.report = report
