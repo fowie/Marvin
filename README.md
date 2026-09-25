@@ -31,7 +31,8 @@ python -m marvin --help
 python -m marvin status
 python -m marvin sensors
 marvin microphone status
-marvin microphone list --run --hub-path CURRENT_HUB_PATH \
+marvin microphone list --run --route direct-host \
+  --usb-path CURRENT_MICROPHONE_USB_PATH \
   --device hw:CARD=Array,DEV=0
 python -m marvin camera status
 python -m marvin camera capture private/frame.jpg
@@ -183,9 +184,13 @@ another capture implementation. `status` is offline, `list` verifies only
 8-channel `S16_LE` audio with exact byte bounds, explicit privacy authorization,
 and a new mode-`0600` raw/WAV output. Before `arecord`, the selected ALSA card
 and capture PCM node must both resolve through `/sys/class/sound` beneath the
-one `045e:fff0` descendant of the operator-selected `--hub-path`; that hub must
-be exactly `2109:2817`. The discovery path `1-1.1.2.4` is historical only.
-Missing, duplicate, or mismatched ancestry is rejected.
+exact operator-selected microphone node. The recommended `direct-host` route
+requires `--usb-path`, requires that exact node to be `045e:fff0`, and forbids
+`--hub-path`. Closed `marvin-internal` (`0451:2046`) and
+`historical-external` (`2109:2817`) hub routes remain only for interpreting old
+evidence and require exactly one microphone descendant. The discovery path
+`1-1.1.2.4` is historical only. Missing, duplicate, or mismatched ancestry is
+rejected.
 The output is registered with cleanup while SIGINT is blocked, so creation or
 write interruption removes the private reservation rather than leaving a
 partial file.
@@ -210,9 +215,10 @@ python -m marvin camera capture private/frame.jpg \
   --confirm-privacy
 ```
 
-Before live use, the operator must obtain the current physical USB path and
-confirm it is the LifeCam connected through Marvin's SPARE connector and TI
-hub. The implementation then requires that exact sysfs device to be
+The selected architecture connects the LifeCam directly to the Jetson rather
+than through Marvin's old hub. Before live use, the operator must obtain the
+current physical USB path and independently establish that direct connection.
+The implementation then requires that exact sysfs device to be
 `045e:0721`, correlates each candidate V4L2 node by sysfs ancestry and
 `bus_info`, requires complete V4L2 driver/card/bus metadata and the fixed frame
 format, and refuses ambiguity, Intel IPU3, REAR/DEPTH cameras, existing output,
@@ -222,6 +228,11 @@ installed only on success. Timeout, nonzero exit and interruption remove every
 reservation or partial artifact. It does not hard-code unpreserved V4L2
 metadata, accept arbitrary ffmpeg options, or send a Marvin controller,
 camera-power or DepthCamPower command.
+
+LifeCam capture through Marvin produced corrupted/truncated V4L2 buffers and
+is intentionally deferred; media-through-Marvin is not required for operator
+acceptance. Direct-to-Jetson LifeCam capture remains unproved until separately
+accepted.
 
 The host proof captured one valid frame, but did not preserve a stable sysfs
 path, `/dev/videoN`, V4L2 driver/card string or `bus_info`; those are runtime

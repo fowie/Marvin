@@ -302,11 +302,12 @@ class MarvinFacadeTests(unittest.TestCase):
         self.assertEqual(json.loads(stdout.getvalue())["hardware_accessed"], False)
         with patch.object(marvin.marvin_microphone, "main", return_value=0) as microphone:
             self.assertEqual(marvin.main([
-                "microphone", "list", "--run", "--hub-path", "1-1.1.2",
+                "microphone", "list", "--run", "--route", "direct-host",
+                "--usb-path", "1-2.4",
                 "--device", "hw:CARD=Array,DEV=0",
             ]), 0)
         microphone.assert_called_once_with([
-            "list", "--run", "--hub-path", "1-1.1.2",
+            "list", "--run", "--route", "direct-host", "--usb-path", "1-2.4",
             "--device", "hw:CARD=Array,DEV=0",
         ])
 
