@@ -23,6 +23,7 @@ BASELINE = (2500, 2730)
 TARGET = (2490, 2730)
 WORD1_TARGET = (2500, 2720)
 WORD0_FIVE_DEGREE_TARGET = (2450, 2730)
+WORD0_100_UNIT_TARGET = (2400, 2730)
 WORD1_FIVE_DEGREE_TARGET = (2500, 2680)
 BASELINE_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in BASELINE)
 TARGET_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in TARGET)
@@ -30,6 +31,8 @@ WORD1_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD1_TARGET)
 WORD0_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD0_FIVE_DEGREE_TARGET)
+WORD0_100_UNIT_TARGET_PAYLOAD = b"".join(
+    value.to_bytes(2, "little") for value in WORD0_100_UNIT_TARGET)
 WORD1_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD1_FIVE_DEGREE_TARGET)
 FIRST_SEQUENCE = 3500
@@ -73,6 +76,14 @@ WORD1_FIVE_DEGREE_STEPS = {
     "verify": get_servo_position_request(FIRST_SEQUENCE + 15),
 }
 WORD1_FIVE_DEGREE_TRANSCRIPT = tuple(WORD1_FIVE_DEGREE_STEPS.values())
+WORD0_100_UNIT_STEPS = {
+    "baseline": get_servo_position_request(FIRST_SEQUENCE + 18),
+    "set": encode_request(
+        FIRST_SEQUENCE + 19, 0x1E, WORD0_100_UNIT_TARGET_PAYLOAD),
+    "restore": encode_request(FIRST_SEQUENCE + 20, 0x1E, BASELINE_PAYLOAD),
+    "verify": get_servo_position_request(FIRST_SEQUENCE + 21),
+}
+WORD0_100_UNIT_TRANSCRIPT = tuple(WORD0_100_UNIT_STEPS.values())
 COMMON_ACKNOWLEDGMENTS = (
     "operator_present",
     "robot_secured",
@@ -111,19 +122,40 @@ DIRECTION_ACKNOWLEDGMENTS = (
     "acknowledge_maximum_setter_to_restore_0_760_seconds",
     "authorize_single_legacy_1e_front_camera_word0_direction_diagnostic_command",
 )
+WORD0_100_UNIT_ACKNOWLEDGMENTS = (
+    *COMMON_ACKNOWLEDGMENTS,
+    "operator_confirmed_word0_100_unit_downward_characterization_clearance",
+    "exact_profile_baseline_2500_2730_target_2400_2730_actual_hold_0_250_seconds",
+    "acknowledge_maximum_setter_to_restore_0_760_seconds",
+    "authorize_single_legacy_1e_front_camera_word0_100_unit_characterization_command",
+)
 
 
 def _profile(
         word1_hypothesis, word0_five_degree, word1_five_degree,
-        word0_direction=False):
+        word0_direction=False, word0_100_unit=False):
     if any(type(value) is not bool for value in (
             word1_hypothesis, word0_five_degree, word1_five_degree,
-            word0_direction)):
+            word0_direction, word0_100_unit)):
         raise ValueError("Fixed profile selections must be literal booleans.")
     if sum((
             word1_hypothesis, word0_five_degree, word1_five_degree,
-            word0_direction)) > 1:
+            word0_direction, word0_100_unit)) > 1:
         raise ValueError("Select exactly one fixed front-servo diagnostic mode.")
+    if word0_100_unit:
+        return {
+            "name": "word0-100-unit-direction-characterization",
+            "word": 0,
+            "target": WORD0_100_UNIT_TARGET,
+            "target_payload": WORD0_100_UNIT_TARGET_PAYLOAD,
+            "delta": -100,
+            "steps": WORD0_100_UNIT_STEPS,
+            "transcript": WORD0_100_UNIT_TRANSCRIPT,
+            "acknowledgments": WORD0_100_UNIT_ACKNOWLEDGMENTS,
+            "success": "front_camera_servo_word0_100_unit_complete_protocol_only",
+            "first_sequence": FIRST_SEQUENCE + 18,
+            "mode_flag": "--word0-100-unit-direction-diagnostic",
+        }
     if word0_direction:
         return {
             "name": "word0-direction-diagnostic",
@@ -196,10 +228,12 @@ def _profile(
 
 
 def prepare(*, word1_hypothesis=False, word0_five_degree=False,
-            word1_five_degree=False, word0_direction=False):
+            word1_five_degree=False, word0_direction=False,
+            word0_100_unit=False):
+    held_direction = word0_direction or word0_100_unit
     profile = _profile(
         word1_hypothesis, word0_five_degree, word1_five_degree,
-        word0_direction)
+        word0_direction, word0_100_unit)
     expected = (
         (profile["first_sequence"], 0x1D, b""),
         (profile["first_sequence"] + 1, 0x1E, profile["target_payload"]),
@@ -253,9 +287,10 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
                 "usbmon_dropped": 0,
                 "post_run_operator_report": "marvin_off_and_host_usb_disconnected",
                 "classification": "external_evidence_not_channel_proof",
-            }} if word0_five_degree or word1_five_degree or word0_direction else {}),
+            }} if (word0_five_degree or word1_five_degree
+                   or held_direction) else {}),
         }} if (word1_hypothesis or word0_five_degree or word1_five_degree
-               or word0_direction) else {}),
+               or held_direction) else {}),
         **({"external_word0_five_degree_observation": {
             "operator_report": "no_visible_movement_and_audible_servo_engagement",
             "protocol_baseline_words_uint16": list(BASELINE),
@@ -269,28 +304,40 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             "historical UI assumption only: 0..3000 maps AX-12+ 0..300 degrees; "
             "installed word0 observation instead found 50 units approximately 0.5 degrees"
         ),
-        **({"five_degree_safety_basis": (
+        **({("decrement_safety_basis"
+             if word0_100_unit else "five_degree_safety_basis"): (
+            "fixed 100-unit decrement extrapolates the operator-observed 50-unit "
+            "approximately 0.5-degree movement to a roughly 1-degree hypothesis only; "
+            "this is not a precision calibration, does not establish mechanical safety, "
+            "and separate clearance remains required"
+            if word0_100_unit else
             "historically labeled five-degree profile is a fixed 50-unit decrement; "
             "the operator later observed approximately 0.5 degrees downward, not a "
             "precision calibration and does not establish mechanical safety; separate "
             "clearance remains required"
-        )} if word0_five_degree or word1_five_degree or word0_direction else {}),
+        )} if (word0_five_degree or word1_five_degree
+               or held_direction) else {}),
         **({"operator_observed_direction_calibration": {
             "word0_change": "2500_to_2450",
             "direction": "downward",
             "approximate_displacement_degrees": 0.5,
             "classification": "operator_observed_approximate_not_full_range_or_precision",
-        }} if word0_direction else {}),
+        }} if held_direction else {}),
+        **({"expected_ax_goal_position": 800,
+            "expected_ax_goal_delta_from_baseline_833": -33,
+            "operator_camera_displacement_hypothesis_degrees": 1.0,
+            "hypothesis_limit": "approximate expectation only, not a promise or calibration",
+            } if word0_100_unit else {}),
         "observation_seconds": (
-            DIRECTION_HOLD_SECONDS if word0_direction else DWELL_SECONDS),
+            DIRECTION_HOLD_SECONDS if held_direction else DWELL_SECONDS),
         "observation_timing_semantics": (
             "actual hold from clean correlated setter response end; restore target "
             "0.250 seconds later with 0.010-second maximum scheduling overrun"
-            if word0_direction else
+            if held_direction else
             "maximum setter-start-to-restore-prewrite deadline; not an actual dwell"
         ),
         **({"maximum_setter_to_restore_seconds":
-            MAX_DIRECTION_SETTER_TO_RESTORE_SECONDS} if word0_direction else {}),
+            MAX_DIRECTION_SETTER_TO_RESTORE_SECONDS} if held_direction else {}),
         "post_restore_response_observation_seconds": RESPONSE_SECONDS,
         "overall_deadline_seconds": OVERALL_SECONDS,
         "immutable_application_transcript_hex": [
@@ -415,6 +462,12 @@ class _Word1FiveDegreeTransport(_Transport):
 class _Word0DirectionTransport(_Transport):
     steps = WORD0_FIVE_DEGREE_STEPS
     success = "front_camera_servo_word0_direction_complete_protocol_only"
+    direction_hold = True
+
+
+class _Word0100UnitTransport(_Transport):
+    steps = WORD0_100_UNIT_STEPS
+    success = "front_camera_servo_word0_100_unit_complete_protocol_only"
     direction_hold = True
 
 
@@ -807,10 +860,11 @@ def _observe(transport, report, *, clock=time.monotonic):
 def run_diagnostic(output, *, expected_physical_port, run=False,
                    word1_hypothesis=False, word0_five_degree=False,
                    word1_five_degree=False, word0_direction=False,
+                   word0_100_unit=False,
                    **acknowledgments):
     profile = _profile(
         word1_hypothesis, word0_five_degree, word1_five_degree,
-        word0_direction)
+        word0_direction, word0_100_unit)
     required = profile["acknowledgments"]
     if run is not True or set(acknowledgments) != set(required):
         raise ValueError("Literal --run and the complete fixed front-servo scope are required.")
@@ -823,9 +877,11 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             word1_hypothesis=word1_hypothesis,
             word0_five_degree=word0_five_degree,
             word1_five_degree=word1_five_degree,
-            word0_direction=word0_direction),
+            word0_direction=word0_direction,
+            word0_100_unit=word0_100_unit),
         transport_type=(
-            _Word0DirectionTransport if word0_direction
+            _Word0100UnitTransport if word0_100_unit
+            else _Word0DirectionTransport if word0_direction
             else _Word1FiveDegreeTransport if word1_five_degree
             else _Word0FiveDegreeTransport if word0_five_degree
             else _Word1Transport if word1_hypothesis else _Transport),
@@ -838,6 +894,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             "_front_servo_word0_five_degree_mapper": word0_five_degree,
             "_front_servo_word1_five_degree_mapper": word1_five_degree,
             "_front_servo_word0_direction_mapper": word0_direction,
+            "_front_servo_word0_100_unit_mapper": word0_100_unit,
         },
         declarations={"operator_declarations": dict(acknowledgments)},
         expected_tx=lambda report: report["accepted_tx_bytes"],
@@ -846,6 +903,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         authorizations={
             ("single_legacy_1e_front_camera_word1_five_degree_authorized"
              if word1_five_degree
+             else "single_legacy_1e_front_camera_word0_100_unit_authorized"
+             if word0_100_unit
              else "single_legacy_1e_front_camera_word0_direction_authorized"
              if word0_direction
              else "single_legacy_1e_front_camera_word0_five_degree_authorized"
@@ -865,19 +924,23 @@ def main(argv=None):
     modes.add_argument("--word0-five-degree-diagnostic", action="store_true")
     modes.add_argument("--word1-five-degree-diagnostic", action="store_true")
     modes.add_argument("--word0-direction-diagnostic", action="store_true")
+    modes.add_argument(
+        "--word0-100-unit-direction-diagnostic", action="store_true")
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--output", type=Path)
     all_acknowledgments = tuple(dict.fromkeys(
         (*ACKNOWLEDGMENTS, *WORD1_ACKNOWLEDGMENTS,
          *WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS,
          *WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS,
-         *DIRECTION_ACKNOWLEDGMENTS)))
+         *DIRECTION_ACKNOWLEDGMENTS,
+         *WORD0_100_UNIT_ACKNOWLEDGMENTS)))
     for name in all_acknowledgments:
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
     args = parser.parse_args(argv)
     profile = _profile(
         args.word1_front_camera_hypothesis, args.word0_five_degree_diagnostic,
-        args.word1_five_degree_diagnostic, args.word0_direction_diagnostic)
+        args.word1_five_degree_diagnostic, args.word0_direction_diagnostic,
+        args.word0_100_unit_direction_diagnostic)
     acknowledgments = {
         name: getattr(args, name) for name in profile["acknowledgments"]}
     unused_acknowledgments = set(all_acknowledgments) - set(profile["acknowledgments"])
@@ -891,7 +954,8 @@ def main(argv=None):
                 word1_hypothesis=args.word1_front_camera_hypothesis,
                 word0_five_degree=args.word0_five_degree_diagnostic,
                 word1_five_degree=args.word1_five_degree_diagnostic,
-                word0_direction=args.word0_direction_diagnostic)
+                word0_direction=args.word0_direction_diagnostic,
+                word0_100_unit=args.word0_100_unit_direction_diagnostic)
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
@@ -903,6 +967,7 @@ def main(argv=None):
                 word0_five_degree=args.word0_five_degree_diagnostic,
                 word1_five_degree=args.word1_five_degree_diagnostic,
                 word0_direction=args.word0_direction_diagnostic,
+                word0_100_unit=args.word0_100_unit_direction_diagnostic,
                 **acknowledgments,
             )
     except (Exception, KeyboardInterrupt) as error:

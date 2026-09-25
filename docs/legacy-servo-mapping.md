@@ -616,6 +616,73 @@ The sealed run manifest verified and has SHA-256
 `61bf0a5baa9c6cc9fd74bc9a4d54c931a184aca480ab64db19e5ea19ad29c068`.
 No further hardware action is authorized by this result.
 
+### Offline-only word-0 100-unit characterization
+
+The next named profile reuses the validated direction-profile machinery with
+one fixed larger decrement only:
+
+```text
+baseline [2500,2730]
+setter   [2400,2730]
+restore  [2500,2730]
+verify   GetServoPosition
+```
+
+The hold starts at clean correlated setter-response end, requests 0.250
+seconds, permits at most 0.010 seconds of scheduling overrun, and preserves the
+0.760-second maximum setter-start-to-restore-start exposure. Full identity
+checks precede setter and restore. Once the setter may have applied, every exit
+uses the same one-attempt restore from `finally`; interruption or overrun skips
+the remaining hold and restores immediately. Final getter verification remains
+conditional on a uniquely correlated restore response.
+
+Dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-100-unit-direction-diagnostic
+```
+
+Reviewed live template for a future separately authorized execution:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-100-unit-direction-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
+  --front-camera-servo-is-ax12-plus \
+  --unprivileged-usbmon \
+  --operator-confirmed-word0-100-unit-downward-characterization-clearance \
+  --exact-profile-baseline-2500-2730-target-2400-2730-actual-hold-0-250-seconds \
+  --acknowledge-maximum-setter-to-restore-0-760-seconds \
+  --authorize-single-legacy-1e-front-camera-word0-100-unit-characterization-command
+```
+
+The immutable requests are:
+
+```text
+53be0d1d00000053b645
+53bf0d1e0004006009aa0ad05345
+53c00d1e000400c409aa0ac17845
+53c10d1d000000587945
+```
+
+Their concatenated SHA-256 is
+`08003ccf126ca7479ef7857e686272e6e1e40a321ccf129e5952732a6e8911fa`.
+If the proved positive integer division continues at this input, expected AX
+Goal Position is `2400 // 3 = 800`, 33 counts below observed baseline 833
+(approximately 9.7 actuator degrees under AX-12 units). Extrapolating the
+operator-observed 50-unit camera displacement suggests roughly 1 camera degree,
+but that is only a characterization hypothesis, not a promise, precision
+calibration, linearity claim or full-range proof.
+
+The CLI exposes no arbitrary values, larger delta, timing control, retry,
+reconnect, calibration, reset or power command. This profile has not been run
+and is not standing authorization.
+
 ## Historically named word-1 50-unit diagnostic
 
 The next discriminator is a separate named profile only. It preserves word 0

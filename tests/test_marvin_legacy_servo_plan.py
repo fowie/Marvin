@@ -380,6 +380,35 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertEqual(
             direction["operator_observed_direction_calibration"]["direction"],
             "downward")
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(
+                mapper.main(["--word0-100-unit-direction-diagnostic"]), 0)
+        hundred = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (hundred["fixed_mode"], hundred["target_words_uint16"],
+             hundred["expected_ax_goal_position"],
+             hundred["expected_ax_goal_delta_from_baseline_833"]),
+            ("word0-100-unit-direction-characterization", [2400, 2730],
+             800, -33))
+        self.assertEqual(
+            hundred["operator_camera_displacement_hypothesis_degrees"], 1.0)
+        self.assertIn("roughly 1-degree hypothesis",
+                      hundred["decrement_safety_basis"])
+        hundred_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in hundred["immutable_application_transcript_hex"]]
+        self.assertEqual(
+            [(packet.sequence, packet.command, packet.payload)
+             for packet in hundred_frames],
+            [(3518, 0x1D, b""),
+             (3519, 0x1E, bytes.fromhex("6009aa0a")),
+             (3520, 0x1E, bytes.fromhex("c409aa0a")),
+             (3521, 0x1D, b"")])
+        self.assertIn(
+            "--authorize-single-legacy-1e-front-camera-word0-100-unit-characterization-command",
+            hundred["required"])
+        self.assertTrue(mapper._Word0100UnitTransport.direction_hold)
         evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
         evidence_report = {
             "setter_prewrite_monotonic": 1.0,
