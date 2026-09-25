@@ -162,9 +162,16 @@ def capture(output, *, run=False, expected_usb_path=None,
             raise OSError(
                 "ffmpeg exited 0 without a captured frame: "
                 f"{detail}")
+        if "corrupt" in detail.lower():
+            raise OSError(
+                "ffmpeg reported corrupt V4L2 frame data: "
+                f"{detail}")
         if len(frame) > MAX_CAPTURE_BYTES:
             raise OSError(
                 f"ffmpeg returned {len(frame)} bytes; limit is {MAX_CAPTURE_BYTES}.")
+        if not frame.startswith(b"\xff\xd8") or not frame.endswith(b"\xff\xd9"):
+            raise OSError(
+                "ffmpeg returned bytes without a complete JPEG SOI/EOI envelope.")
         stage = destination.with_name(
             f".{destination.name}.{secrets.token_hex(16)}.tmp")
         marvin_paths.create_private_output(stage, owned, "stage")

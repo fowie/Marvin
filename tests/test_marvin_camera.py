@@ -225,6 +225,25 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
                 **{**self.options(), "runner": empty})
         self.assertFalse((self.root / "empty.jpg").exists())
 
+        for name, frame, stderr, message in (
+                ("corrupt", b"\xff\xd8fixture\xff\xd9",
+                 b"Dequeued v4l2 buffer contains corrupted data (4240 bytes).",
+                 "corrupt V4L2 frame data"),
+                ("truncated", b"\xff\xd8fixture", b"",
+                 "complete JPEG SOI/EOI envelope")):
+            def invalid(argv, **kwargs):
+                if argv[0] == "ffmpeg":
+                    return subprocess.CompletedProcess(argv, 0, frame, stderr)
+                return self.runner(argv, **kwargs)
+
+            output = self.root / f"{name}.jpg"
+            with self.subTest(name=name), self.assertRaisesRegex(OSError, message):
+                marvin_camera.capture(
+                    output, run=True, expected_usb_path="1-2.3",
+                    privacy_confirmed=True,
+                    **{**self.options(), "runner": invalid})
+            self.assertFalse(output.exists())
+
         def interrupted(argv, **kwargs):
             if argv[0] == "ffmpeg":
                 raise KeyboardInterrupt
