@@ -42,7 +42,7 @@ x86 host onto Jetson.
 | Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
 | Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
-| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 AX-12+ (ID 2). Bounded 50- and 100-unit runs produced approximate 0.5° and 1° servo-output rotation and return. | The servo is not mechanically connected to a camera now, so camera tilt/sign is unproved. Decreasing word0 produced clockwise output rotation in this setup. Scaling is approximate and setup-specific; full range, calibration, projector, and word1 remain unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
+| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 AX-12+ (ID 2). Bounded disconnected-servo runs showed decreasing word0 rotates the output clockwise; the operator reports the now-installed linkage maps clockwise to camera upward. | The composed mapping is decreasing word0 -> camera upward. Increasing word0 -> downward is inverse inference, not directly exercised. Scaling is approximate and setup-specific; full range, calibration, projector, and word1 remain unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
 | Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. | The working kernel change is host/kernel-specific and must be recreated or found upstream on Jetson. See [microphone host setup](#microphone-host-kernel-state) and [PR #33](https://github.com/fowie/Marvin/pull/33). |
 
@@ -315,7 +315,17 @@ Thus, for this disconnected setup, the operator-observed scaling is
 approximately -100 legacy word0 units -> 1 degree clockwise and -50 units ->
 0.5 degrees, with return to baseline. These are setup-specific approximations,
 not precision calibration or full-range evidence. Because no camera linkage
-was installed, no camera up/down tilt sign is established.
+was installed during those sealed live runs, the runs themselves do not
+establish camera up/down tilt sign.
+
+The operator subsequently reports that the camera linkage is now installed and
+that clockwise servo-output rotation tilts the camera **upward**. Composing that
+reported mechanical mapping with the sealed disconnected-servo observation
+establishes **decreasing word0 -> camera upward** for the installed linkage.
+**Increasing word0 -> camera downward** is the inverse mechanical inference; it
+has not been directly exercised. This composition does not rewrite the earlier
+run as a linked-camera test and does not establish precision calibration or
+full range.
 
 Projector/word1 remains unproved. PR
 [#34](https://github.com/fowie/Marvin/pull/34) contains the evidence directory
@@ -323,16 +333,17 @@ Projector/word1 remains unproved. PR
 duplicate private evidence here. Functioning bounded servo control no longer
 requires another live test. Full-range or precision-angle characterization
 would require a separately authorized larger or optically measured movement
-with an operator and independent cutoff. Installed camera-linkage validation
-would be a separate mechanical configuration and authorization. This handoff
-update performs and authorizes no live action.
+with an operator and independent cutoff. Directly exercising the installed
+camera linkage would be a separate authorization. This handoff update performs
+and authorizes no live action.
 
 ## Last reported physical state
 
 **Last operator report, not a durable fact:** Marvin was physically off, host USB was
 disconnected, all sensor masks were removed, and actuator power/control paths
-remained isolated. The earlier servo work used the front AX-12+ in isolation
-with the projector physically disconnected. A future operator must physically
+remained isolated. The earlier sealed servo runs used the front AX-12+ without
+camera linkage and with the projector physically disconnected; the operator
+later reported installing the camera linkage. A future operator must physically
 re-verify every condition before relying on it.
 
 ## Jetson AGX Orin migration
