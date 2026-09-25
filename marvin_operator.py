@@ -302,6 +302,7 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
             max_rx_bytes=16 * 1024 * 1024, read_size=512),
         session_options={
             "actuators_isolated": True, "_operator_console": True,
+            "allow_telemetry_state_change": True,
         },
         declarations={
             "actuator_power_and_signal_isolation_acknowledged": True,

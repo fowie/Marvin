@@ -851,11 +851,14 @@ def run_session(
         "probe_profile": probe_profile,
         "source_expected_response_payload_bytes": expected_payload_bytes,
         "telemetry_state_change_authorized": bool(
-            (probe_get_unit_info or probe_get_sensor_info or probe_schedule is not None)
+            (probe_get_unit_info or probe_get_sensor_info
+             or probe_schedule is not None or _operator_console)
             and allow_telemetry_state_change
         ),
         "unknown_command_authorized": bool(
-            (probe is not None or probe_schedule is not None or _isolated_zero_velocity) and allow_unknown_command
+            (probe is not None or probe_schedule is not None
+             or _isolated_zero_velocity or _operator_console)
+            and allow_unknown_command
         ),
         "probe_delay_seconds": probe_delay,
         "line_state_trial_authorized": allow_line_state_trial,
