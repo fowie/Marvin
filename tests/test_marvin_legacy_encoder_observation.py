@@ -404,8 +404,11 @@ class EncoderObservationTests(unittest.TestCase):
         ingress = live.UsbIngress(path, baseline["usb"], clock)
         ingress.open()
         self.addCleanup(ingress.close)
+        accelerated_plan = replace(
+            live.encoder_observation_plan(), interval=.15,
+            request_timeout=.1, max_lateness=.02)
         transport = live.LiveTransport(tty, baseline, self.root, ingress,
-                                       guard=lambda: None, plan=live.encoder_observation_plan())
+                                       guard=lambda: None, plan=accelerated_plan)
         self.addCleanup(lambda: transport.close(deadline=time.monotonic() + 5))
         original_open, original_close, original_write, original_ioctl = os.open, os.close, os.write, live.fcntl.ioctl
         opened, closed, writes, emulated, errors = [], [], [], [], []
@@ -479,8 +482,9 @@ class EncoderObservationTests(unittest.TestCase):
             try:
                 result = poll.collect(
                     transport, self.root / "poll.jsonl", ownership_key=b"host-pty-encoder-software-only",
-                    expected_identity=transport.token, plan=live.encoder_observation_plan(),
-                    evidence_kind="synthetic", wait=transport.wait, on_failure=observer.end,
+                    expected_identity=transport.token, plan=accelerated_plan,
+                    evidence_kind="synthetic", wait=transport.wait,
+                    on_failure=observer.end,
                     on_evidence=observer.inspect, on_sample_persisted=observer.persisted,
                     on_collection_ended=observer.end)
             finally:

@@ -234,15 +234,18 @@ class ControlScenarioTests(unittest.TestCase):
                             with self.assertRaises(ValueError):
                                 scenario.run_scenario(doc)
                             constructing.assert_not_called()
-                        path.write_text(json.dumps(doc))
-                        result = self.cli(path, "--output", output)
-                        self.assertEqual(result.returncode, 2, result.stdout)
-                        self.assertEqual(result.stdout, "")
-                        error = json.loads(result.stderr)
-                        self.assertFalse(error["complete"])
-                        self.assertEqual(error["result"], "input_or_output_error")
-                        self.assertNotIn("records", error)
-                        self.assertFalse(output.exists())
+
+            doc = self.example()
+            doc["reviews"][0] = invalid[0]
+            path.write_text(json.dumps(doc))
+            result = self.cli(path, "--output", output)
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertEqual(result.stdout, "")
+            error = json.loads(result.stderr)
+            self.assertFalse(error["complete"])
+            self.assertEqual(error["result"], "input_or_output_error")
+            self.assertNotIn("records", error)
+            self.assertFalse(output.exists())
 
             for changes, code in (
                 ({"measured": False, "reviewed": False}, "unreviewed_evidence"),
