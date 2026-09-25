@@ -565,17 +565,8 @@ Reviewed live template for a future separately authorized execution:
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
   --word0-direction-diagnostic \
-  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
-  --operator-present --robot-secured \
-  --independent-actuator-cutoff-ready \
-  --drive-and-other-actuators-inactive \
-  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
-  --front-camera-servo-is-ax12-plus \
-  --unprivileged-usbmon \
-  --operator-confirmed-word0-50-unit-direction-observation-clearance \
-  --exact-profile-baseline-2500-2730-target-2450-2730-actual-hold-0-250-seconds \
-  --acknowledge-maximum-setter-to-restore-0-760-seconds \
-  --authorize-single-legacy-1e-front-camera-word0-direction-diagnostic-command
+  --run --expected-physical-port REVIEWED-PORT --output NEW-SESSION-DIR \
+  --authorize-unchanged-setup-session-after-fresh-safety-confirmation
 ```
 
 The immutable requests are:
@@ -589,9 +580,30 @@ The immutable requests are:
 
 Their concatenated SHA-256 is
 `64efc52b59c6741af201718ec39b48e1475e40ae3630c4e3cafa510f52a3d92b`.
-The CLI exposes no larger delta, arbitrary target/dwell/range, retry,
-reconnect, calibration, reset or power command. This invocation is not
-standing authorization.
+The combined authorization is one fresh human confirmation that Marvin is
+powered on and startup is complete; the correct AX-12+ actuator/linkage is at
+J24; the projector servo is disconnected; the fixed-profile motion envelope
+is clear and hands are clear; host USB is connected on the reviewed pinned
+port; and the independent cutoff is ready. The process then accepts only the
+exact operator commands `RUN` and `END`. Each `RUN` deliberately triggers one
+fixed transcript and writes sealed evidence under
+`NEW-SESSION-DIR/run-NNNN`; there is no automatic retransmission, unattended
+count or automatic trigger. `END`, EOF or interruption closes the
+authorization, and the operator must immediately power Marvin off.
+
+A completed run leaves the setup-scoped process waiting for another deliberate
+`RUN` only while the physical setup is unchanged. Any identity change,
+transport loss, uncertain or partial write, restore or verification failure,
+cleanup failure, interruption, or setup change ends the process and requires
+fresh confirmation. A failure before a proven application write is not
+automatically retried; the conservative implementation also ends the session,
+so the permitted fresh operator-trigger exception is not exercised. This
+profile does not require passive scope evidence, so it has no scope or probe
+declaration. Automatic USB/tty identity checks, the immutable transcript,
+bounded hold, mandatory `finally` restore, post-restore verification, evidence
+capture and cleanup remain machine enforced. The CLI exposes no larger delta,
+arbitrary target/dwell/range, retry, reconnect, calibration, reset or power
+command. This invocation is not standing authorization.
 
 The one separately authorized execution completed with status
 `front_camera_servo_word0_direction_complete_protocol_only`. It retained 48
@@ -654,18 +666,13 @@ Reviewed live template for a future separately authorized execution:
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
   --word0-100-unit-direction-diagnostic \
-  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
-  --operator-present --robot-secured \
-  --independent-actuator-cutoff-ready \
-  --drive-and-other-actuators-inactive \
-  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
-  --front-camera-servo-is-ax12-plus \
-  --unprivileged-usbmon \
-  --operator-confirmed-word0-100-unit-downward-characterization-clearance \
-  --exact-profile-baseline-2500-2730-target-2400-2730-actual-hold-0-250-seconds \
-  --acknowledge-maximum-setter-to-restore-0-760-seconds \
-  --authorize-single-legacy-1e-front-camera-word0-100-unit-characterization-command
+  --run --expected-physical-port REVIEWED-PORT --output NEW-SESSION-DIR \
+  --authorize-unchanged-setup-session-after-fresh-safety-confirmation
 ```
+
+The single authorization has the same fresh-confirmation semantics described
+for the fixed 50-unit profile above; no passive scope or probe declaration is
+required.
 
 The immutable requests are:
 
@@ -701,12 +708,20 @@ The operator observed that decreasing word 0 from 2500 to 2400 rotated the
 servo output approximately 1 degree clockwise in the observed test frame,
 then returned it. No camera linkage was installed, so this establishes only
 operator-observed servo-output direction and approximate calibration for that
-setup: -100 legacy units was approximately 1 degree clockwise. It does not
-establish camera upward/downward tilt, precision, linearity, endpoint behavior
-or full range. The earlier 50-unit “downward” description used a different,
-undefined mechanical frame and is therefore retained only as an ambiguous
-operator description, not a contradictory camera-direction result. Marvin
-physical power-off was confirmed.
+setup: -100 legacy units was approximately 1 degree clockwise. The earlier
+50-unit “downward” description used a different, undefined mechanical frame
+and is therefore retained only as an ambiguous operator description, not a
+contradictory camera-direction result. Marvin physical power-off was confirmed.
+
+After that sealed run, the operator installed the camera linkage and separately
+established that clockwise servo-output rotation tilts the installed camera
+**upward**. Composing those two operator observations establishes the tested
+`2500 -> 2400` decrement as upward camera tilt in the now-installed linkage,
+without changing the historical fact that the live run itself used an
+unattached servo. Increasing word 0 is expected to tilt downward only as the
+inferred inverse; it has not been directly exercised with the installed
+linkage. These observations do not prove precision, linearity, endpoint
+behavior or full range.
 
 The sealed run manifest verified and has SHA-256
 `556b0225ded01a7a0f313a80bb34d077ff60a354f22167887c989315f2ce0499`.

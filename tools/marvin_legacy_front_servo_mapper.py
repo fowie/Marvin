@@ -17,6 +17,7 @@ from tools import marvin_legacy_zero as zero
 from tools.marvin_legacy_live import LiveTransport
 from tools.marvin_legacy_protocol import decode_packet, encode_request, get_servo_position_request
 from tools.marvin_legacy_stream import LegacyStreamDecoder
+from tools.marvin_paths import new_output_path
 
 
 BASELINE = (2500, 2730)
@@ -115,20 +116,11 @@ WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS = (
     "exact_profile_baseline_2500_2730_target_2500_2680_word1_five_degree_dwell_0_25_seconds",
     "authorize_single_legacy_1e_front_camera_word1_five_degree_diagnostic_command",
 )
-DIRECTION_ACKNOWLEDGMENTS = (
-    *COMMON_ACKNOWLEDGMENTS,
-    "operator_confirmed_word0_50_unit_direction_observation_clearance",
-    "exact_profile_baseline_2500_2730_target_2450_2730_actual_hold_0_250_seconds",
-    "acknowledge_maximum_setter_to_restore_0_760_seconds",
-    "authorize_single_legacy_1e_front_camera_word0_direction_diagnostic_command",
+FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS = (
+    "authorize_unchanged_setup_session_after_fresh_safety_confirmation",
 )
-WORD0_100_UNIT_ACKNOWLEDGMENTS = (
-    *COMMON_ACKNOWLEDGMENTS,
-    "operator_confirmed_word0_100_unit_downward_characterization_clearance",
-    "exact_profile_baseline_2500_2730_target_2400_2730_actual_hold_0_250_seconds",
-    "acknowledge_maximum_setter_to_restore_0_760_seconds",
-    "authorize_single_legacy_1e_front_camera_word0_100_unit_characterization_command",
-)
+DIRECTION_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
+WORD0_100_UNIT_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
 
 
 def _profile(
@@ -318,9 +310,18 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
         )} if (word0_five_degree or word1_five_degree
                or held_direction) else {}),
         **({"operator_observed_direction_calibration": {
-            "word0_change": "2500_to_2450",
-            "direction": "downward",
-            "approximate_displacement_degrees": 0.5,
+            "word0_change": (
+                "2500_to_2400" if word0_100_unit else "2500_to_2450"),
+            "servo_output_direction": (
+                "clockwise_in_observed_test_frame"
+                if word0_100_unit else "mechanical_frame_ambiguous"),
+            "approximate_displacement_degrees": (
+                1.0 if word0_100_unit else 0.5),
+            "camera_tilt_direction": (
+                "upward_for_2500_to_2400_by_composed_post_run_operator_observations"
+                if word0_100_unit else
+                "not_directly_observed_for_2500_to_2450"),
+            "increasing_word0_direction": "downward_inferred_inverse_not_directly_exercised",
             "classification": "operator_observed_approximate_not_full_range_or_precision",
         }} if held_direction else {}),
         **({"expected_ax_goal_position": 800,
@@ -338,6 +339,16 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
         ),
         **({"maximum_setter_to_restore_seconds":
             MAX_DIRECTION_SETTER_TO_RESTORE_SECONDS} if held_direction else {}),
+        **({"combined_live_confirmation": (
+            "Fresh confirmation covers power-on/startup complete; the correct "
+            "AX-12+ actuator and linkage at J24; projector servo disconnected; "
+            "fixed-profile mechanical clearance and hands clear; host USB on the "
+            "reviewed pinned port; and independent cutoff ready. While that setup "
+            "remains unchanged, each exact RUN command authorizes one immutable "
+            "named-profile transcript. Any run fault or interruption ends the "
+            "session; END or session failure requires immediate physical power-off. "
+            "No scope or probe is required."
+        )} if held_direction else {}),
         "post_restore_response_observation_seconds": RESPONSE_SECONDS,
         "overall_deadline_seconds": OVERALL_SECONDS,
         "immutable_application_transcript_hex": [
@@ -358,7 +369,8 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             "protocol getter agreement does not prove physical position or restoration"
         ),
         "required": [
-            "--run", "--expected-physical-port", "--output NEWDIR",
+            "--run", "--expected-physical-port",
+            ("--output NEW-SESSION-DIR" if held_direction else "--output NEWDIR"),
             *((profile["mode_flag"],) if profile["mode_flag"] else ()),
             *("--" + name.replace("_", "-")
               for name in profile["acknowledgments"]),
@@ -867,9 +879,11 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         word0_direction, word0_100_unit)
     required = profile["acknowledgments"]
     if run is not True or set(acknowledgments) != set(required):
-        raise ValueError("Literal --run and the complete fixed front-servo scope are required.")
+        raise ValueError(
+            "Literal --run and the complete fixed-profile authorization are required.")
     if any(acknowledgments[name] is not True for name in required):
-        raise ValueError("Every separate front-servo acknowledgment must be literal true.")
+        raise ValueError(
+            "Every required front-servo authorization acknowledgment must be literal true.")
     return zero._run_diagnostic(
         output,
         expected_physical_port=expected_physical_port,
@@ -916,6 +930,46 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     )
 
 
+def run_authorized_session(output, *, expected_physical_port,
+                           word0_direction=False, word0_100_unit=False,
+                           input_fn=input, **acknowledgments):
+    if word0_direction == word0_100_unit:
+        raise ValueError("Select exactly one held fixed characterization profile.")
+    if set(acknowledgments) != set(FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS):
+        raise ValueError("The combined unchanged-setup authorization is required.")
+    if any(value is not True for value in acknowledgments.values()):
+        raise ValueError("The combined unchanged-setup authorization must be literal true.")
+    root = new_output_path(output)
+    root.mkdir(mode=0o700)
+    runs = []
+    while True:
+        command = input_fn("Type RUN for one fixed transcript or END to close the setup session: ")
+        if command == "END":
+            return {
+                "status": "fixed_servo_setup_session_ended_power_off_required",
+                "successful_runs": len(runs),
+                "evidence_directories": runs,
+            }
+        if command != "RUN":
+            raise ValueError("Only exact RUN or END is accepted; the setup session is ended.")
+        evidence = root / f"run-{len(runs) + 1:04d}"
+        result = run_diagnostic(
+            evidence,
+            expected_physical_port=expected_physical_port,
+            run=True,
+            word0_direction=word0_direction,
+            word0_100_unit=word0_100_unit,
+            **acknowledgments,
+        )
+        runs.append(str(evidence))
+        print(json.dumps({
+            "status": result["status"],
+            "evidence": str(evidence),
+            "next": "Type RUN only if the authorized physical setup remains unchanged; "
+                    "otherwise type END and power off.",
+        }), file=sys.stderr, flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true")
@@ -935,7 +989,15 @@ def main(argv=None):
          *DIRECTION_ACKNOWLEDGMENTS,
          *WORD0_100_UNIT_ACKNOWLEDGMENTS)))
     for name in all_acknowledgments:
-        parser.add_argument("--" + name.replace("_", "-"), action="store_true")
+        parser.add_argument(
+            "--" + name.replace("_", "-"),
+            action="store_true",
+            help=(
+                "Fresh unchanged-setup session confirmation of power/startup, correct J24 "
+                "actuator/linkage, projector disconnection, clearance/hands clear, "
+                "pinned host USB, cutoff readiness, and power-off when the session ends"
+                if name == FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS[0] else None),
+        )
     args = parser.parse_args(argv)
     profile = _profile(
         args.word1_front_camera_hypothesis, args.word0_five_degree_diagnostic,
@@ -959,23 +1021,38 @@ def main(argv=None):
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
-            result = run_diagnostic(
-                args.output,
-                expected_physical_port=args.expected_physical_port,
-                run=True,
-                word1_hypothesis=args.word1_front_camera_hypothesis,
-                word0_five_degree=args.word0_five_degree_diagnostic,
-                word1_five_degree=args.word1_five_degree_diagnostic,
-                word0_direction=args.word0_direction_diagnostic,
-                word0_100_unit=args.word0_100_unit_direction_diagnostic,
-                **acknowledgments,
-            )
+            if (args.word0_direction_diagnostic
+                    or args.word0_100_unit_direction_diagnostic):
+                result = run_authorized_session(
+                    args.output,
+                    expected_physical_port=args.expected_physical_port,
+                    word0_direction=args.word0_direction_diagnostic,
+                    word0_100_unit=args.word0_100_unit_direction_diagnostic,
+                    **acknowledgments,
+                )
+            else:
+                result = run_diagnostic(
+                    args.output,
+                    expected_physical_port=args.expected_physical_port,
+                    run=True,
+                    word1_hypothesis=args.word1_front_camera_hypothesis,
+                    word0_five_degree=args.word0_five_degree_diagnostic,
+                    word1_five_degree=args.word1_five_degree_diagnostic,
+                    **acknowledgments,
+                )
     except (Exception, KeyboardInterrupt) as error:
-        print(json.dumps({
+        failure = {
             "status": "failed",
             "error": str(error),
             "restoration": "uncertain_if_nonzero_setter_may_have_applied",
-        }), file=sys.stderr, flush=True)
+        }
+        if (args.word0_direction_diagnostic
+                or args.word0_100_unit_direction_diagnostic):
+            failure.update(
+                setup_session="ended",
+                operator_action="immediate_physical_power_off_required",
+            )
+        print(json.dumps(failure), file=sys.stderr, flush=True)
         return 1
     print(json.dumps(result, sort_keys=True, indent=2))
     return 0

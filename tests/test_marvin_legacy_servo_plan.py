@@ -368,18 +368,17 @@ class LegacyServoPlanTests(unittest.TestCase):
             "actual hold from clean correlated setter response end",
             direction["observation_timing_semantics"])
         self.assertEqual(direction["maximum_setter_to_restore_seconds"], .76)
-        self.assertIn(
-            "--authorize-single-legacy-1e-front-camera-word0-direction-diagnostic-command",
-            direction["required"])
-        self.assertIn(
-            "--acknowledge-maximum-setter-to-restore-0-760-seconds",
-            direction["required"])
-        self.assertIn(
-            "--operator-confirmed-word0-50-unit-direction-observation-clearance",
-            direction["required"])
+        self.assertEqual(direction["required"], [
+            "--run", "--expected-physical-port", "--output NEW-SESSION-DIR",
+            "--word0-direction-diagnostic",
+            "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
+        ])
+        self.assertIn("No scope or probe is required",
+                      direction["combined_live_confirmation"])
         self.assertEqual(
-            direction["operator_observed_direction_calibration"]["direction"],
-            "downward")
+            direction["operator_observed_direction_calibration"][
+                "camera_tilt_direction"],
+            "not_directly_observed_for_2500_to_2450")
         with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
                 redirect_stdout(io.StringIO()) as stdout:
             self.assertEqual(
@@ -405,10 +404,54 @@ class LegacyServoPlanTests(unittest.TestCase):
              (3519, 0x1E, bytes.fromhex("6009aa0a")),
              (3520, 0x1E, bytes.fromhex("c409aa0a")),
              (3521, 0x1D, b"")])
-        self.assertIn(
-            "--authorize-single-legacy-1e-front-camera-word0-100-unit-characterization-command",
-            hundred["required"])
+        self.assertEqual(hundred["required"], [
+            "--run", "--expected-physical-port", "--output NEW-SESSION-DIR",
+            "--word0-100-unit-direction-diagnostic",
+            "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
+        ])
+        self.assertEqual(
+            hundred["operator_observed_direction_calibration"][
+                "servo_output_direction"],
+            "clockwise_in_observed_test_frame")
+        self.assertEqual(
+            hundred["operator_observed_direction_calibration"][
+                "camera_tilt_direction"],
+            "upward_for_2500_to_2400_by_composed_post_run_operator_observations")
         self.assertTrue(mapper._Word0100UnitTransport.direction_hold)
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            root = Path(directory) / "session"
+            with patch.object(
+                    mapper, "run_diagnostic",
+                    return_value={"status": "complete"}) as triggered, \
+                    redirect_stderr(io.StringIO()):
+                session_result = mapper.run_authorized_session(
+                    root, expected_physical_port="1-2",
+                    word0_100_unit=True,
+                    input_fn=Mock(side_effect=["RUN", "RUN", "END"]),
+                    authorize_unchanged_setup_session_after_fresh_safety_confirmation=True,
+                )
+            self.assertEqual(session_result["successful_runs"], 2)
+            self.assertEqual(triggered.call_count, 2)
+            self.assertEqual(
+                [call.args[0].name for call in triggered.call_args_list],
+                ["run-0001", "run-0002"])
+            self.assertTrue(all(
+                call.kwargs["word0_100_unit"] is True
+                and call.kwargs["run"] is True
+                for call in triggered.call_args_list))
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory, \
+                patch.object(
+                    mapper, "run_diagnostic",
+                    side_effect=OSError("identity changed")) as triggered, \
+                self.assertRaisesRegex(OSError, "identity changed"):
+            mapper.run_authorized_session(
+                Path(directory) / "session",
+                expected_physical_port="1-2",
+                word0_direction=True,
+                input_fn=Mock(side_effect=["RUN", "RUN"]),
+                authorize_unchanged_setup_session_after_fresh_safety_confirmation=True,
+            )
+        triggered.assert_called_once()
         evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
         evidence_report = {
             "setter_prewrite_monotonic": 1.0,
