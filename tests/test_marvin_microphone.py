@@ -34,6 +34,8 @@ class MicrophoneTests(unittest.TestCase):
         values = {
             "/usb/1-1.1.2/idVendor": "2109\n",
             "/usb/1-1.1.2/idProduct": "2817\n",
+            "/usb/1-1.1.2.4/idVendor": "045e\n",
+            "/usb/1-1.1.2.4/idProduct": "fff0\n",
             "/sys/bus/usb/devices/1-1.1.2.4/idVendor": "045e\n",
             "/sys/bus/usb/devices/1-1.1.2.4/idProduct": "fff0\n",
             "/proc/asound/Array/stream0": STREAM,
@@ -44,6 +46,7 @@ class MicrophoneTests(unittest.TestCase):
         usb = Path("/usb")
         microphone_node = Path("/devices/usb/1-1.1.2.4")
         return {
+            "route": "historical-external",
             "hub_path": "1-1.1.2",
             "read_text": self.read_text,
             "path_exists": lambda path: True,
@@ -87,7 +90,8 @@ class MicrophoneTests(unittest.TestCase):
             device=microphone.ALSA_DEVICE, run=True, runner=runner, **self.live_options())
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["usb_id"], microphone.USB_ID)
-        self.assertEqual(result["hub_usb_id"], microphone.HUB_USB_ID)
+        self.assertEqual(result["route"], "historical-external")
+        self.assertEqual(result["hub_usb_id"], "2109:2817")
         self.assertEqual(result["usb_path"], "1-1.1.2.4")
         self.assertEqual(result["alsa_card_node"], "card1")
         self.assertEqual(result["alsa_pcm_node"], "pcmC1D0c")
@@ -127,6 +131,47 @@ class MicrophoneTests(unittest.TestCase):
                         else Path("/devices/usb/1-1.1.2.4")),
                 }))
 
+    def test_routes_are_closed_and_validate_distinct_hub_identities(self):
+        listing = subprocess.CompletedProcess(
+            [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
+        with self.assertRaisesRegex(ValueError, "Route must be one of"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="arbitrary", hub_path="1-1.1.2",
+                run=True, runner=Mock(return_value=listing), **{
+                    key: value for key, value in self.live_options().items()
+                    if key not in ("route", "hub_path")
+                })
+        with self.assertRaisesRegex(microphone.MicrophoneError, "requires hub 0451:2046"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="marvin-internal",
+                hub_path="1-1.1.2", run=True, runner=Mock(return_value=listing), **{
+                    key: value for key, value in self.live_options().items()
+                    if key not in ("route", "hub_path")
+                })
+
+    def test_direct_host_requires_exact_path_without_hub(self):
+        listing = subprocess.CompletedProcess(
+            [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
+        options = {
+            key: value for key, value in self.live_options().items()
+            if key not in ("route", "hub_path")
+        }
+        with self.assertRaisesRegex(ValueError, "requires one USB device"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="direct-host",
+                run=True, runner=Mock(return_value=listing), **options)
+        with self.assertRaisesRegex(ValueError, "forbids hub_path"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="direct-host",
+                hub_path="1-1.1.2", usb_path="1-1.1.2.4", run=True,
+                runner=Mock(return_value=listing), **options)
+        result = microphone.list_device(
+            device=microphone.ALSA_DEVICE, route="direct-host",
+            usb_path="1-1.1.2.4", run=True, runner=Mock(return_value=listing),
+            **options)
+        self.assertEqual(result["route"], "direct-host")
+        self.assertNotIn("hub_path", result)
+        self.assertEqual(result["usb_path"], "1-1.1.2.4")
     def test_capture_is_bounded_exclusive_and_surfaces_failures(self):
         duration, file_type = 1, "raw"
         limit = microphone.expected_bytes(duration, file_type)
@@ -159,6 +204,13 @@ class MicrophoneTests(unittest.TestCase):
                 duration_seconds=duration, max_bytes=limit, file_type=file_type,
                 run=True, authorize_audio_capture=True, runner=failed, **self.live_options())
         self.assertFalse((self.root / "failed.pcm").exists())
+        interrupted = Mock(side_effect=[listing, KeyboardInterrupt()])
+        with self.assertRaises(KeyboardInterrupt):
+            microphone.capture(
+                self.root / "interrupted.pcm", device=microphone.ALSA_DEVICE,
+                duration_seconds=duration, max_bytes=limit, file_type=file_type,
+                run=True, authorize_audio_capture=True, runner=interrupted, **self.live_options())
+        self.assertFalse((self.root / "interrupted.pcm").exists())
 
     def test_capture_creation_and_write_interrupts_leave_no_output(self):
         limit = microphone.expected_bytes(1, "raw")
@@ -218,14 +270,15 @@ class MicrophoneTests(unittest.TestCase):
 
     def test_cli_rejects_unbounded_or_unconsented_capture(self):
         for args in (
-            ["capture", "--device", microphone.ALSA_DEVICE, "--hub-path", "1-1.1.2", "--duration", "5",
+            ["capture", "--device", microphone.ALSA_DEVICE,
+             "--route", "historical-external", "--hub-path", "1-1.1.2", "--duration", "5",
              "--max-bytes", "1280000", "--type", "raw", "--output", str(self.root / "a")],
             ["capture", "--run", "--authorize-audio-capture", "--device", microphone.ALSA_DEVICE,
-             "--hub-path", "1-1.1.2",
+             "--route", "historical-external", "--hub-path", "1-1.1.2",
              "--duration", "6", "--max-bytes", "1536000", "--type", "raw",
              "--output", str(self.root / "b")],
             ["capture", "--run", "--authorize-audio-capture", "--device", microphone.ALSA_DEVICE,
-             "--hub-path", "1-1.1.2",
+             "--route", "historical-external", "--hub-path", "1-1.1.2",
              "--duration", "5", "--max-bytes", "9999999", "--type", "raw",
              "--output", str(self.root / "c")],
         ):
