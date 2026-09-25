@@ -21,6 +21,7 @@ from tools.marvin_legacy_client import LegacyClient, Limits
 from tools import marvin_legacy_protocol as protocol
 from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_raw_pwm_pilot as pilot
+from tools import marvin_legacy_attention_check as attention
 from tools import marvin_legacy_zero as zero
 from tools.marvin_legacy_led_mapper import _frame
 from tools.marvin_legacy_live import LiveTransport
@@ -36,6 +37,10 @@ MAX_BODY_BYTES = 4096
 MAX_REQUESTS = 65536
 STARTUP_SECONDS = 30.0
 OPERATOR_SESSION_SECONDS = 90
+RAW_PWM_COMMAND = protocol.decode_packet(
+    pilot.STEPS_DUAL_FORWARD_2000_CONNECTED["set"]).command
+LED_SET_COMMAND = protocol.decode_packet(
+    attention.STEPS["left-position-0-red_set"]).command
 
 
 def _utc_now():
@@ -66,15 +71,16 @@ def managers_for_owner(owner, *, microphone=False, camera=False):
     if missing:
         raise ValueError(
             "Controller owner is missing accepted callbacks: " + ", ".join(missing))
-    managers = {
-        "drive": marvin_managers.DriveManager(owner.drive_step, owner.stop),
-        "leds": marvin_managers.LedManager(
-            owner.read_led_state, owner.write_led_state),
-    }
-    if microphone:
-        managers["microphone"] = marvin_managers.MicrophoneManager()
-    if camera:
-        managers["camera"] = marvin_managers.CameraManager()
+    managers = marvin_managers.build_managers(
+        drive_action=owner.drive_step,
+        stop_action=owner.stop,
+        read_led_state=owner.read_led_state,
+        write_led_state=owner.write_led_state,
+    )
+    if not microphone:
+        managers.pop("microphone")
+    if not camera:
+        managers.pop("camera")
     return managers
 
 
@@ -93,8 +99,10 @@ class _OperatorTransport(LiveTransport):
             packet.response_field == 0
             and (
                 (packet.command in getter_commands and not packet.payload)
-                or (packet.command == 0x0B and packet.payload in drive_payloads)
-                or (packet.command == 0x18 and len(packet.payload) == 18)
+                or (packet.command == RAW_PWM_COMMAND
+                    and packet.payload in drive_payloads)
+                or (packet.command == LED_SET_COMMAND
+                    and len(packet.payload) == 18)
             )
         )
         if not allowed:
@@ -193,7 +201,8 @@ class ProductionControllerOwner:
             self, expected_identity=self.expected_identity)
 
     def _setter(self, payload):
-        packet, _row = self._exchange(0x0B, payload, expected_payload=0)
+        packet, _row = self._exchange(
+            RAW_PWM_COMMAND, payload, expected_payload=0)
         if packet.response_field != 0x80:
             raise OSError("Raw-PWM setter did not return the accepted empty raw-80 shape.")
 
@@ -216,13 +225,14 @@ class ProductionControllerOwner:
                 self.stop()
 
     def read_led_state(self):
-        packet, _row = self._exchange(0x17, expected_payload=18)
+        packet, _row = self._exchange(
+            protocol.GET_LED_STATE, expected_payload=18)
         return packet.payload
 
     def write_led_state(self, payload):
         if type(payload) is not bytes or len(payload) != 18:
             raise ValueError("LED state must be exactly 18 immutable bytes.")
-        self._exchange(0x18, payload, accepted=(0x80, 0x82))
+        self._exchange(LED_SET_COMMAND, payload, accepted=(0x80, 0x82))
 
     def close(self):
         if self.started:
