@@ -252,6 +252,7 @@ def run_session(
     _front_servo_getter=False,
     _front_servo_baseline_restore=False,
     _projector_power_smoke=False,
+    _sensor_snapshot=False,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -349,10 +350,15 @@ def run_session(
             _front_servo_word0_direction_mapper,
             _front_servo_word0_100_unit_mapper,
             _front_servo_word0_500_unit_mapper, _front_servo_getter,
-            _front_servo_baseline_restore, _projector_power_smoke)):
+            _front_servo_baseline_restore, _projector_power_smoke,
+            _sensor_snapshot)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     front_servo_profile = (
         _front_servo_mapper or _front_servo_getter or _front_servo_baseline_restore)
+    if _sensor_snapshot and any((
+            _isolated_zero_velocity, _motor_power_off_preparation,
+            front_servo_profile, _projector_power_smoke)):
+        raise ValueError("Sensor snapshot cannot be combined with another diagnostic profile.")
     if sum(map(bool, (
             _front_servo_mapper, _front_servo_getter,
             _front_servo_baseline_restore))) > 1:
@@ -511,6 +517,8 @@ def run_session(
         scope = motor_consent.classify(
             actuators_isolated=actuators_isolated, **declarations)
     powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
+    if _sensor_snapshot and powered_trial:
+        raise ValueError("Sensor snapshot cannot be combined with a powered diagnostic scope.")
     if scope == motor_consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
         raise ValueError(
             "Connected raw-PWM 2000 is retired after reverse motion and a nonzero "
@@ -669,6 +677,21 @@ def run_session(
                         allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
                 or probe_schedule is not None or probe_delay):
             raise ValueError("Fixed actuator diagnostic requires its separate legacy plan.")
+    if _sensor_snapshot:
+        from marvin_sensors import SERIAL_SECONDS as SENSOR_SECONDS, TRANSCRIPT as SENSOR_TRANSCRIPT
+        if (capture_runner is None or actuators_isolated is not True
+                or allow_unknown_command is not True or allow_telemetry_state_change is not True
+                or sudo_usbmon is not False or usbmon_backend != "binary"
+                or binary_payload_limit != 4096 or probe_profile != "legacy"
+                or baudrate != 57600 or (bytesize, parity, stopbits) != (8, "N", 1)
+                or seconds != SENSOR_SECONDS or usb_tail_seconds != 5
+                or usb_close_grace_seconds != 5 or dtr is not False or rts is not False
+                or any((probe_cr, probe_get_config, probe_get_unit_info,
+                        probe_get_sensor_info, allow_line_state_trial,
+                        allow_line_state_change))
+                or probe_schedule is not None or probe_delay):
+            raise ValueError(
+                "Sensor snapshot requires its fixed four-getter legacy plan.")
     if _isolated_zero_velocity:
         from tools.marvin_legacy_zero import ZERO_TRANSCRIPT, SERIAL_SECONDS
         if (capture_runner is None or actuators_isolated is not True
@@ -709,7 +732,8 @@ def run_session(
     if (probe_profile != "modern" and probe_schedule is None
             and not (
                 _isolated_zero_velocity or _motor_power_off_preparation
-                or powered_trial or front_servo_profile or _projector_power_smoke)):
+                or powered_trial or front_servo_profile or _projector_power_smoke
+                or _sensor_snapshot)):
         raise ValueError("Named coordinator probes require the modern profile.")
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
@@ -784,13 +808,17 @@ def run_session(
             38 if led_mapping_runtime_policy else
             sum(map(len, TRANSCRIPT))
             if _motor_power_off_preparation or powered_trial or front_servo_profile else
+            sum(map(len, SENSOR_TRANSCRIPT)) if _sensor_snapshot else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
             else len(probe) if probe is not None else 0
         ),
         "requested_probe_hex": (ZERO_TRANSCRIPT[0].hex() if _isolated_zero_velocity else
                                 probe.hex() if probe is not None else None),
-        "probe_name": "IsolatedZeroVelocityCharacterization" if _isolated_zero_velocity else probe_name,
+        "probe_name": (
+            "ReadOnlySensorSnapshot" if _sensor_snapshot else
+            "IsolatedZeroVelocityCharacterization" if _isolated_zero_velocity else
+            probe_name),
         "probe_profile": probe_profile,
         "source_expected_response_payload_bytes": expected_payload_bytes,
         "telemetry_state_change_authorized": bool(
@@ -827,6 +855,17 @@ def run_session(
                         immutable_application_transcript_hex=[raw.hex() for raw in ZERO_TRANSCRIPT],
                         application_acknowledgment="not_established", physical_stop="not_established")
         metadata["limitations"][2] = "Kernel-open line transitions remain possible; this diagnostic uses an unflushed raw tty."
+    if _sensor_snapshot:
+        metadata.update(
+            immutable_application_transcript_hex=[
+                raw.hex() for raw in SENSOR_TRANSCRIPT],
+            requested_probe_hex=b"".join(SENSOR_TRANSCRIPT).hex(),
+            unknown_command_authorized=True,
+            telemetry_state_change_authorized=True,
+            application_acknowledgment="not_established",
+        )
+        metadata["limitations"][2] = (
+            "Kernel-open line transitions remain possible; snapshot uses an unflushed raw tty.")
     if _motor_power_off_preparation:
         metadata.update(
             **motor_consent.history(declarations),

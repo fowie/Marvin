@@ -92,14 +92,28 @@ print(robot.camera_up(5))
 
 `Marvin().sensors()` (or `python -m marvin sensors`) returns the exact four
 request frames and response schema without opening hardware. Embedded live
-applications may construct `Marvin(run=True, sensor_transport=...,
-sensor_ownership_key=..., sensor_expected_identity=...)`; `sensors()` then
-uses one bounded, identity-pinned `LegacyClient` session for reported
+applications may inject an already validated transport, or use the installed
+live CLI:
+
+```sh
+python -m marvin sensors --run --expected-physical-port PORT \
+  --output NEWDIR --actuators-isolated --unprivileged-usbmon
+```
+
+For a supervised run, first print and review the offline plan, confirm the
+reviewed `045e:4444` physical topology and actuator power/signal isolation,
+then run the command once as the ordinary user with a new output directory.
+Do not retry or reconnect after any error; preserve the failed sealed directory.
+After success, review the returned raw snapshot and `NEWDIR/SHA256SUMS`.
+
+Live mode uses one bounded, identity-pinned `LegacyClient` session for reported
 controller words, the raw power mask, raw telemetry, documented proximity
 mappings, unresolved cliff/bump fields, motor/encoder values, and two raw
-servo-position words. The CLI intentionally has no serial-device constructor
-or arbitrary command path. Dedicated `GetBatteryInfo` remains excluded because
-its installed eight-byte response has no proven legacy decoder.
+servo-position words. It pins the reviewed `045e:4444` topology, writes exactly
+the four displayed getter requests at 57600 8N1, and seals serial/USB evidence
+in a new directory. There is no arbitrary command, retry, reconnect, successor
+fallback, or per-field subprocess. Dedicated `GetBatteryInfo` remains excluded
+because its installed eight-byte response has no proven legacy decoder.
 
 ## Confirmed findings and limits
 
