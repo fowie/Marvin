@@ -1,6 +1,6 @@
 # Marvin canonical handoff
 
-Status checked **2026-09-22**. This is the shortest entry point for a fresh
+Status checked **2026-09-24**. This is the shortest entry point for a fresh
 host/session, especially a Jetson AGX Orin installed in Marvin. It separates
 verified evidence, operator reports, hypotheses, and unfinished work. Detailed
 procedures remain in the linked documents.
@@ -42,7 +42,7 @@ x86 host onto Jetson.
 | Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
 | Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
-| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; baseline getter `[2500,2730]`. Clean one-degree word-0 and word-1 runs each restored and ended with a matching getter, with no visible movement. | Word assignment and physical restoration remain unproved; projector remains unmapped. See [servo status](#servo-result-and-boundary) and [servo mapping](legacy-servo-mapping.md). |
+| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. Passive AX Protocol 1.0 capture establishes that word0 drives the J24 front-camera AX-12+ (ID 2) Goal Position: host 2490 emitted 830 and host 2500 emitted 833. | Integer division by 3 is observed for those two values only. Motion, full range, direction, acceptance, physical position/restoration, projector, and word1 remain unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
 | Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. | The working kernel change is host/kernel-specific and must be recreated or found upstream on Jetson. See [microphone host setup](#microphone-host-kernel-state) and [PR #33](https://github.com/fowie/Marvin/pull/33). |
 
@@ -245,23 +245,47 @@ update. Exact diagnosis, verification, and limitations are in
 
 ## Servo result and boundary
 
-The only baseline is `[2500,2730]`. With the front AX-12+ as the isolated
-connected servo and the projector disconnected:
+The front-camera actuator body is marked **Dynamixel AX-12+**. Its uninterrupted
+J24/SERVO2 three-wire harness has green-to-green, red-to-red, and black-to-black
+continuity; cross-pairs measured open. BLACK was independently verified as
+controller ground. With J24 powered, RED measured 9 V and GREEN 5 V idle-high.
+Passive captures identify AX Protocol 1.0 at approximately 100 kbaud.
 
-- the one-degree word-0 and word-1 runs each had clean setter/restore response
-  correlation and a matching final getter, but no visible movement;
-- the first five-degree word-0 run submitted `[2450,2730]` and began submitting
-  the full `[2500,2730]` restore **0.142 ms** later. The raw restore response was
-  retained during close, but was not application-correlated, and a now-fixed
-  response-key bug prevented the final getter;
-- the operator separately heard servo engagement, saw no movement, then powered
-  Marvin off and disconnected host USB.
+Startup capture includes checksum-valid packet
+`FF FF 02 05 03 22 50 01 82`: ID 2, write, Torque Limit 336. The selector-free
+legacy `0x1D` getter returned two unlabeled words `[2500,2730]`. A post-startup
+scope observation saw no trigger during that getter, supporting but not proving
+that the values are cached.
 
-Therefore host submission of setter and restore is established for the
-five-degree run; application acknowledgement, physical restoration, and word
-assignment are not. Do not retry or issue a recovery command. PR
-[#34](https://github.com/fowie/Marvin/pull/34) fixes the response-key bug at
-`bddaa7ff466c079cb84093a24c2408e5155eacfa`. The projector remains unmapped.
+The decisive passive setter captures are:
+
+| Legacy setter | Captured AX packet | Established command |
+|---|---|---|
+| word0 `2490` | `FF FF 02 05 03 1E 3E 03 96` | ID 2 Goal Position 830 |
+| word0 baseline `2500` | `FF FF 02 05 03 1E 41 03 93` | ID 2 Goal Position 833 |
+
+These establish J24 front-camera ID 2 command routing and observed integer
+division by 3 for those two values. They do not establish a general conversion,
+AX status/acceptance, execution, physical position, direction, range, or
+restoration. The baseline host setter received one correlated CRC-valid,
+empty-payload raw-`82` response, but that raw field is not an acknowledgement.
+Wire capture proves commands were emitted, not accepted.
+
+Earlier one-degree word0 and word1 runs each restored and ended with a matching
+legacy getter but no visible movement. In the earlier five-degree word0 run,
+the baseline restore began 0.142 ms after the setter; its raw response was
+retained but not application-correlated, and the now-fixed response-key bug
+prevented the final getter. Those runs did not establish motion, physical
+restoration, or word1 routing.
+
+Marvin was powered off after each test and no visible motion was observed.
+Projector/word1 remains unproved. PR
+[#34](https://github.com/fowie/Marvin/pull/34) contains the evidence directory
+names, hashes, and detailed procedure; do not duplicate private evidence here.
+The next required live step is the existing fixed word0 50-unit diagnostic for
+visible motion and direction, only under fresh authorization with the operator
+present and independent cutoff ready. This handoff update performs and
+authorizes no live action.
 
 ## Last reported physical state
 
@@ -306,7 +330,7 @@ successor from the [campaign limitations above](#completed-13-sensor-campaign),
 
 ## Pull request map
 
-State verified from GitHub on 2026-09-22:
+State verified from GitHub on 2026-09-24:
 
 | PR | State | Contribution |
 |---|---|---|
@@ -316,4 +340,4 @@ State verified from GitHub on 2026-09-22:
 | [#29](https://github.com/fowie/Marvin/pull/29) | **Merged** | Offline legacy tilt-servo mapping plan |
 | [#30](https://github.com/fowie/Marvin/pull/30) | **Merged** | Microphone-array discovery |
 | [#33](https://github.com/fowie/Marvin/pull/33) | **Open** | Microphone failure diagnosis, kernel fix, verification, and rollback |
-| [#34](https://github.com/fowie/Marvin/pull/34) | **Open** | Bounded front-servo mapper, run evidence, and response-key fix |
+| [#34](https://github.com/fowie/Marvin/pull/34) | **Open** | Front-camera AX-12+/J24 identification, word0 command mapping, bounded evidence tools, and run evidence |
