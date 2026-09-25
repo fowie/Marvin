@@ -486,6 +486,51 @@ its SHA-256 is
 `60428ca1a3a183209d5da477b7ed140f52191f2e637a1ff8dc0ec26a9f8066cb`.
 This failed attempt is not authorization to retry.
 
+### Successful fixed word-0 50-unit run
+
+A later separately authorized execution completed the full fixed profile with
+status `front_camera_servo_word0_five_degree_complete_protocol_only`. The
+sealed host evidence records 48 accepted and zero uncertain TX bytes across
+four submissions. The baseline and final getters both returned
+`[2500,2730]`. The `[2450,2730]` setter and `[2500,2730]` restore each had one
+unique CRC-valid correlated empty raw-`82` response. Restore started
+81.007 microseconds after setter start, within the 0.25-second bound;
+`restore_correlated` and `getter_reverified` are both true, finalization errors
+are empty, and usbmon completed.
+
+That establishes protocol restoration to the aggregate baseline. Separately,
+the operator observed the camera visibly move and return, then physically
+powered Marvin off. The displacement was too small to classify as up or down.
+The operator observation establishes physical movement and return for this
+bounded decrement; it remains distinct from protocol evidence and does not
+establish direction, calibrated angle, full range or generic application ACK.
+
+The passive J24 waveform contains the checksum-valid packet:
+
+```text
+FF FF 02 05 03 1E 30 03 A4
+```
+
+This is Protocol 1.0 WRITE to ID 2, Goal Position address `1E` hex, value
+`0330` hex (`816`), checksum `A4`. It matches `2450 // 3 = 816`. Together
+with the earlier `2490 -> 830` and `2500 -> 833` captures, this proves the
+installed controller's positive tested-value truncating division by three and
+the word-0/J24 front-camera control path for this bounded decrement. The later
+`FF FF` prefix is incomplete and unattributed.
+
+The top-level manifest verified and has SHA-256
+`43ee06c94cad5d89202b895bc9dad078efe2ecb8250e5a66775b83e115a0bfa8`.
+The independently verified scope SHA-256 values are:
+
+- waveform:
+  `42c7be63a7bfc9b3c7f47bf10852e2dc5324a83445544316e37a000fc84e2e23`;
+- BMP:
+  `571b69c13e0251739fd5937c3da0ddb7e9f4fafc0345b569602c65a28fe5ca26`;
+- PNG:
+  `eb6137b79d0b998e56d85bd375b11c4279b9eae62462e4dd10dadd363f744b52`.
+
+No further hardware action is authorized by this result.
+
 ## Fixed word-1 five-degree diagnostic
 
 The next discriminator is a separate named profile only. It preserves word 0
@@ -495,11 +540,11 @@ bound. Verification remains conditional on one clean correlated restore
 response. It does not expose arbitrary word, target, delta, dwell, retry,
 reconnect or resume controls.
 
-The two one-degree runs' lack of visible motion and the word-0 five-degree
-run's audible engagement without visible motion are external evidence only,
-not channel proof. For the word-0 five-degree run, setter and restore host
-submission are established, but restore application correlation and physical
-restoration remain unproved.
+The two one-degree runs' lack of visible motion and the first word-0
+five-degree run's audible engagement without visible movement remain external
+evidence only. The later successful fixed word-0 run independently established
+bounded camera movement and return plus complete protocol restoration, but not
+movement direction. It does not prove word-1 routing.
 
 Word-1 five-degree dry run:
 
