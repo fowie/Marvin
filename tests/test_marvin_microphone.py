@@ -32,29 +32,30 @@ class MicrophoneTests(unittest.TestCase):
     @staticmethod
     def read_text(path):
         values = {
-            "/usb/1-1.1.2/idVendor": "2109\n",
-            "/usb/1-1.1.2/idProduct": "2817\n",
-            "/sys/bus/usb/devices/1-1.1.2.4/idVendor": "045e\n",
-            "/sys/bus/usb/devices/1-1.1.2.4/idProduct": "fff0\n",
+            "/usb/1-1.1.3/idVendor": "0451\n",
+            "/usb/1-1.1.3/idProduct": "2046\n",
+            "/sys/bus/usb/devices/1-1.1.3.4/idVendor": "045e\n",
+            "/sys/bus/usb/devices/1-1.1.3.4/idProduct": "fff0\n",
             "/proc/asound/Array/stream0": STREAM,
         }
         return values[str(path)]
 
     def live_options(self):
         usb = Path("/usb")
-        microphone_node = Path("/devices/usb/1-1.1.2.4")
+        microphone_node = Path("/devices/usb/1-1.1.3.4")
         return {
-            "hub_path": "1-1.1.2",
+            "route": "marvin-internal",
+            "hub_path": "1-1.1.3",
             "read_text": self.read_text,
             "path_exists": lambda path: True,
             "usb_root": usb,
             "sound_root": Path("/sound"),
             "list_entries": lambda root: [
-                usb / "1-1.1.2", Path("/sys/bus/usb/devices/1-1.1.2.4")],
+                usb / "1-1.1.3", Path("/sys/bus/usb/devices/1-1.1.3.4")],
             "resolve_path": lambda path: (
-                microphone_node / "1-1.1.2.4:1.2/sound/card1/pcmC1D0c"
+                microphone_node / "1-1.1.3.4:1.2/sound/card1/pcmC1D0c"
                 if path == Path("/sound/pcmC1D0c/device")
-                else microphone_node / "1-1.1.2.4:1.1"
+                else microphone_node / "1-1.1.3.4:1.1"
                 if path == Path("/sound/card1/device")
                 else microphone_node),
         }
@@ -87,8 +88,9 @@ class MicrophoneTests(unittest.TestCase):
             device=microphone.ALSA_DEVICE, run=True, runner=runner, **self.live_options())
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["usb_id"], microphone.USB_ID)
-        self.assertEqual(result["hub_usb_id"], microphone.HUB_USB_ID)
-        self.assertEqual(result["usb_path"], "1-1.1.2.4")
+        self.assertEqual(result["route"], "marvin-internal")
+        self.assertEqual(result["hub_usb_id"], "0451:2046")
+        self.assertEqual(result["usb_path"], "1-1.1.3.4")
         self.assertEqual(result["alsa_card_node"], "card1")
         self.assertEqual(result["alsa_pcm_node"], "pcmC1D0c")
         runner.assert_called_once_with(
@@ -98,12 +100,12 @@ class MicrophoneTests(unittest.TestCase):
         listing = subprocess.CompletedProcess(
             [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
         options = self.live_options()
-        duplicate = Path("/sys/bus/usb/devices/1-1.1.2.5")
+        duplicate = Path("/sys/bus/usb/devices/1-1.1.3.5")
         values = {
-            "/usb/1-1.1.2/idVendor": "2109\n",
-            "/usb/1-1.1.2/idProduct": "2817\n",
-            "/sys/bus/usb/devices/1-1.1.2.4/idVendor": "045e\n",
-            "/sys/bus/usb/devices/1-1.1.2.4/idProduct": "fff0\n",
+            "/usb/1-1.1.3/idVendor": "0451\n",
+            "/usb/1-1.1.3/idProduct": "2046\n",
+            "/sys/bus/usb/devices/1-1.1.3.4/idVendor": "045e\n",
+            "/sys/bus/usb/devices/1-1.1.3.4/idProduct": "fff0\n",
             str(duplicate / "idVendor"): "045e\n",
             str(duplicate / "idProduct"): "fff0\n",
             "/proc/asound/Array/stream0": STREAM,
@@ -122,10 +124,28 @@ class MicrophoneTests(unittest.TestCase):
                     "resolve_path": lambda path: (
                         Path("/devices/other/pcmC1D0c")
                         if path == Path("/sound/pcmC1D0c/device")
-                        else Path("/devices/usb/1-1.1.2.4/1-1.1.2.4:1.1")
+                        else Path("/devices/usb/1-1.1.3.4/1-1.1.3.4:1.1")
                         if path == Path("/sound/card1/device")
-                        else Path("/devices/usb/1-1.1.2.4")),
+                        else Path("/devices/usb/1-1.1.3.4")),
                 }))
+
+    def test_routes_are_closed_and_validate_distinct_hub_identities(self):
+        listing = subprocess.CompletedProcess(
+            [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
+        with self.assertRaisesRegex(ValueError, "Route must be one of"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="arbitrary", hub_path="1-1.1.3",
+                run=True, runner=Mock(return_value=listing), **{
+                    key: value for key, value in self.live_options().items()
+                    if key not in ("route", "hub_path")
+                })
+        with self.assertRaisesRegex(microphone.MicrophoneError, "requires hub 2109:2817"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, route="historical-external",
+                hub_path="1-1.1.3", run=True, runner=Mock(return_value=listing), **{
+                    key: value for key, value in self.live_options().items()
+                    if key not in ("route", "hub_path")
+                })
 
     def test_capture_is_bounded_exclusive_and_surfaces_failures(self):
         duration, file_type = 1, "raw"
@@ -162,14 +182,15 @@ class MicrophoneTests(unittest.TestCase):
 
     def test_cli_rejects_unbounded_or_unconsented_capture(self):
         for args in (
-            ["capture", "--device", microphone.ALSA_DEVICE, "--hub-path", "1-1.1.2", "--duration", "5",
+            ["capture", "--device", microphone.ALSA_DEVICE, "--route", "marvin-internal",
+             "--hub-path", "1-1.1.3", "--duration", "5",
              "--max-bytes", "1280000", "--type", "raw", "--output", str(self.root / "a")],
             ["capture", "--run", "--authorize-audio-capture", "--device", microphone.ALSA_DEVICE,
-             "--hub-path", "1-1.1.2",
+             "--route", "marvin-internal", "--hub-path", "1-1.1.3",
              "--duration", "6", "--max-bytes", "1536000", "--type", "raw",
              "--output", str(self.root / "b")],
             ["capture", "--run", "--authorize-audio-capture", "--device", microphone.ALSA_DEVICE,
-             "--hub-path", "1-1.1.2",
+             "--route", "marvin-internal", "--hub-path", "1-1.1.3",
              "--duration", "5", "--max-bytes", "9999999", "--type", "raw",
              "--output", str(self.root / "c")],
         ):

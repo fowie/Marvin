@@ -126,10 +126,12 @@ metadata were valid, but capture transport yielded zero frames with a direct
 ALSA I/O error. Later USB tracing and a targeted kernel fix identified and
 corrected the cause, as recorded below.
 
-The previously investigated, non-actionable
-`usb 1-1.1.3-port4: over-current condition` warning is excluded from this
-analysis. It could not be mapped to a plug or hub and is not a Marvin blocker;
-the microphone is on the distinct path `usb-0000:00:14.0-1.1.2.4`.
+The earlier `usb 1-1.1.3-port4: over-current condition` warning was excluded
+from the direct-PC capture diagnosis because that microphone used the distinct
+path `usb-0000:00:14.0-1.1.2.4`. A later mic-through-Marvin attempt reproduced
+the warning when exact hub `1-1.1.3` (`0451:2046`) enumerated. That later
+evidence makes the warning a blocker for the internal route, as recorded below;
+it still does not explain the historical direct-PC transport failure.
 
 ## Initial exclusion work
 
@@ -266,7 +268,8 @@ identity, ALSA metadata and selected endpoint:
 
 ```sh
 python -m tools.marvin_microphone list \
-  --run --hub-path CURRENT_HUB_PATH --device hw:CARD=Array,DEV=0
+  --run --route ROUTE --hub-path CURRENT_HUB_PATH \
+  --device hw:CARD=Array,DEV=0
 ```
 
 Capture accepts only the proved native `S16_LE`, 16000 Hz, 8-channel profile,
@@ -277,6 +280,7 @@ bytes for WAV. For example, a five-second WAV is:
 ```sh
 python -m tools.marvin_microphone capture \
   --run --authorize-audio-capture \
+  --route ROUTE \
   --hub-path CURRENT_HUB_PATH \
   --device hw:CARD=Array,DEV=0 \
   --duration 5 --max-bytes 1280044 --type wav \
@@ -295,9 +299,10 @@ is a prerequisite.
 
 **Goal:** with Marvin unpowered, reconnect the intended Microsoft microphone
 array through its internal/harness USB connector, then prove that exactly one
-`045e:fff0` device descends from the intended `2109:2817` hub before one
-privacy-authorized two-second capture. The discovery-era path `1-1.1.2.4` is
-historical evidence, not an expected or stable path.
+`045e:fff0` device descends from the intended Marvin internal `0451:2046` hub
+before one privacy-authorized two-second capture. The discovery-era
+`1-1.1.2.4` path and its `2109:2817` parent are historical external/other-route
+evidence, not the expected Marvin internal route or a stable path.
 
 The patched host already passed the same CLI's direct-PC live list and bounded
 two-second capture. That is a host/module baseline only; it does not identify
@@ -326,7 +331,7 @@ USB, change mixers, reload modules or move to another connector.
 
    ```sh
    lsusb -t
-   lsusb -d 2109:2817
+   lsusb -d 0451:2046
    lsusb -d 045e:fff0
    for d in /sys/bus/usb/devices/*; do
      test -r "$d/idVendor" -a -r "$d/idProduct" || continue
@@ -337,9 +342,9 @@ USB, change mixers, reload modules or move to another connector.
 
    Stop on any new over-current/electrical warning or ambiguous identity.
    From this inventory, record the current sysfs name of the intended
-   `2109:2817` hub as `HUB_PATH`. Confirm exactly one `045e:fff0` entry has a
-   name beginning with `${HUB_PATH}.`; do not assume `1-1.1.2` or
-   `1-1.1.2.4`.
+   `0451:2046` Marvin internal hub as `HUB_PATH`. Confirm exactly one
+   `045e:fff0` entry has a name beginning with `${HUB_PATH}.`; do not assume
+   `1-1.1.3` or any microphone child path.
 
 4. Verify the exact USB identity/profile and that the enumerated ALSA
    `pcmCND0c` symlink resolves beneath that same microphone USB node:
@@ -347,7 +352,8 @@ USB, change mixers, reload modules or move to another connector.
    ```sh
    HUB_PATH='REPLACE_WITH_RECORDED_SYSFS_HUB_NAME'
    python -m tools.marvin_microphone list \
-     --run --hub-path "$HUB_PATH" --device hw:CARD=Array,DEV=0
+     --run --route marvin-internal \
+     --hub-path "$HUB_PATH" --device hw:CARD=Array,DEV=0
    ```
 
    The command itself enforces the hub identity, exactly one descendant
@@ -364,6 +370,7 @@ USB, change mixers, reload modules or move to another connector.
    test "$(stat -c %a "$PRIVATE_CAPTURE_DIR")" = 700 &&
    python -m tools.marvin_microphone capture \
      --run --authorize-audio-capture \
+     --route marvin-internal \
      --hub-path "$HUB_PATH" --device hw:CARD=Array,DEV=0 \
      --duration 2 --max-bytes 512044 --type wav \
      --output "$PRIVATE_CAPTURE_DIR/microphone-array-through-marvin-2s.wav"
@@ -380,6 +387,52 @@ USB, change mixers, reload modules or move to another connector.
    Do not play back, upload, transcribe or repeat the capture without separate
    authorization. A successful file proves this bounded host path delivered
    PCM; it does not prove physical capsule placement or broader Marvin safety.
+
+### Attempt result: electrical/topology stop
+
+The operator later reported reconnecting the microphone through the intended
+Marvin internal/harness connector and powering Marvin normally. Passive
+inventory found:
+
+- internal hub `1-1.1.3`, exact identity `0451:2046`;
+- LifeCam descendant `1-1.1.3.2`, identity `045e:0721`;
+- controller descendant `1-1.1.3.3`, identity `045e:4444`;
+- zero `045e:fff0` descendants and no `045e:fff0` anywhere in `lsusb`;
+- ALSA capture devices only for PCH and NX3000; and
+- a contemporaneous kernel warning:
+  `usb 1-1.1.3-port4: over-current condition`.
+
+This is a hard **electrical/topology stop**, not a microphone capture failure.
+The operator was instructed to power Marvin off. No microphone list or capture,
+controller command, USB reset, module operation or mixer change was performed.
+Do not try another connector or bypass the missing identity.
+
+### Next physical/electrical work item
+
+Keep Marvin unpowered. A qualified operator and reviewer must prepare a
+separate, connector-specific inspection plan for hub `1-1.1.3` port 4 and the
+intended microphone harness. Before any inspection or continuity measurement,
+the plan must identify and remove all supplies and possible USB back-power,
+define how absence of voltage is independently verified, and identify the
+applicable wiring/harness revision.
+
+The de-energized inspection should:
+
+1. map the intended physical microphone connector and harness conductors to
+   `0451:2046` downstream port 4 using drawings, labels or continuity methods
+   approved for the disconnected assembly;
+2. inspect connector keying, pin support, contamination, crushed insulation,
+   cable damage, shorts between VBUS/ground/data/shield, and any repair history;
+3. record measured findings, instrument, limits and uncertainty without
+   energizing the hub or connecting the microphone; and
+4. obtain reviewer disposition of the over-current cause and any repair before
+   a new power-on plan is considered.
+
+No software command can clear this gate. Do not reconnect power, substitute a
+different internal connector, reset USB, disable protection or repeat
+enumeration until that physical work item is reviewed and explicitly
+authorized. A repaired or apparently clean connector would still require a new
+bounded power-on/topology plan; it would not authorize capture automatically.
 
 ## Upstream references
 
