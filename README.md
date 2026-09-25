@@ -150,6 +150,9 @@ another capture implementation. `status` is offline, `list` verifies only
 and a new mode-`0600` raw/WAV output. Before `arecord`, the selected ALSA card
 and capture PCM node must both resolve through `/sys/class/sound` beneath the
 reviewed `045e:fff0` USB device; ambiguity or ancestry mismatch is rejected.
+The output is registered with cleanup while SIGINT is blocked, so creation or
+write interruption removes the private reservation rather than leaving a
+partial file.
 The signed kernel override containing `d0199ae` and the exact-device `FILL_MAX`
 quirk remains mandatory.
 

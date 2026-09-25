@@ -245,7 +245,7 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
             return set()
 
         with patch.object(
-                marvin_camera.signal, "pthread_sigmask",
+                marvin_camera.marvin_paths.signal, "pthread_sigmask",
                 side_effect=interrupt_after_destination_create):
             capture("destination-boundary.jpg")
 
@@ -256,7 +256,7 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
             return real_open(path, flags, mode)
 
         with patch.object(
-                marvin_camera.os, "open",
+                marvin_camera.marvin_paths.os, "open",
                 side_effect=interrupt_during_stage_create):
             capture("stage-during.jpg")
 
@@ -270,7 +270,7 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
             return set()
 
         with patch.object(
-                marvin_camera.signal, "pthread_sigmask",
+                marvin_camera.marvin_paths.signal, "pthread_sigmask",
                 side_effect=interrupt_after_stage_create):
             capture("stage-after.jpg")
 

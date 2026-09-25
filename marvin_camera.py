@@ -3,11 +3,10 @@
 import os
 import re
 import secrets
-import signal
 from pathlib import Path
 import subprocess
 
-from tools.marvin_paths import new_output_path
+from tools import marvin_paths
 
 
 USB_ID = ("045e", "0721")
@@ -112,7 +111,7 @@ def capture(output, *, run=False, expected_usb_path=None,
         raise ValueError(
             "Live camera capture requires privacy_confirmed=True after confirming "
             "no bystanders or unintended private material are in view.")
-    destination = new_output_path(output)
+    destination = marvin_paths.new_output_path(output)
     if destination.suffix.lower() not in (".jpg", ".jpeg"):
         raise ValueError("Camera output must be a new .jpg or .jpeg file.")
     owned = {
@@ -123,7 +122,7 @@ def capture(output, *, run=False, expected_usb_path=None,
     }
     finalized = False
     try:
-        _create_private(destination, owned, "destination")
+        marvin_paths.create_private_output(destination, owned, "destination")
         destination_fd = owned["destination_fd"]
         owned["destination_fd"] = None
         os.close(destination_fd)
@@ -165,7 +164,7 @@ def capture(output, *, run=False, expected_usb_path=None,
                 f"ffmpeg returned {len(frame)} bytes; limit is {MAX_CAPTURE_BYTES}.")
         stage = destination.with_name(
             f".{destination.name}.{secrets.token_hex(16)}.tmp")
-        _create_private(stage, owned, "stage")
+        marvin_paths.create_private_output(stage, owned, "stage")
         stage_fd = owned["stage_fd"]
         owned["stage_fd"] = None
         stream = os.fdopen(stage_fd, "wb")
@@ -203,22 +202,6 @@ def _validated_usb_path(value):
             "Live camera access requires an exact physical USB path such as "
             "1-1.2.3; device nodes and descriptive labels are not accepted.")
     return value
-
-
-def _create_private(path, owned, name):
-    """Register a private file with outer cleanup before restoring SIGINT."""
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    old_mask = None
-    try:
-        if hasattr(signal, "pthread_sigmask"):
-            old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
-        owned[f"{name}_fd"] = os.open(path, flags, 0o600)
-        owned[f"{name}_path"] = Path(path)
-    finally:
-        if old_mask is not None:
-            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
 
 
 def _read(path):

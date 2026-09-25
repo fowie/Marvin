@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 
-from tools.marvin_paths import new_output_path
+from tools import marvin_paths
 
 
 USB_ID = "045e:fff0"
@@ -170,7 +170,7 @@ def capture(output, *, device, duration_seconds, max_bytes, file_type,
     limit = expected_bytes(duration_seconds, file_type)
     if type(max_bytes) is not int or max_bytes != limit:
         raise ValueError(f"max_bytes must equal the exact bound {limit}.")
-    destination = new_output_path(output)
+    destination = marvin_paths.new_output_path(output)
     device_info = list_device(
         device=device, run=True, read_text=read_text, runner=runner,
         kernel_release=kernel_release, path_exists=path_exists,
@@ -192,16 +192,20 @@ def capture(output, *, device, duration_seconds, max_bytes, file_type,
         raise MicrophoneError(message or f"arecord exited {result.returncode}")
     if len(result.stdout) != limit:
         raise MicrophoneError(f"Capture returned {len(result.stdout)} bytes; expected exactly {limit}.")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(destination, flags, 0o600)
+    owned = {"output_fd": None, "output_path": None}
+    finalized = False
     try:
-        with os.fdopen(fd, "wb") as stream:
+        marvin_paths.create_private_output(destination, owned, "output")
+        stream = os.fdopen(owned["output_fd"], "wb")
+        owned["output_fd"] = None
+        with stream:
             stream.write(result.stdout)
-    except BaseException:
-        destination.unlink(missing_ok=True)
-        raise
+        finalized = True
+    finally:
+        if owned["output_fd"] is not None:
+            os.close(owned["output_fd"])
+        if owned["output_path"] is not None and not finalized:
+            owned["output_path"].unlink(missing_ok=True)
     return device_info | {
         "status": "captured",
         "output": str(destination),

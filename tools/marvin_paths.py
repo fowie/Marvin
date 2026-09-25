@@ -3,6 +3,7 @@
 import errno
 import os
 from pathlib import Path
+import signal
 import stat
 
 
@@ -48,3 +49,19 @@ def new_output_path(output, *, allow_missing_parents=False):
     except FileNotFoundError:
         return path
     raise FileExistsError(errno.EEXIST, "Output already exists; captures are never overwritten or resumed.", str(path))
+
+
+def create_private_output(path, owned, name):
+    """Register an exclusive private file with cleanup before restoring SIGINT."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    old_mask = None
+    try:
+        if hasattr(signal, "pthread_sigmask"):
+            old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        owned[f"{name}_fd"] = os.open(path, flags, 0o600)
+        owned[f"{name}_path"] = Path(path)
+    finally:
+        if old_mask is not None:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)

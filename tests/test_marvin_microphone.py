@@ -137,6 +137,64 @@ class MicrophoneTests(unittest.TestCase):
                 path_exists=lambda path: True, resolve_path=self.resolve_path)
         self.assertFalse((self.root / "failed.pcm").exists())
 
+    def test_capture_creation_and_write_interrupts_leave_no_output(self):
+        limit = microphone.expected_bytes(1, "raw")
+        listing = subprocess.CompletedProcess(
+            [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
+        captured = subprocess.CompletedProcess([], 0, b"\1" * limit, b"")
+
+        def capture(name):
+            output = self.root / name
+            with self.assertRaises(KeyboardInterrupt):
+                microphone.capture(
+                    output, device=microphone.ALSA_DEVICE,
+                    duration_seconds=1, max_bytes=limit, file_type="raw",
+                    run=True, authorize_audio_capture=True,
+                    read_text=self.read_text,
+                    runner=Mock(side_effect=[listing, captured]),
+                    path_exists=lambda path: True,
+                    resolve_path=self.resolve_path)
+            self.assertFalse(output.exists())
+
+        mask_calls = 0
+
+        def interrupt_after_create(how, mask):
+            nonlocal mask_calls
+            mask_calls += 1
+            if mask_calls == 2:
+                raise KeyboardInterrupt
+            return set()
+
+        with patch.object(
+                microphone.marvin_paths.signal, "pthread_sigmask",
+                side_effect=interrupt_after_create):
+            capture("after-create.pcm")
+
+        with patch.object(
+                microphone.marvin_paths.os, "open",
+                side_effect=KeyboardInterrupt):
+            capture("during-create.pcm")
+
+        real_fdopen = microphone.os.fdopen
+
+        class InterruptedStream:
+            def __init__(self, fd, mode):
+                self.stream = real_fdopen(fd, mode)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.stream.close()
+
+            def write(self, data):
+                raise KeyboardInterrupt
+
+        with patch.object(
+                microphone.os, "fdopen",
+                side_effect=lambda fd, mode: InterruptedStream(fd, mode)):
+            capture("during-write.pcm")
+
     def test_cli_rejects_unbounded_or_unconsented_capture(self):
         for args in (
             ["capture", "--device", microphone.ALSA_DEVICE, "--duration", "5",
