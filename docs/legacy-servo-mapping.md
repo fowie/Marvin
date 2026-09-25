@@ -500,11 +500,13 @@ unique CRC-valid correlated empty raw-`82` response. Restore started
 are empty, and usbmon completed.
 
 That establishes protocol restoration to the aggregate baseline. Separately,
-the operator observed the camera visibly move and return, then physically
-powered Marvin off. The displacement was too small to classify as up or down.
-The operator observation establishes physical movement and return for this
-bounded decrement; it remains distinct from protocol evidence and does not
-establish direction, calibrated angle, full range or generic application ACK.
+the operator observed the connected servo visibly move and return, then
+physically powered Marvin off. The displacement was too small to classify.
+The operator observation establishes physical servo movement and return for
+this bounded decrement; it remains distinct from protocol evidence and does
+not establish camera tilt, direction, calibrated angle, full range or generic
+application ACK. No camera linkage was installed, so mechanical-frame
+attribution is unavailable.
 
 The passive J24 waveform contains the checksum-valid packet:
 
@@ -516,8 +518,8 @@ This is Protocol 1.0 WRITE to ID 2, Goal Position address `1E` hex, value
 `0330` hex (`816`), checksum `A4`. It matches `2450 // 3 = 816`. Together
 with the earlier `2490 -> 830` and `2500 -> 833` captures, this proves the
 installed controller's positive tested-value truncating division by three and
-the word-0/J24 front-camera control path for this bounded decrement. The later
-`FF FF` prefix is incomplete and unattributed.
+the word-0/J24 connected-servo control path for this bounded decrement. The
+later `FF FF` prefix is incomplete and unattributed.
 
 The top-level manifest verified and has SHA-256
 `43ee06c94cad5d89202b895bc9dad078efe2ecb8250e5a66775b83e115a0bfa8`.
@@ -605,18 +607,22 @@ That sealed execution used the former literal
 the transcript and evidence are unchanged. The future-facing literal above
 was renamed only to remove the disproved calibration claim.
 
-The operator independently observed that decreasing word 0 from 2500 to 2450
-tilted the front camera **downward**, then returned it. Observed displacement
-was approximately 0.5 degrees. This corrects the prior assumed five-degree
-label by roughly 10x for this one bounded observation, but is operator-observed
-approximate calibration only: it does not prove precision, linearity, endpoint
-behavior or the full range. Marvin physical power-off was confirmed.
+The operator independently observed approximately 0.5 degrees of servo
+movement and return while decreasing word 0 from 2500 to 2450, and described
+the motion as downward in the test frame. No camera linkage was installed, so
+that description does not establish camera upward/downward tilt and cannot be
+reconciled to a servo-output clockwise/counterclockwise direction without a
+defined viewing frame. The displacement corrects the prior assumed
+five-degree label by roughly 10x for this one bounded observation, but is
+operator-observed approximate servo calibration only: it does not prove
+precision, linearity, endpoint behavior or the full range. Marvin physical
+power-off was confirmed.
 
 The sealed run manifest verified and has SHA-256
 `61bf0a5baa9c6cc9fd74bc9a4d54c931a184aca480ab64db19e5ea19ad29c068`.
 No further hardware action is authorized by this result.
 
-### Offline-only word-0 100-unit characterization
+### Word-0 100-unit characterization
 
 The next named profile reuses the validated direction-profile machinery with
 one fixed larger decrement only:
@@ -674,14 +680,38 @@ Their concatenated SHA-256 is
 `08003ccf126ca7479ef7857e686272e6e1e40a321ccf129e5952732a6e8911fa`.
 If the proved positive integer division continues at this input, expected AX
 Goal Position is `2400 // 3 = 800`, 33 counts below observed baseline 833
-(approximately 9.7 actuator degrees under AX-12 units). Extrapolating the
-operator-observed 50-unit camera displacement suggests roughly 1 camera degree,
-but that is only a characterization hypothesis, not a promise, precision
-calibration, linearity claim or full-range proof.
+(approximately 9.7 actuator degrees under AX-12 units). Before execution,
+extrapolating the operator-observed 50-unit servo displacement suggested
+roughly 1 degree of servo-output movement, but that was only a characterization
+hypothesis, not a promise, precision calibration, linearity claim or full-range
+proof.
 
 The CLI exposes no arbitrary values, larger delta, timing control, retry,
-reconnect, calibration, reset or power command. This profile has not been run
-and is not standing authorization.
+reconnect, calibration, reset or power command.
+
+One separately authorized execution completed with status
+`front_camera_servo_word0_100_unit_complete_protocol_only`. It retained 48
+accepted and zero uncertain TX bytes across four submissions. Actual hold from
+clean correlated setter-response end to restore start was `0.250208296`
+seconds, and setter-to-restore start was `0.269347429` seconds. Restore had one
+unique correlated raw-`82` empty-payload response, and the final getter
+returned `[2500,2730]`. Protocol restoration is established.
+
+The operator observed that decreasing word 0 from 2500 to 2400 rotated the
+servo output approximately 1 degree clockwise in the observed test frame,
+then returned it. No camera linkage was installed, so this establishes only
+operator-observed servo-output direction and approximate calibration for that
+setup: -100 legacy units was approximately 1 degree clockwise. It does not
+establish camera upward/downward tilt, precision, linearity, endpoint behavior
+or full range. The earlier 50-unit “downward” description used a different,
+undefined mechanical frame and is therefore retained only as an ambiguous
+operator description, not a contradictory camera-direction result. Marvin
+physical power-off was confirmed.
+
+The sealed run manifest verified and has SHA-256
+`556b0225ded01a7a0f313a80bb34d077ff60a354f22167887c989315f2ce0499`.
+This completed execution is not standing authorization, and no further
+hardware action is authorized by it.
 
 ## Historically named word-1 50-unit diagnostic
 
@@ -695,8 +725,9 @@ reconnect or resume controls.
 The two one-degree runs' lack of visible motion and the first word-0
 five-degree run's audible engagement without visible movement remain external
 evidence only. The later successful fixed word-0 run independently established
-bounded camera movement and return plus complete protocol restoration, but not
-movement direction. It does not prove word-1 routing.
+bounded connected-servo movement and return plus complete protocol restoration,
+but not camera tilt or a mechanically framed direction. It does not prove
+word-1 routing.
 
 Historically named word-1 50-unit dry run:
 
