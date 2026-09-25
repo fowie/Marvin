@@ -293,9 +293,10 @@ dwell, word, command, stop, calibration, reset, flash or power-state option.
 Its historical reviewed profile was authorized under an operator declaration
 that the one physically connected front-camera actuator was AX-12+, with the
 projector servo disconnected: getter baseline
-`[2500,2730]`, one setter `[2490,2730]`, at most 0.25 seconds of observation,
-one complete `[2500,2730]` restore attempt, then one verification getter only
-after a correlated restore response. Raw response status is retained as an
+`[2500,2730]`, one setter `[2490,2730]`, one complete `[2500,2730]` restore
+attempt required to start within 0.25 seconds of setter start (a maximum
+restore deadline, not a dwell), then one verification getter only after a
+correlated restore response. Raw response status is retained as an
 observed field and is not called generic success. Protocol agreement never
 proves physical motion or restoration.
 
@@ -530,6 +531,65 @@ The independently verified scope SHA-256 values are:
   `eb6137b79d0b998e56d85bd375b11c4279b9eae62462e4dd10dadd363f744b52`.
 
 No further hardware action is authorized by this result.
+
+### Offline-only word-0 direction diagnostic
+
+The older profiles' `0.250` value is a maximum setter-start-to-restore-prewrite
+deadline, not an actual dwell. The successful run restored only 81.007
+microseconds after setter start, which explains why movement and return were
+visible but direction was too small to classify.
+
+The separately named offline-default direction profile reuses exactly the
+proved `[2500,2730] -> [2450,2730] -> [2500,2730]` transcript. Its hold starts
+at the end timestamp of one clean correlated setter response. It performs a
+full identity check after that response, captures throughout the hold, and
+targets restore exactly 0.250 seconds after the boundary. Restore start may be
+at most 0.010 seconds late. Because setter correlation itself has a 0.500-second
+bound, the maximum setter-start-to-restore-start exposure is 0.760 seconds. A
+scheduling overrun fails the run and still makes the one mandatory restore
+attempt. Interruption or any hold error skips the remaining hold and enters
+that restore path immediately. Verification remains conditional on one unique
+clean correlated restore response.
+
+Dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-direction-diagnostic
+```
+
+Reviewed live template for a future separately authorized execution:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-direction-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEWDIR \
+  --operator-present --robot-secured \
+  --independent-actuator-cutoff-ready \
+  --drive-and-other-actuators-inactive \
+  --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
+  --front-camera-servo-is-ax12-plus \
+  --unprivileged-usbmon \
+  --operator-confirmed-word0-five-degree-direction-observation-clearance \
+  --exact-profile-baseline-2500-2730-target-2450-2730-actual-hold-0-250-seconds \
+  --acknowledge-maximum-setter-to-restore-0-760-seconds \
+  --authorize-single-legacy-1e-front-camera-word0-direction-diagnostic-command
+```
+
+The immutable requests are:
+
+```text
+53b40d1d000000531c45
+53b50d1e0004009209aa0ac2cb45
+53b60d1e000400c409aa0a234c45
+53b70d1d000000532f45
+```
+
+Their concatenated SHA-256 is
+`64efc52b59c6741af201718ec39b48e1475e40ae3630c4e3cafa510f52a3d92b`.
+The CLI exposes no larger delta, arbitrary target/dwell/range, retry,
+reconnect, calibration, reset or power command. This template is not live
+authorization and has not been executed.
 
 ## Fixed word-1 five-degree diagnostic
 

@@ -34,7 +34,12 @@ WORD1_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD1_FIVE_DEGREE_TARGET)
 FIRST_SEQUENCE = 3500
 DWELL_SECONDS = 0.250
+DIRECTION_HOLD_SECONDS = 0.250
+MAX_DIRECTION_HOLD_OVERRUN_SECONDS = 0.010
 RESPONSE_SECONDS = 0.500
+MAX_DIRECTION_SETTER_TO_RESTORE_SECONDS = (
+    RESPONSE_SECONDS + DIRECTION_HOLD_SECONDS
+    + MAX_DIRECTION_HOLD_OVERRUN_SECONDS)
 OVERALL_SECONDS = 8
 CLEANUP_RESERVE_SECONDS = 2
 SUCCESS = "front_camera_servo_mapping_complete_protocol_only"
@@ -99,14 +104,40 @@ WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS = (
     "exact_profile_baseline_2500_2730_target_2500_2680_word1_five_degree_dwell_0_25_seconds",
     "authorize_single_legacy_1e_front_camera_word1_five_degree_diagnostic_command",
 )
+DIRECTION_ACKNOWLEDGMENTS = (
+    *COMMON_ACKNOWLEDGMENTS,
+    "operator_confirmed_word0_five_degree_direction_observation_clearance",
+    "exact_profile_baseline_2500_2730_target_2450_2730_actual_hold_0_250_seconds",
+    "acknowledge_maximum_setter_to_restore_0_760_seconds",
+    "authorize_single_legacy_1e_front_camera_word0_direction_diagnostic_command",
+)
 
 
-def _profile(word1_hypothesis, word0_five_degree, word1_five_degree):
+def _profile(
+        word1_hypothesis, word0_five_degree, word1_five_degree,
+        word0_direction=False):
     if any(type(value) is not bool for value in (
-            word1_hypothesis, word0_five_degree, word1_five_degree)):
+            word1_hypothesis, word0_five_degree, word1_five_degree,
+            word0_direction)):
         raise ValueError("Fixed profile selections must be literal booleans.")
-    if sum((word1_hypothesis, word0_five_degree, word1_five_degree)) > 1:
+    if sum((
+            word1_hypothesis, word0_five_degree, word1_five_degree,
+            word0_direction)) > 1:
         raise ValueError("Select exactly one fixed front-servo diagnostic mode.")
+    if word0_direction:
+        return {
+            "name": "word0-direction-diagnostic",
+            "word": 0,
+            "target": WORD0_FIVE_DEGREE_TARGET,
+            "target_payload": WORD0_FIVE_DEGREE_TARGET_PAYLOAD,
+            "delta": -50,
+            "steps": WORD0_FIVE_DEGREE_STEPS,
+            "transcript": WORD0_FIVE_DEGREE_TRANSCRIPT,
+            "acknowledgments": DIRECTION_ACKNOWLEDGMENTS,
+            "success": "front_camera_servo_word0_direction_complete_protocol_only",
+            "first_sequence": FIRST_SEQUENCE + 8,
+            "mode_flag": "--word0-direction-diagnostic",
+        }
     if word1_five_degree:
         return {
             "name": "word1-five-degree-diagnostic",
@@ -165,9 +196,10 @@ def _profile(word1_hypothesis, word0_five_degree, word1_five_degree):
 
 
 def prepare(*, word1_hypothesis=False, word0_five_degree=False,
-            word1_five_degree=False):
+            word1_five_degree=False, word0_direction=False):
     profile = _profile(
-        word1_hypothesis, word0_five_degree, word1_five_degree)
+        word1_hypothesis, word0_five_degree, word1_five_degree,
+        word0_direction)
     expected = (
         (profile["first_sequence"], 0x1D, b""),
         (profile["first_sequence"] + 1, 0x1E, profile["target_payload"]),
@@ -221,8 +253,9 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
                 "usbmon_dropped": 0,
                 "post_run_operator_report": "marvin_off_and_host_usb_disconnected",
                 "classification": "external_evidence_not_channel_proof",
-            }} if word0_five_degree or word1_five_degree else {}),
-        }} if word1_hypothesis or word0_five_degree or word1_five_degree else {}),
+            }} if word0_five_degree or word1_five_degree or word0_direction else {}),
+        }} if (word1_hypothesis or word0_five_degree or word1_five_degree
+               or word0_direction) else {}),
         **({"external_word0_five_degree_observation": {
             "operator_report": "no_visible_movement_and_audible_servo_engagement",
             "protocol_baseline_words_uint16": list(BASELINE),
@@ -237,8 +270,17 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             "50 legacy UI units equals 5 degrees on the declared AX-12+ scale "
             "and remains within 0..3000; this does not establish mechanical "
             "safety, which requires the separate operator clearance confirmation"
-        )} if word0_five_degree or word1_five_degree else {}),
-        "observation_seconds": DWELL_SECONDS,
+        )} if word0_five_degree or word1_five_degree or word0_direction else {}),
+        "observation_seconds": (
+            DIRECTION_HOLD_SECONDS if word0_direction else DWELL_SECONDS),
+        "observation_timing_semantics": (
+            "actual hold from clean correlated setter response end; restore target "
+            "0.250 seconds later with 0.010-second maximum scheduling overrun"
+            if word0_direction else
+            "maximum setter-start-to-restore-prewrite deadline; not an actual dwell"
+        ),
+        **({"maximum_setter_to_restore_seconds":
+            MAX_DIRECTION_SETTER_TO_RESTORE_SECONDS} if word0_direction else {}),
         "post_restore_response_observation_seconds": RESPONSE_SECONDS,
         "overall_deadline_seconds": OVERALL_SECONDS,
         "immutable_application_transcript_hex": [
@@ -360,6 +402,12 @@ class _Word1FiveDegreeTransport(_Transport):
     success = "front_camera_servo_word1_five_degree_complete_protocol_only"
 
 
+class _Word0DirectionTransport(_Transport):
+    steps = WORD0_FIVE_DEGREE_STEPS
+    success = "front_camera_servo_word0_direction_complete_protocol_only"
+    direction_hold = True
+
+
 def _submit(transport, report, step, *, deadline):
     raw = transport.steps[step]
     report["uncertain_tx_bytes"] += len(raw)
@@ -420,6 +468,7 @@ class _SetRestoreEvidence:
         self.last_bounds = None
         self.events = []
         self.seen = {"set": 0, "restore": 0}
+        self.clean_ended = {}
         self.expected = {
             (decode_packet(transport.steps[step]).sequence, 0x1E): step
             for step in self.seen
@@ -461,10 +510,11 @@ class _SetRestoreEvidence:
                 if step is None:
                     labels.append("unexpected_command_or_sequence")
                 else:
-                    submitted = self.report[
+                    submitted = self.report.get(
                         "setter_prewrite_monotonic"
-                        if step == "set" else "restore_prewrite_monotonic"]
-                    if started is None or started <= submitted:
+                        if step == "set" else "restore_prewrite_monotonic")
+                    if (started is None or submitted is None
+                            or started <= submitted):
                         labels.append("prewrite_or_ambiguous")
                     if ended is None or ended >= self.deadline or now >= self.deadline:
                         labels.append("late")
@@ -479,6 +529,7 @@ class _SetRestoreEvidence:
                     if len(labels) == 1:
                         labels.append("correlated_command_sequence_only")
                         self.seen[step] += 1
+                        self.clean_ended[step] = ended
             clean = labels == [
                 "unverified_shape_and_semantics",
                 "correlated_command_sequence_only",
@@ -512,8 +563,11 @@ class _SetRestoreEvidence:
                 f"Unclean set/restore response evidence: {faults[0]}")
 
 
-def _set_restore_responses(transport, report, *, deadline, clock=time.monotonic):
-    evidence = _SetRestoreEvidence(transport, report, deadline)
+def _set_restore_responses(
+        transport, report, *, deadline, evidence=None, clock=time.monotonic):
+    if evidence is None:
+        evidence = _SetRestoreEvidence(transport, report, deadline)
+    evidence.deadline = deadline
     for _ in range(4096):
         if clock() >= deadline:
             break
@@ -530,6 +584,59 @@ def _set_restore_responses(transport, report, *, deadline, clock=time.monotonic)
         raise OSError("Set/restore response observation iteration budget exhausted.")
     evidence.finish(clock())
     return evidence.seen
+
+
+def _direction_hold(
+        transport, report, evidence, *, deadline, clock=time.monotonic):
+    response_deadline = min(
+        deadline, transport.setter_write_started + RESPONSE_SECONDS)
+    evidence.deadline = response_deadline
+    for _ in range(4096):
+        if evidence.seen["set"] == 1:
+            break
+        if clock() >= response_deadline:
+            raise OSError("No clean correlated setter response before direction hold.")
+        transport.ingress.pump()
+        remaining = response_deadline - clock()
+        if remaining <= 0:
+            continue
+        readable, _, _ = select.select(
+            [transport.fd], [], [], min(0.005, remaining))
+        if readable:
+            evidence.feed(
+                transport.read_response(512, deadline=response_deadline), clock())
+    else:
+        raise OSError("Direction setter response iteration budget exhausted.")
+    hold_start = evidence.clean_ended["set"]
+    hold_target = hold_start + DIRECTION_HOLD_SECONDS
+    hold_maximum = hold_target + MAX_DIRECTION_HOLD_OVERRUN_SECONDS
+    if hold_maximum > deadline:
+        raise OSError("Direction hold cannot fit before the cleanup deadline.")
+    report.update(
+        requested_hold_seconds=DIRECTION_HOLD_SECONDS,
+        hold_start_boundary="clean_correlated_setter_response_end",
+        hold_start_monotonic=hold_start,
+        hold_target_monotonic=hold_target,
+        hold_maximum_restore_start_monotonic=hold_maximum,
+    )
+    transport.identity(deadline=hold_maximum)
+    report["restore_identity_validated_after_setter"] = True
+    for _ in range(4096):
+        if clock() >= hold_target:
+            break
+        transport.ingress.pump()
+        remaining = hold_target - clock()
+        if remaining <= 0:
+            break
+        readable, _, _ = select.select(
+            [transport.fd], [], [], min(0.005, remaining))
+        if readable:
+            evidence.feed(
+                transport.read_response(512, deadline=hold_target), clock())
+    else:
+        raise OSError("Direction hold iteration budget exhausted.")
+    if clock() > hold_maximum:
+        raise OSError("Direction hold exceeded its maximum scheduling overrun.")
 
 
 def _observe(transport, report, *, clock=time.monotonic):
@@ -554,19 +661,34 @@ def _observe(transport, report, *, clock=time.monotonic):
     )
     primary = None
     final_errors = []
+    direction_evidence = None
     try:
         if transport.revalidate(deadline=active_deadline) != transport.token:
             raise OSError("Fresh transport identity differs from the pinned connection.")
         _submit(transport, report, "baseline", deadline=active_deadline)
         _response(transport, report, "baseline", deadline=active_deadline, clock=clock)
-        print(
+        print((
+            "OBSERVE_FRONT_CAMERA_TILT_ONLY_NOW: report direction separately; "
+            "0.250-second post-response hold, maximum 0.760 seconds from setter "
+            "start to restore start; independent cutoff is primary."
+            if getattr(transport, "direction_hold", False) else
             "OBSERVE_FRONT_CAMERA_TILT_ONLY_NOW: report physical motion separately; "
-            "fixed 0.25-second maximum; independent cutoff is primary; restore follows.",
+            "0.250-second maximum restore deadline, not a dwell; independent "
+            "cutoff is primary; restore follows."
+        ),
             file=sys.stderr,
             flush=True,
         )
+        if getattr(transport, "direction_hold", False):
+            transport.identity(deadline=active_deadline)
         _submit(transport, report, "set", deadline=active_deadline)
         report["setter_prewrite_monotonic"] = transport.setter_write_started
+        if getattr(transport, "direction_hold", False):
+            direction_evidence = _SetRestoreEvidence(
+                transport, report, active_deadline)
+            _direction_hold(
+                transport, report, direction_evidence,
+                deadline=active_deadline, clock=clock)
     except BaseException as error:
         primary = error
         report.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
@@ -578,15 +700,38 @@ def _observe(transport, report, *, clock=time.monotonic):
                 if type(setter_started) not in (int, float):
                     raise OSError("Setter prewrite boundary is unavailable for restore.")
                 report["setter_prewrite_monotonic"] = setter_started
-                restore_deadline = setter_started + DWELL_SECONDS
+                restore_deadline = (
+                    report["hold_maximum_restore_start_monotonic"]
+                    if direction_evidence is not None
+                    and "hold_maximum_restore_start_monotonic" in report
+                    else setter_started + DWELL_SECONDS)
                 report["restore_prewrite_deadline_monotonic"] = restore_deadline
+                if (getattr(transport, "direction_hold", False)
+                        and not report.get(
+                            "restore_identity_validated_after_setter", False)):
+                    try:
+                        transport.identity(
+                            deadline=min(active_deadline, restore_deadline))
+                        report["restore_identity_validated_after_setter"] = True
+                    except BaseException as error:
+                        report["restore_identity_validation_error"] = (
+                            f"{type(error).__name__}: {error}"[:1024])
+                        final_errors.append(("restore_identity", error))
                 _submit(transport, report, "restore", deadline=restore_deadline)
                 report["restore_prewrite_monotonic"] = transport.last_write_started
+                if getattr(transport, "direction_hold", False):
+                    hold_start = report.get("hold_start_monotonic")
+                    if type(hold_start) in (int, float):
+                        report["actual_hold_seconds"] = (
+                            transport.last_write_started - hold_start)
+                        report["hold_within_maximum"] = (
+                            transport.last_write_started <= restore_deadline)
                 response_deadline = min(
                     overall_deadline,
                     transport.last_write_started + RESPONSE_SECONDS)
                 seen = _set_restore_responses(
-                    transport, report, deadline=response_deadline, clock=clock)
+                    transport, report, deadline=response_deadline,
+                    evidence=direction_evidence, clock=clock)
                 transport.restore_correlated = seen["restore"] == 1
                 if seen["set"] != 1:
                     final_errors.append((
@@ -607,7 +752,8 @@ def _observe(transport, report, *, clock=time.monotonic):
                         final_errors.append((
                             "restore_bound",
                             OSError(
-                                "Restore started after the 0.25-second setter bound."),
+                                "Restore started after its fixed profile deadline "
+                                f"{restore_deadline:.9f}."),
                         ))
         if transport.restore_correlated:
             try:
@@ -650,10 +796,11 @@ def _observe(transport, report, *, clock=time.monotonic):
 
 def run_diagnostic(output, *, expected_physical_port, run=False,
                    word1_hypothesis=False, word0_five_degree=False,
-                   word1_five_degree=False,
+                   word1_five_degree=False, word0_direction=False,
                    **acknowledgments):
     profile = _profile(
-        word1_hypothesis, word0_five_degree, word1_five_degree)
+        word1_hypothesis, word0_five_degree, word1_five_degree,
+        word0_direction)
     required = profile["acknowledgments"]
     if run is not True or set(acknowledgments) != set(required):
         raise ValueError("Literal --run and the complete fixed front-servo scope are required.")
@@ -665,9 +812,11 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         review=prepare(
             word1_hypothesis=word1_hypothesis,
             word0_five_degree=word0_five_degree,
-            word1_five_degree=word1_five_degree),
+            word1_five_degree=word1_five_degree,
+            word0_direction=word0_direction),
         transport_type=(
-            _Word1FiveDegreeTransport if word1_five_degree
+            _Word0DirectionTransport if word0_direction
+            else _Word1FiveDegreeTransport if word1_five_degree
             else _Word0FiveDegreeTransport if word0_five_degree
             else _Word1Transport if word1_hypothesis else _Transport),
         observe=_observe,
@@ -678,6 +827,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             "_front_servo_word1_mapper": word1_hypothesis,
             "_front_servo_word0_five_degree_mapper": word0_five_degree,
             "_front_servo_word1_five_degree_mapper": word1_five_degree,
+            "_front_servo_word0_direction_mapper": word0_direction,
         },
         declarations={"operator_declarations": dict(acknowledgments)},
         expected_tx=lambda report: report["accepted_tx_bytes"],
@@ -686,6 +836,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         authorizations={
             ("single_legacy_1e_front_camera_word1_five_degree_authorized"
              if word1_five_degree
+             else "single_legacy_1e_front_camera_word0_direction_authorized"
+             if word0_direction
              else "single_legacy_1e_front_camera_word0_five_degree_authorized"
              if word0_five_degree
              else "single_legacy_1e_front_camera_word1_hypothesis_authorized"
@@ -702,18 +854,20 @@ def main(argv=None):
     modes.add_argument("--word1-front-camera-hypothesis", action="store_true")
     modes.add_argument("--word0-five-degree-diagnostic", action="store_true")
     modes.add_argument("--word1-five-degree-diagnostic", action="store_true")
+    modes.add_argument("--word0-direction-diagnostic", action="store_true")
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--output", type=Path)
     all_acknowledgments = tuple(dict.fromkeys(
         (*ACKNOWLEDGMENTS, *WORD1_ACKNOWLEDGMENTS,
          *WORD0_FIVE_DEGREE_ACKNOWLEDGMENTS,
-         *WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS)))
+         *WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS,
+         *DIRECTION_ACKNOWLEDGMENTS)))
     for name in all_acknowledgments:
         parser.add_argument("--" + name.replace("_", "-"), action="store_true")
     args = parser.parse_args(argv)
     profile = _profile(
         args.word1_front_camera_hypothesis, args.word0_five_degree_diagnostic,
-        args.word1_five_degree_diagnostic)
+        args.word1_five_degree_diagnostic, args.word0_direction_diagnostic)
     acknowledgments = {
         name: getattr(args, name) for name in profile["acknowledgments"]}
     unused_acknowledgments = set(all_acknowledgments) - set(profile["acknowledgments"])
@@ -726,7 +880,8 @@ def main(argv=None):
             result = prepare(
                 word1_hypothesis=args.word1_front_camera_hypothesis,
                 word0_five_degree=args.word0_five_degree_diagnostic,
-                word1_five_degree=args.word1_five_degree_diagnostic)
+                word1_five_degree=args.word1_five_degree_diagnostic,
+                word0_direction=args.word0_direction_diagnostic)
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
@@ -737,6 +892,7 @@ def main(argv=None):
                 word1_hypothesis=args.word1_front_camera_hypothesis,
                 word0_five_degree=args.word0_five_degree_diagnostic,
                 word1_five_degree=args.word1_five_degree_diagnostic,
+                word0_direction=args.word0_direction_diagnostic,
                 **acknowledgments,
             )
     except (Exception, KeyboardInterrupt) as error:

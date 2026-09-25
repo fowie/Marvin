@@ -246,6 +246,7 @@ def run_session(
     _front_servo_word1_mapper=False,
     _front_servo_word0_five_degree_mapper=False,
     _front_servo_word1_five_degree_mapper=False,
+    _front_servo_word0_direction_mapper=False,
     _front_servo_getter=False,
     _front_servo_baseline_restore=False,
     motor_supply_off=False, motor_left_only_connected=False,
@@ -341,7 +342,8 @@ def run_session(
             _isolated_zero_velocity, _motor_power_off_preparation,
             _front_servo_mapper, _front_servo_word1_mapper,
             _front_servo_word0_five_degree_mapper,
-            _front_servo_word1_five_degree_mapper, _front_servo_getter,
+            _front_servo_word1_five_degree_mapper,
+            _front_servo_word0_direction_mapper, _front_servo_getter,
             _front_servo_baseline_restore)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     front_servo_profile = (
@@ -356,8 +358,11 @@ def run_session(
         raise ValueError("Five-degree front-servo mode requires the front-servo mapper.")
     if _front_servo_word1_five_degree_mapper and not _front_servo_mapper:
         raise ValueError("Word1 five-degree mode requires the front-servo mapper.")
+    if _front_servo_word0_direction_mapper and not _front_servo_mapper:
+        raise ValueError("Word0 direction mode requires the front-servo mapper.")
     if sum((_front_servo_word1_mapper, _front_servo_word0_five_degree_mapper,
-            _front_servo_word1_five_degree_mapper)) > 1:
+            _front_servo_word1_five_degree_mapper,
+            _front_servo_word0_direction_mapper)) > 1:
         raise ValueError("Front-servo fixed modes are mutually exclusive.")
     declarations = dict(
         powered_left_command_right_connected=powered_left_command_right_connected,
@@ -586,7 +591,8 @@ def run_session(
                 WORD1_FIVE_DEGREE_TRANSCRIPT
                 if _front_servo_word1_five_degree_mapper
                 else WORD0_FIVE_DEGREE_TRANSCRIPT
-                if _front_servo_word0_five_degree_mapper
+                if (_front_servo_word0_five_degree_mapper
+                    or _front_servo_word0_direction_mapper)
                 else WORD1_TRANSCRIPT if _front_servo_word1_mapper
                 else WORD0_TRANSCRIPT)
         elif powered_trial:
@@ -820,6 +826,8 @@ def run_session(
             metadata["probe_name"] = "LegacyFrontCameraServoWord0FiveDegree"
         if _front_servo_word1_five_degree_mapper:
             metadata["probe_name"] = "LegacyFrontCameraServoWord1FiveDegree"
+        if _front_servo_word0_direction_mapper:
+            metadata["probe_name"] = "LegacyFrontCameraServoWord0Direction"
         metadata["limitations"][2] = (
             "Kernel-open line transitions remain possible; mapping uses an unflushed raw tty.")
     if _front_servo_getter:

@@ -355,6 +355,25 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertIn(
             "--authorize-single-legacy-1e-front-camera-word1-five-degree-diagnostic-command",
             word1_five_degree["required"])
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(
+                mapper.main(["--word0-direction-diagnostic"]), 0)
+        direction = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (direction["fixed_mode"], direction["target_words_uint16"],
+             direction["observation_seconds"]),
+            ("word0-direction-diagnostic", [2450, 2730], .25))
+        self.assertIn(
+            "actual hold from clean correlated setter response end",
+            direction["observation_timing_semantics"])
+        self.assertEqual(direction["maximum_setter_to_restore_seconds"], .76)
+        self.assertIn(
+            "--authorize-single-legacy-1e-front-camera-word0-direction-diagnostic-command",
+            direction["required"])
+        self.assertIn(
+            "--acknowledge-maximum-setter-to-restore-0-760-seconds",
+            direction["required"])
         evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
         evidence_report = {
             "setter_prewrite_monotonic": 1.0,
@@ -455,6 +474,94 @@ class LegacyServoPlanTests(unittest.TestCase):
 
         def interrupted_response(transport, report, step, **kwargs):
             return response(transport, report, step, **kwargs)
+
+        hold_transport = Mock(
+            fd=99, ingress=Mock(), setter_write_started=.9)
+        hold_evidence = Mock(
+            seen={"set": 1}, clean_ended={"set": 1.0})
+        hold_report = {}
+        hold_clock = Mock(side_effect=(1.1, 1.2, 1.25, 1.25))
+        with patch.object(mapper.select, "select", return_value=([], [], [])):
+            mapper._direction_hold(
+                hold_transport, hold_report, hold_evidence,
+                deadline=2.0, clock=hold_clock)
+        hold_transport.identity.assert_called_once_with(deadline=1.26)
+        self.assertEqual(hold_report["requested_hold_seconds"], .25)
+        overrun_clock = Mock(side_effect=(1.1, 1.2, 1.27, 1.27))
+        with patch.object(mapper.select, "select", return_value=([], [], [])), \
+                self.assertRaisesRegex(OSError, "scheduling overrun"):
+            mapper._direction_hold(
+                Mock(fd=99, ingress=Mock(), setter_write_started=.9),
+                {}, hold_evidence,
+                deadline=2.0, clock=overrun_clock)
+
+        held = Transport()
+        held.steps = mapper.WORD0_FIVE_DEGREE_STEPS
+        held.success = "direction"
+        held.direction_hold = True
+        held.event = Mock()
+        held_deadlines = {}
+        submit = held.submit
+
+        def timed_submit(step, *, deadline):
+            held_deadlines[step] = deadline
+            result = submit(step, deadline=deadline)
+            if step == "restore":
+                held.last_write_started = 1.255
+            return result
+
+        def completed_hold(_transport, report, _evidence, **_):
+            report.update(
+                requested_hold_seconds=.25,
+                hold_start_monotonic=1.0,
+                hold_target_monotonic=1.25,
+                hold_maximum_restore_start_monotonic=1.26,
+                restore_identity_validated_after_setter=True,
+            )
+
+        held.submit = timed_submit
+        held_report = {}
+        with patch.object(mapper, "_response", side_effect=response), \
+                patch.object(mapper, "_direction_hold", side_effect=completed_hold), \
+                patch.object(
+                    mapper, "_set_restore_responses",
+                    return_value={"set": 1, "restore": 1}), \
+                redirect_stderr(io.StringIO()):
+            mapper._observe(held, held_report, clock=lambda: 0)
+        self.assertEqual(held_deadlines["restore"], 1.26)
+        self.assertAlmostEqual(held_report["actual_hold_seconds"], .255)
+        self.assertTrue(held_report["hold_within_maximum"])
+
+        for hold_error in (KeyboardInterrupt(), OSError("hold overrun")):
+            held = Transport()
+            held.steps = mapper.WORD0_FIVE_DEGREE_STEPS
+            held.success = "direction"
+            held.direction_hold = True
+            held.event = Mock()
+            with patch.object(mapper, "_response", side_effect=response), \
+                    patch.object(
+                        mapper, "_direction_hold", side_effect=hold_error), \
+                    patch.object(
+                        mapper, "_set_restore_responses",
+                        return_value={"set": 1, "restore": 1}), \
+                    redirect_stderr(io.StringIO()), \
+                    self.assertRaises(type(hold_error)):
+                mapper._observe(held, {}, clock=lambda: 0)
+            self.assertEqual(held.attempts[:3], ["baseline", "set", "restore"])
+            self.assertEqual(held.attempts.count("restore"), 1)
+
+        identity_blocked = Transport()
+        identity_blocked.steps = mapper.WORD0_FIVE_DEGREE_STEPS
+        identity_blocked.direction_hold = True
+        identity_blocked.identity = Mock(
+            side_effect=OSError("identity changed before setter"))
+        with patch.object(mapper, "_response", side_effect=response), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "identity changed before setter"):
+            mapper._observe(identity_blocked, {}, clock=lambda: 0)
+        self.assertEqual(identity_blocked.attempts, ["baseline"])
+        self.assertFalse(identity_blocked.nonzero_may_have_applied)
+        self.assertFalse(identity_blocked.restore_attempted)
 
         identity_changed = Transport()
         submit = identity_changed.submit
