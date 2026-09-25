@@ -20,6 +20,52 @@ are needed. Native serial-adapter tests use host-created PTYs with synthetic USB
 evidence, not robot devices. Installing dependencies may require network access;
 tests are offline.
 
+## Operator controls
+
+`marvin.Marvin` is the small public Python facade. `python -m marvin` provides
+the matching human-facing CLI. Both are offline by default:
+
+```sh
+python -m marvin --help
+python -m marvin status
+python -m marvin drive forward
+python -m marvin camera up 5
+python -m marvin camera center
+```
+
+Live actions require `--run`, the reviewed physical USB port, a new evidence
+directory, and `--confirm-safe-setup`. For example:
+
+```sh
+python -m marvin drive rotate-left \
+  --run --expected-physical-port 1-3 \
+  --output evidence/rotate-left-001 --confirm-safe-setup
+```
+
+Each live drive command is exactly one proved 0.25-second raw-PWM step and owns
+one mandatory all-zero cleanup attempt. Camera up is limited to the directly
+observed `2500 -> 2000` profile (approximately five degrees) and owns its
+`[2500,2730]` restore. Cleanup and restore run when an operation succeeds,
+fails, or receives Ctrl-C; write acceptance and protocol correlation still do
+not prove physical stop or restoration.
+
+There is deliberately no arbitrary command, PWM, duration, servo target or
+standalone live-stop escape hatch. `stop` reports that physical standalone-stop
+semantics are not established. Camera down reports that increasing word 0 is
+only an inferred inverse and has not been exercised with the installed linkage.
+Use the external cutoff whenever cleanup or restoration is reported uncertain.
+
+Python API:
+
+```python
+from marvin import Marvin
+
+robot = Marvin()                 # offline plans; no hardware access
+print(robot.status())
+print(robot.drive("forward"))
+print(robot.camera_up(5))
+```
+
 ## Confirmed findings and limits
 
 Eight guarded 10-byte requests covering six legacy `S`/`E` getters
