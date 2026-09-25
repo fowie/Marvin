@@ -786,10 +786,34 @@ If the observed positive integer division continues, expected AX Goal Position
 is `2000 // 3 = 666`, 167 counts below baseline 833. Extrapolating the directly
 observed -100-unit clockwise servo output and the subsequently installed
 linkage's clockwise-to-upward mapping suggests approximately 5 degrees upward,
-but this is a hypothesis, not precision calibration, linearity, endpoint or
-full-range proof. The CLI exposes no arbitrary target, delta, dwell, sequence,
-retry, reconnect or unattended count. This profile has not been run and is not
-standing authorization.
+but this was a pre-run hypothesis, not precision calibration, linearity,
+endpoint or full-range proof. The CLI exposes no arbitrary target, delta,
+dwell, sequence, retry, reconnect or unattended count.
+
+One separately authorized installed-camera execution then completed exactly one
+`RUN` followed by `END`, with no retry, second run or successor command. The
+sealed host evidence records 48 accepted and zero uncertain TX bytes across
+four submissions; baseline and final getters both returned `[2500,2730]`;
+setter and restore each retained one unique correlated empty raw-`82`
+response. Actual hold was `0.250516458` seconds and restore started
+`0.269865906` seconds after setter start, within the fixed bound.
+`restore_correlated` and `getter_reverified` are true, finalization errors are
+empty, USB OUT completed 48 bytes, and usbmon retained zero dropped, queued or
+pending events.
+
+Separately, the operator directly observed the installed camera tilt
+**upward** approximately 5 degrees during `2500 -> 2000`, then return, and
+confirmed Marvin physically powered off. At this tested point the combined
+local scale is therefore approximately 100 legacy units per camera degree.
+This is a direct installed-camera point, not yet a precision calibration,
+linearity claim, endpoint characterization or full-range proof.
+
+The sealed run's top-level manifest verified and has SHA-256
+`aa957634552e0d6b581048e17f1e7de35448952296986573e33b26ddef90c235`;
+`metadata.json` has SHA-256
+`df01386107730b7d83e1c969a455e19c85d5cd8a8fa8dcd61fef249e436fd019`.
+This completed execution is not standing authorization, and no further
+hardware action is authorized by it.
 
 ## Historically named word-1 50-unit diagnostic
 
