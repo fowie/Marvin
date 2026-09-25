@@ -135,7 +135,7 @@ electrical faults.
 The offline-default `tools.marvin_legacy_drive_step` facade exposes only the
 proved named raw-PWM mappings: `forward`, `backward`, `rotate-left`, and
 `rotate-right`. It requires explicit `--duration 0.25 --raw-pwm 2000`; other
-values and a standalone `stop` action are intentionally rejected. Live use
+values are intentionally rejected. Live use
 retains the fixed pilot's exact-zero baseline, one bounded nonzero dwell,
 single all-zero cleanup attempt, evidence lock, and operator declarations.
 These are raw wire values and bounded observations, not calibrated movement or
@@ -144,6 +144,19 @@ proof of stop/cleanup effect. For an offline plan:
 ```sh
 python -m tools.marvin_legacy_drive_step forward --duration 0.25 --raw-pwm 2000
 ```
+
+The separate offline-default stop-request primitive reuses the literal all-zero
+frame already captured before observed stopped wheels:
+
+```sh
+python -m tools.marvin_legacy_stop
+```
+
+Its public Python API is `tools.marvin_legacy_stop.prepare()` and
+`run_stop(...)`. A live run sends exactly one fixed all-zero `0B` request and,
+only after its proved raw-`80` response, one fixed `0A` getter. This is a
+zero-PWM request with protocol evidence, not proof of braking, de-energization,
+cleanup causation, or physical stop.
 
 The explicitly selected [left-motor-powered read-only observation](docs/legacy-live.md#left-motor-powered-read-only-observation)
 has one separately authorized recorded result and remains **under HARDWARE HOLD**: exactly one fixed

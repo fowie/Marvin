@@ -300,6 +300,19 @@ RAW_PWM_DUAL_FORWARD_ONE_SECOND_FLAGS = (
     "both_encoder_feedback_connected", "robot_secured_on_blocks",
     "operator_at_external_cutoff", "unprivileged_usbmon",
 )
+RAW_PWM_STOP_SCOPE = "raw_pwm_all_zero_stop"
+RAW_PWM_STOP_ONLY_FLAGS = (
+    RAW_PWM_STOP_SCOPE,
+    "authorize_unvalidated_raw_pwm_all_zero_stop",
+)
+RAW_PWM_STOP_FLAGS = (
+    *RAW_PWM_STOP_ONLY_FLAGS,
+    "physical_left_motor_connected_to_robot_right_motor_l_connector",
+    "physical_right_motor_connected_to_robot_left_motor_r_connector",
+    "motor_left_connected", "motor_right_connected", "servos_isolated",
+    "both_encoder_feedback_connected", "robot_secured_on_blocks",
+    "operator_at_external_cutoff", "unprivileged_usbmon",
+)
 RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE = (
     "raw_pwm_both_connected_left_forward_2000_proof")
 RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS = (
@@ -334,7 +347,7 @@ RAW_PWM_CONNECTED_SCOPES += (
     RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
     RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
     RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE,
-    RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE,
+    RAW_PWM_STOP_SCOPE,
     RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE,
     RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE,
 )
@@ -418,6 +431,7 @@ POWERED_TRIAL_SCOPES = {
     RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE: (
         RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_FLAGS),
     RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: RAW_PWM_DUAL_FORWARD_ONE_SECOND_FLAGS,
+    RAW_PWM_STOP_SCOPE: RAW_PWM_STOP_FLAGS,
     RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE: (
         RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_FLAGS),
     RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE: (
@@ -452,6 +466,7 @@ ALL_FLAGS = tuple(dict.fromkeys((*PREPARATION_FLAGS, *OBSERVATION_ONLY_FLAGS,
                                 *RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_ONLY_FLAGS,
                                 *RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_ONLY_FLAGS,
                                 *RAW_PWM_DUAL_FORWARD_ONE_SECOND_ONLY_FLAGS,
+                                *RAW_PWM_STOP_ONLY_FLAGS,
                                 *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
                                 *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                                 *DISCONNECTED_GET_LOG_ONLY_FLAGS,
@@ -514,6 +529,8 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
              authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=False,
              raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
              authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+             raw_pwm_all_zero_stop=False,
+             authorize_unvalidated_raw_pwm_all_zero_stop=False,
              raw_pwm_both_connected_left_forward_2000_proof=False,
              authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
              raw_pwm_both_connected_right_forward_2000_proof=False,
@@ -632,6 +649,9 @@ def classify(*, actuators_isolated=False, left_motor_powered_observation=False,
                      raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
                  authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
                      authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+                 raw_pwm_all_zero_stop=raw_pwm_all_zero_stop,
+                 authorize_unvalidated_raw_pwm_all_zero_stop=(
+                     authorize_unvalidated_raw_pwm_all_zero_stop),
                  raw_pwm_both_connected_left_forward_2000_proof=(
                      raw_pwm_both_connected_left_forward_2000_proof),
                  authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
@@ -751,6 +771,7 @@ def add_powered_trial_arguments(parser):
                  *RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_ONLY_FLAGS,
                  *RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_ONLY_FLAGS,
                  *RAW_PWM_DUAL_FORWARD_ONE_SECOND_ONLY_FLAGS,
+                 *RAW_PWM_STOP_ONLY_FLAGS,
                  *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
                  *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                  *DISCONNECTED_GET_LOG_ONLY_FLAGS, *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS,
@@ -783,6 +804,7 @@ def powered_trial_arguments(args):
         *RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_ONLY_FLAGS,
         *RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_ONLY_FLAGS,
         *RAW_PWM_DUAL_FORWARD_ONE_SECOND_ONLY_FLAGS,
+        *RAW_PWM_STOP_ONLY_FLAGS,
         *RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
         *RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
         *DISCONNECTED_GETTER_SURVEY_ONLY_FLAGS, *DISCONNECTED_LED_STATE_ONLY_FLAGS,
@@ -917,6 +939,29 @@ def powered_trial_history(declarations):
             "restoration_verification": (
                 "getter_only_after_raw80_cleanup_else_physical_baseline_and_power_cycle_required"),
             "host_can_remove_energy": False,
+            "physical_stop": "not_established",
+        }
+    if scope == RAW_PWM_STOP_SCOPE:
+        return {
+            **encoder_history(declarations),
+            "scope": scope,
+            "load_scope": "BOTH_MOTORS_CONNECTED_SERVOS_ISOLATED",
+            "physical_connection": (
+                "both_motors_to_correctly_labelled_opposite_side_connectors"),
+            "outcome_meaning": (
+                "all_zero_raw_pwm_stop_request_protocol_evidence_separate_"
+                "from_operator_stop_observation"),
+            "unvalidated_raw_pwm_all_zero_stop_authorized": True,
+            "fixed_raw_pwm_words_uint16": [0, 0, 0, 0],
+            "raw_setter_units": "unvalidated_uint16_wire_value_not_duty_cycle",
+            "planned_zero_policy": "one_fixed_all_zero_stop_request_syscall",
+            "restoration_verification": (
+                "getter_only_after_unique_correlated_empty_raw80_stop_response"),
+            "existing_physical_evidence": (
+                "same_literal_frame_preceded_observed_stopped_wheels_but_"
+                "cleanup_causation_not_established"),
+            "host_can_remove_energy": False,
+            "external_cutoff_is_primary": True,
             "physical_stop": "not_established",
         }
     if scope in RAW_PWM_CONNECTED_SCOPES:
