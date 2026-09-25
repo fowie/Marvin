@@ -42,7 +42,7 @@ x86 host onto Jetson.
 | Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
 | Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
-| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 front-camera AX-12+ (ID 2). A bounded `[2500,2730] -> [2450,2730] -> restore -> verify` run produced visible camera movement and return with clean protocol restoration. | Functioning bounded word0 camera-tilt control and physical restoration are directly observed. Direction, full range, calibration, projector, and word1 remain unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
+| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 front-camera AX-12+ (ID 2). A bounded `2500 -> 2450 -> restore` run tilted the camera downward by an operator-estimated 0.5° and returned it. | Functioning bounded word0 camera-tilt control, decreasing-value direction, and physical restoration are directly observed. The prior 5° assumption was 10x too large. Full range, calibration, projector, and word1 remain unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
 | Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. | The working kernel change is host/kernel-specific and must be recreated or found upstream on Jetson. See [microphone host setup](#microphone-host-kernel-state) and [PR #33](https://github.com/fowie/Marvin/pull/33). |
 
@@ -295,14 +295,27 @@ front-camera control and physical restoration for this run. They do not
 establish direction, full range, calibration, or generalize the integer
 conversion beyond the observed values.
 
+A subsequent authorized fixed-direction run held word0 at 2450 for
+**0.250105888 seconds**. The operator observed the front camera tilt
+**downward**, return to baseline, and then confirmed Marvin physically powered
+off. The displacement was approximately **0.5 degrees**, explicitly correcting
+the prior 5-degree assumption as a 10x error. Host evidence recorded 48 accepted
+bytes, zero uncertain bytes, four write attempts, a correlated restore, final
+getter `[2500,2730]`, and setter-to-restore time **0.267635286 seconds**. The
+sealed manifest SHA-256 is
+`61bf0a5baa9c6cc9fd74bc9a4d54c931a184aca480ab64db19e5ea19ad29c068`.
+This establishes decreasing word0 as downward for that observed movement.
+The angle is an operator approximation, not calibration; full range remains unknown.
+
 Projector/word1 remains unproved. PR
 [#34](https://github.com/fowie/Marvin/pull/34) contains the evidence directory
 `servo2-word0-50unit-20260924T1950`, hashes, and detailed procedure; do not
 duplicate private evidence here. Functioning camera tilt control no longer
-requires another live test. Direction or range characterization would require
-a separately authorized larger or optically measured movement with an operator
-and independent cutoff; it is not required to establish functioning tilt control.
-This handoff update performs and authorizes no live action.
+requires another live test. Full-range or calibrated-angle characterization
+would require a separately authorized larger or optically measured movement
+with an operator and independent cutoff; it is not required to establish
+functioning tilt control. This handoff update performs and authorizes no live
+action.
 
 ## Last reported physical state
 
