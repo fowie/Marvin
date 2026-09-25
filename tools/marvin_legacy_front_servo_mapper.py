@@ -106,7 +106,7 @@ WORD1_FIVE_DEGREE_ACKNOWLEDGMENTS = (
 )
 DIRECTION_ACKNOWLEDGMENTS = (
     *COMMON_ACKNOWLEDGMENTS,
-    "operator_confirmed_word0_five_degree_direction_observation_clearance",
+    "operator_confirmed_word0_50_unit_direction_observation_clearance",
     "exact_profile_baseline_2500_2730_target_2450_2730_actual_hold_0_250_seconds",
     "acknowledge_maximum_setter_to_restore_0_760_seconds",
     "authorize_single_legacy_1e_front_camera_word0_direction_diagnostic_command",
@@ -265,12 +265,22 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             "physical_restoration": "unproved",
             "classification": "external_evidence_not_channel_proof",
         }} if word1_five_degree else {}),
-        "legacy_ui_scale": "0..3000 maps AX-12+ 0..300 degrees; 10 units = 1 degree",
+        "legacy_ui_scale": (
+            "historical UI assumption only: 0..3000 maps AX-12+ 0..300 degrees; "
+            "installed word0 observation instead found 50 units approximately 0.5 degrees"
+        ),
         **({"five_degree_safety_basis": (
-            "50 legacy UI units equals 5 degrees on the declared AX-12+ scale "
-            "and remains within 0..3000; this does not establish mechanical "
-            "safety, which requires the separate operator clearance confirmation"
+            "historically labeled five-degree profile is a fixed 50-unit decrement; "
+            "the operator later observed approximately 0.5 degrees downward, not a "
+            "precision calibration and does not establish mechanical safety; separate "
+            "clearance remains required"
         )} if word0_five_degree or word1_five_degree or word0_direction else {}),
+        **({"operator_observed_direction_calibration": {
+            "word0_change": "2500_to_2450",
+            "direction": "downward",
+            "approximate_displacement_degrees": 0.5,
+            "classification": "operator_observed_approximate_not_full_range_or_precision",
+        }} if word0_direction else {}),
         "observation_seconds": (
             DIRECTION_HOLD_SECONDS if word0_direction else DWELL_SECONDS),
         "observation_timing_semantics": (

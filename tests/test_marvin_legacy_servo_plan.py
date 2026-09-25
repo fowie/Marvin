@@ -374,6 +374,12 @@ class LegacyServoPlanTests(unittest.TestCase):
         self.assertIn(
             "--acknowledge-maximum-setter-to-restore-0-760-seconds",
             direction["required"])
+        self.assertIn(
+            "--operator-confirmed-word0-50-unit-direction-observation-clearance",
+            direction["required"])
+        self.assertEqual(
+            direction["operator_observed_direction_calibration"]["direction"],
+            "downward")
         evidence_transport = Mock(steps=mapper.WORD0_FIVE_DEGREE_STEPS)
         evidence_report = {
             "setter_prewrite_monotonic": 1.0,

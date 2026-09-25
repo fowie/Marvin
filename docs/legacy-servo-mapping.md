@@ -420,13 +420,13 @@ movement. The operator reported that the AX-12+ LED illuminated or blinked
 during power-on, then Marvin was OFF with host USB disconnected. Both
 one-degree negative observations remain external evidence, not channel proof.
 
-A separate fixed word-0 five-degree diagnostic changes only `[2500,2730]` to
-`[2450,2730]`. Fifty legacy UI units was treated as five degrees under the
-then-declared AX-12+ `0..3000` to `0..300` scale and remains inside that UI
-range. The later photos invalidate using that scale as installed-actuator
-evidence. Neither
-the scale nor the two negative observations establishes mechanical safety, so
-the mode requires a separate literal operator clearance confirmation.
+A separate historically named word-0 five-degree diagnostic changes only
+`[2500,2730]` to `[2450,2730]`. Its name came from the assumed AX-12+
+`0..3000` to `0..300` scale. The later held-direction run instead produced an
+operator-observed displacement of approximately 0.5 degrees for those 50
+units, so “five-degree” is retained only for CLI/evidence compatibility and is
+not installed calibration. Neither observation is precision or full-range
+proof, and each live profile requires separate literal clearance.
 
 Historically named five-degree dry run:
 
@@ -452,9 +452,9 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --unprivileged-usbmon
 ```
 
-### First five-degree run evidence
+### First historically named 50-unit run evidence
 
-The first authorized five-degree execution ended in a software evidence
+The first authorized 50-unit execution ended in a software evidence
 correlation failure, `KeyError: 'set_prewrite_monotonic'`. The sealed evidence
 shows three accepted application writes and three successful USB OUT
 completions: the baseline getter, `[2450,2730]` setter, and full `[2500,2730]`
@@ -570,7 +570,7 @@ python3 -m tools.marvin_legacy_front_servo_mapper \
   --front-camera-tilt-only-connected-projector-servo-physically-disconnected \
   --front-camera-servo-is-ax12-plus \
   --unprivileged-usbmon \
-  --operator-confirmed-word0-five-degree-direction-observation-clearance \
+  --operator-confirmed-word0-50-unit-direction-observation-clearance \
   --exact-profile-baseline-2500-2730-target-2450-2730-actual-hold-0-250-seconds \
   --acknowledge-maximum-setter-to-restore-0-760-seconds \
   --authorize-single-legacy-1e-front-camera-word0-direction-diagnostic-command
@@ -588,10 +588,35 @@ The immutable requests are:
 Their concatenated SHA-256 is
 `64efc52b59c6741af201718ec39b48e1475e40ae3630c4e3cafa510f52a3d92b`.
 The CLI exposes no larger delta, arbitrary target/dwell/range, retry,
-reconnect, calibration, reset or power command. This template is not live
-authorization and has not been executed.
+reconnect, calibration, reset or power command. This invocation is not
+standing authorization.
 
-## Fixed word-1 five-degree diagnostic
+The one separately authorized execution completed with status
+`front_camera_servo_word0_direction_complete_protocol_only`. It retained 48
+accepted and zero uncertain TX bytes across four submissions. The requested
+hold was 0.250 seconds; actual hold from correlated setter response end to
+restore start was 0.250105888 seconds, and setter-to-restore start was
+0.267635286 seconds. The restore had one unique correlated raw-`82`
+empty-payload response, and the final getter returned `[2500,2730]`.
+Protocol restoration is established.
+
+That sealed execution used the former literal
+`--operator-confirmed-word0-five-degree-direction-observation-clearance`;
+the transcript and evidence are unchanged. The future-facing literal above
+was renamed only to remove the disproved calibration claim.
+
+The operator independently observed that decreasing word 0 from 2500 to 2450
+tilted the front camera **downward**, then returned it. Observed displacement
+was approximately 0.5 degrees. This corrects the prior assumed five-degree
+label by roughly 10x for this one bounded observation, but is operator-observed
+approximate calibration only: it does not prove precision, linearity, endpoint
+behavior or the full range. Marvin physical power-off was confirmed.
+
+The sealed run manifest verified and has SHA-256
+`61bf0a5baa9c6cc9fd74bc9a4d54c931a184aca480ab64db19e5ea19ad29c068`.
+No further hardware action is authorized by this result.
+
+## Historically named word-1 50-unit diagnostic
 
 The next discriminator is a separate named profile only. It preserves word 0
 and changes `[2500,2730]` to `[2500,2680]`, then immediately makes the single
@@ -606,7 +631,7 @@ evidence only. The later successful fixed word-0 run independently established
 bounded camera movement and return plus complete protocol restoration, but not
 movement direction. It does not prove word-1 routing.
 
-Word-1 five-degree dry run:
+Historically named word-1 50-unit dry run:
 
 ```sh
 python3 -m tools.marvin_legacy_front_servo_mapper \
