@@ -172,10 +172,12 @@ class Marvin:
 
     def projector_status(self):
         """Report historical projector mapping without authorizing a write."""
+        plan = servo.prepare(word1_500_unit=True)
         return {
             "status": "unavailable_unverified",
             "connected": False,
             **PROJECTOR_AXIS.status(),
+            "offline_minus_500_plan": plan,
             "reason": (
                 "The projector is physically disconnected; word-1 live routing "
                 "and local units-per-degree have not been directly exercised."
@@ -425,18 +427,18 @@ def _servo_subcommands(parser, *, status=False, camera=False):
 
 def _parser():
     parser = argparse.ArgumentParser(
-        prog="python -m marvin",
+        prog="marvin",
         description="Bounded controls for the original Microsoft Marvin robot.",
         epilog="""examples:
-  python -m marvin status
-  python -m marvin drive forward
-  python -m marvin camera up 5
-  python -m marvin camera center
-  python -m marvin stop
-  python -m marvin teleop
-  python -m marvin projector status
-  python -m marvin projector power on
-  python -m marvin drive rotate-left --run --expected-physical-port 1-3 \\
+  marvin status
+  marvin drive forward
+  marvin camera up 5
+  marvin camera center
+  marvin stop
+  marvin teleop
+  marvin projector status
+  marvin projector power on
+  marvin drive rotate-left --run --expected-physical-port 1-3 \\
       --output evidence/left-001 --confirm-safe-setup
 
 Commands are offline plans unless --run is present. Proven live operations are

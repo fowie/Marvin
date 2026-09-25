@@ -95,6 +95,10 @@ class MarvinFacadeTests(unittest.TestCase):
         status = marvin.Marvin().projector_status()
         self.assertEqual(status["status"], "unavailable_unverified")
         self.assertIsNone(status["units_per_degree"])
+        self.assertEqual(
+            status["offline_minus_500_plan"]["target_words_uint16"], [2500, 2230])
+        self.assertFalse(
+            status["offline_minus_500_plan"]["live_execution_authorized"])
         plan = marvin.Marvin().projector_center()
         self.assertEqual(plan["target_words_uint16"], [2500, 2730])
         self.assertEqual(plan["untouched_sibling_word"], 0)

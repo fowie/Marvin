@@ -10,8 +10,9 @@ From the repository root, with Python 3 available:
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install .
 python -m unittest discover -s tests -v
+marvin --help
 ```
 
 Tests use self-contained protocol facts, reviewed fixtures and mocked transport
@@ -74,7 +75,10 @@ retains the sibling word. Camera is proved on word 0 near its 2500 baseline.
 The same-model projector is historically expected on word 1 near 2730, but it
 is physically disconnected and its routing, direction, and local scale have not
 been exercised. `projector status` and offline `projector center` expose that
-boundary; all live projector writes and projector movement are rejected.
+boundary. Status also includes the fixed `[2500,2730] -> [2500,2230] -> restore`
+plan; its expected AX goal, routing, direction and scale remain hypotheses, and
+the inverse `+500` target is prohibited. All live projector writes and movement
+are rejected.
 
 Recovered newer source labels command `0x27` as projector power, but that source
 map conflicts with the installed legacy profile: installed `0x1D/0x1E` are the
