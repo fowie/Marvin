@@ -30,6 +30,7 @@ the matching human-facing CLI. Both are offline by default:
 python -m marvin --help
 python -m marvin status
 python -m marvin sensors
+marvin microphone status
 python -m marvin camera status
 python -m marvin camera capture private/frame.jpg
 python -m marvin drive forward
@@ -115,6 +116,13 @@ mappings, unresolved cliff/bump fields, motor/encoder values, and two raw
 servo-position words. The CLI intentionally has no serial-device constructor
 or arbitrary command path. Dedicated `GetBatteryInfo` remains excluded because
 its installed eight-byte response has no proven legacy decoder.
+
+`marvin microphone` delegates to the bounded microphone module without adding
+another capture implementation. `status` is offline, `list` verifies only
+`hw:CARD=Array,DEV=0`, and `capture` accepts only 1-5 seconds of native
+8-channel `S16_LE` audio with exact byte bounds, explicit privacy authorization,
+and a new mode-`0600` raw/WAV output. The signed kernel override containing
+`d0199ae` and the exact `045e:fff0` `FILL_MAX` quirk remains mandatory.
 
 ### LifeCam capture
 

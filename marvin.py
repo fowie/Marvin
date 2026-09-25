@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 import marvin_camera
+from tools import marvin_microphone
 from tools import marvin_campaign
 from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_front_servo_baseline_restore as servo_center
@@ -135,6 +136,7 @@ class Marvin:
             "teleop": dict(TELEOP_CONTROLS),
             "read_only_sensors": True,
             "video_capture": marvin_camera.plan(),
+            "microphone_capture": True,
         }
         if not self.run:
             return {
@@ -477,13 +479,14 @@ def _camera_subcommands(parser):
     capture.add_argument(
         "--confirm-privacy", action="store_true",
         help="confirm no bystanders or unintended private material are in view")
-    up = actions.add_parser("up", help="tilt up by a supported angle")
+    up = actions.add_parser("up", help="run the proved camera-up profile")
     up.add_argument("degrees", type=int)
     _live_arguments(up)
-    down = actions.add_parser("down", help="tilt down by a supported angle")
+    down = actions.add_parser(
+        "down", help="show the fixed offline plan; live remains blocked")
     down.add_argument("degrees", type=int)
     _live_arguments(down)
-    center = actions.add_parser("center", help="center this axis")
+    center = actions.add_parser("center", help="write the proved camera baseline")
     _live_arguments(center)
 
 
@@ -494,6 +497,7 @@ def _parser():
         epilog="""examples:
   marvin status
   marvin sensors
+  marvin microphone status
   marvin camera status
   marvin camera capture private/frame.jpg
   marvin drive forward
@@ -522,6 +526,10 @@ subdirectory per action.""",
     sensors.add_argument(
         "--run", action="store_true",
         help="execute only when main() is embedded with a validated transport")
+    microphone = actions.add_parser(
+        "microphone", add_help=False,
+        help="delegate to bounded microphone status/list/capture")
+    microphone.add_argument("microphone_args", nargs=argparse.REMAINDER)
     drive = actions.add_parser("drive", help="run one bounded drive step")
     drive.add_argument("direction", choices=DRIVE_DIRECTIONS)
     _live_arguments(drive)
@@ -541,9 +549,14 @@ subdirectory per action.""",
 
 def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
          sensor_expected_identity=None):
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args, extra = parser.parse_known_args(argv)
+    if args.command == "microphone":
+        return marvin_microphone.main([*args.microphone_args, *extra])
+    if extra:
+        parser.error("unrecognized arguments: " + " ".join(extra))
     marvin = Marvin(
-        run=args.run,
+        run=getattr(args, "run", False),
         expected_physical_port=getattr(args, "expected_physical_port", None),
         output=getattr(args, "output", None),
         safety_confirmed=getattr(args, "confirm_safe_setup", False),

@@ -14,7 +14,7 @@ dependencies = ["pyserial==3.5"]
 marvin = "marvin:main"
 
 [tool.setuptools]
-py-modules = ["marvin"]
+py-modules = ["marvin", "marvin_camera", "marvin_sensors"]
 
 [tool.setuptools.packages.find]
 include = ["tools*"]

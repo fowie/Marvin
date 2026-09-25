@@ -318,6 +318,11 @@ class MarvinFacadeTests(unittest.TestCase):
 
         stdout = io.StringIO()
         with redirect_stdout(stdout):
+            self.assertEqual(marvin.main(["microphone", "status"]), 0)
+        self.assertEqual(json.loads(stdout.getvalue())["hardware_accessed"], False)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
             self.assertEqual(marvin.main(["projector", "status"]), 0)
         self.assertEqual(
             json.loads(stdout.getvalue())["status"], "unavailable_unverified")
