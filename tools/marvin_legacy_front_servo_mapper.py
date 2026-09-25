@@ -27,6 +27,7 @@ WORD0_FIVE_DEGREE_TARGET = (2450, 2730)
 WORD0_100_UNIT_TARGET = (2400, 2730)
 WORD0_500_UNIT_TARGET = (2000, 2730)
 WORD0_PLUS_500_UNIT_TARGET = (3000, 2730)
+WORD1_500_UNIT_TARGET = (2500, 2230)
 WORD1_FIVE_DEGREE_TARGET = (2500, 2680)
 BASELINE_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in BASELINE)
 TARGET_PAYLOAD = b"".join(value.to_bytes(2, "little") for value in TARGET)
@@ -40,6 +41,8 @@ WORD0_500_UNIT_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD0_500_UNIT_TARGET)
 WORD0_PLUS_500_UNIT_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD0_PLUS_500_UNIT_TARGET)
+WORD1_500_UNIT_TARGET_PAYLOAD = b"".join(
+    value.to_bytes(2, "little") for value in WORD1_500_UNIT_TARGET)
 WORD1_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
     value.to_bytes(2, "little") for value in WORD1_FIVE_DEGREE_TARGET)
 FIRST_SEQUENCE = 3500
@@ -107,6 +110,14 @@ WORD0_PLUS_500_UNIT_STEPS = {
     "verify": get_servo_position_request(FIRST_SEQUENCE + 29),
 }
 WORD0_PLUS_500_UNIT_TRANSCRIPT = tuple(WORD0_PLUS_500_UNIT_STEPS.values())
+WORD1_500_UNIT_STEPS = {
+    "baseline": get_servo_position_request(FIRST_SEQUENCE + 30),
+    "set": encode_request(
+        FIRST_SEQUENCE + 31, 0x1E, WORD1_500_UNIT_TARGET_PAYLOAD),
+    "restore": encode_request(FIRST_SEQUENCE + 32, 0x1E, BASELINE_PAYLOAD),
+    "verify": get_servo_position_request(FIRST_SEQUENCE + 33),
+}
+WORD1_500_UNIT_TRANSCRIPT = tuple(WORD1_500_UNIT_STEPS.values())
 COMMON_ACKNOWLEDGMENTS = (
     "operator_present",
     "robot_secured",
@@ -145,22 +156,38 @@ DIRECTION_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
 WORD0_100_UNIT_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
 WORD0_500_UNIT_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
 WORD0_PLUS_500_UNIT_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
+WORD1_500_UNIT_ACKNOWLEDGMENTS = FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS
 
 
 def _profile(
         word1_hypothesis, word0_five_degree, word1_five_degree,
         word0_direction=False, word0_100_unit=False, word0_500_unit=False,
-        word0_plus_500_unit=False):
+        word0_plus_500_unit=False, word1_500_unit=False):
     if any(type(value) is not bool for value in (
             word1_hypothesis, word0_five_degree, word1_five_degree,
             word0_direction, word0_100_unit, word0_500_unit,
-            word0_plus_500_unit)):
+            word0_plus_500_unit, word1_500_unit)):
         raise ValueError("Fixed profile selections must be literal booleans.")
     if sum((
             word1_hypothesis, word0_five_degree, word1_five_degree,
             word0_direction, word0_100_unit, word0_500_unit,
-            word0_plus_500_unit)) > 1:
+            word0_plus_500_unit, word1_500_unit)) > 1:
         raise ValueError("Select exactly one fixed front-servo diagnostic mode.")
+    if word1_500_unit:
+        return {
+            "name": "word1-minus-500-unit-projector-characterization",
+            "word": 1,
+            "target": WORD1_500_UNIT_TARGET,
+            "target_payload": WORD1_500_UNIT_TARGET_PAYLOAD,
+            "delta": -500,
+            "steps": WORD1_500_UNIT_STEPS,
+            "transcript": WORD1_500_UNIT_TRANSCRIPT,
+            "acknowledgments": WORD1_500_UNIT_ACKNOWLEDGMENTS,
+            "success": "projector_servo_word1_minus_500_unit_complete_protocol_only",
+            "first_sequence": FIRST_SEQUENCE + 30,
+            "mode_flag": "--word1-minus-500-unit-projector-diagnostic",
+            "projector_profile": True,
+        }
     if word0_plus_500_unit:
         return {
             "name": "word0-plus-500-unit-installed-camera-characterization",
@@ -277,14 +304,15 @@ def _profile(
 def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             word1_five_degree=False, word0_direction=False,
             word0_100_unit=False, word0_500_unit=False,
-            word0_plus_500_unit=False):
+            word0_plus_500_unit=False, word1_500_unit=False):
     held_direction = (
         word0_direction or word0_100_unit or word0_500_unit
-        or word0_plus_500_unit)
+        or word0_plus_500_unit or word1_500_unit)
     profile = _profile(
         word1_hypothesis, word0_five_degree, word1_five_degree,
         word0_direction, word0_100_unit, word0_500_unit,
-        word0_plus_500_unit)
+        word0_plus_500_unit, word1_500_unit)
+    projector_profile = profile.get("projector_profile", False)
     expected = (
         (profile["first_sequence"], 0x1D, b""),
         (profile["first_sequence"] + 1, 0x1E, profile["target_payload"]),
@@ -299,15 +327,24 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
     return {
         "status": "dry_run",
         "live_execution_authorized": False,
-        "profile": "marvin-legacy-se-front-camera-tilt-only-ax12-plus",
+        "profile": (
+            "marvin-legacy-se-projector-only-routing-unproved"
+            if projector_profile else
+            "marvin-legacy-se-front-camera-tilt-only-ax12-plus"),
         "fixed_mode": profile["name"],
         "candidate_wire_word": profile["word"],
         "word1_front_camera_assignment": (
             "hypothesis_not_proved"
             if word1_hypothesis else "not_proved_by_negative_observations"),
         "usb_identity": "045e:4444",
-        "connected_servo": "front-camera-tilt-only",
-        "projector_servo": "physically_disconnected",
+        "connected_servo": (
+            "projector-only-routing-unproved"
+            if projector_profile else "front-camera-tilt-only"),
+        "projector_servo": (
+            "connected_for_future_separately_authorized_profile"
+            if projector_profile else "physically_disconnected"),
+        **({"front_camera_servo": "physically_disconnected"}
+           if projector_profile else {}),
         "baseline_words_uint16": list(BASELINE),
         "target_words_uint16": list(profile["target"]),
         f"word{profile['word']}_delta": profile["delta"],
@@ -416,6 +453,15 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             "hypothesis_limit": "approximate expectation only, not a promise or calibration",
             } if (word0_100_unit or word0_500_unit
                   or word0_plus_500_unit) else {}),
+        **({"expected_ax_goal_position": profile["target"][1] // 3,
+            "expected_ax_goal_range": [0, 1023],
+            "expected_ax_goal_within_range": (
+                0 <= profile["target"][1] // 3 <= 1023),
+            "camera_word0_preserved": profile["target"][0] == BASELINE[0],
+            "projector_routing": "hypothesis_until_live",
+            "projector_direction": "hypothesis_until_live",
+            "projector_scaling": "positive_integer_division_by_three_hypothesis_until_live",
+            } if word1_500_unit else {}),
         "observation_seconds": (
             DIRECTION_HOLD_SECONDS if held_direction else DWELL_SECONDS),
         "observation_timing_semantics": (
@@ -428,7 +474,10 @@ def prepare(*, word1_hypothesis=False, word0_five_degree=False,
             MAX_DIRECTION_SETTER_TO_RESTORE_SECONDS} if held_direction else {}),
         **({"combined_live_confirmation": (
             "Fresh confirmation covers power-on/startup complete; the correct "
-            "AX-12+ actuator and linkage at J24; projector servo disconnected; "
+            + ("projector actuator/linkage connected with the camera servo "
+               "physically disconnected; " if projector_profile else
+               "AX-12+ actuator and linkage at J24; projector servo disconnected; ")
+            +
             "fixed-profile mechanical clearance and hands clear; host USB on the "
             "reviewed pinned port; and independent cutoff ready. While that setup "
             "remains unchanged, each exact RUN command authorizes one immutable "
@@ -579,6 +628,12 @@ class _Word0500UnitTransport(_Transport):
 class _Word0Plus500UnitTransport(_Transport):
     steps = WORD0_PLUS_500_UNIT_STEPS
     success = "front_camera_servo_word0_plus_500_unit_complete_protocol_only"
+    direction_hold = True
+
+
+class _Word1Projector500UnitTransport(_Transport):
+    steps = WORD1_500_UNIT_STEPS
+    success = "projector_servo_word1_minus_500_unit_complete_protocol_only"
     direction_hold = True
 
 
@@ -973,11 +1028,12 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
                    word1_five_degree=False, word0_direction=False,
                    word0_100_unit=False, word0_500_unit=False,
                    word0_plus_500_unit=False,
+                   word1_500_unit=False,
                    **acknowledgments):
     profile = _profile(
         word1_hypothesis, word0_five_degree, word1_five_degree,
         word0_direction, word0_100_unit, word0_500_unit,
-        word0_plus_500_unit)
+        word0_plus_500_unit, word1_500_unit)
     required = profile["acknowledgments"]
     if run is not True or set(acknowledgments) != set(required):
         raise ValueError(
@@ -995,9 +1051,11 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             word0_direction=word0_direction,
             word0_100_unit=word0_100_unit,
             word0_500_unit=word0_500_unit,
-            word0_plus_500_unit=word0_plus_500_unit),
+            word0_plus_500_unit=word0_plus_500_unit,
+            word1_500_unit=word1_500_unit),
         transport_type=(
-            _Word0Plus500UnitTransport if word0_plus_500_unit
+            _Word1Projector500UnitTransport if word1_500_unit
+            else _Word0Plus500UnitTransport if word0_plus_500_unit
             else _Word0500UnitTransport if word0_500_unit
             else _Word0100UnitTransport if word0_100_unit
             else _Word0DirectionTransport if word0_direction
@@ -1016,6 +1074,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             "_front_servo_word0_100_unit_mapper": word0_100_unit,
             "_front_servo_word0_500_unit_mapper": word0_500_unit,
             "_front_servo_word0_plus_500_unit_mapper": word0_plus_500_unit,
+            "_front_servo_word1_projector_500_unit_mapper": word1_500_unit,
         },
         declarations={"operator_declarations": dict(acknowledgments)},
         expected_tx=lambda report: report["accepted_tx_bytes"],
@@ -1024,6 +1083,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
         authorizations={
             ("single_legacy_1e_front_camera_word1_five_degree_authorized"
              if word1_five_degree
+             else "single_legacy_1e_projector_word1_minus_500_unit_authorized"
+             if word1_500_unit
              else "single_legacy_1e_front_camera_word0_500_unit_authorized"
              if word0_500_unit
              else "single_legacy_1e_front_camera_word0_plus_500_unit_authorized"
@@ -1045,10 +1106,11 @@ def run_authorized_session(output, *, expected_physical_port,
                            word0_direction=False, word0_100_unit=False,
                            word0_500_unit=False,
                            word0_plus_500_unit=False,
+                           word1_500_unit=False,
                            input_fn=input, **acknowledgments):
     if sum((
             word0_direction, word0_100_unit, word0_500_unit,
-            word0_plus_500_unit)) != 1:
+            word0_plus_500_unit, word1_500_unit)) != 1:
         raise ValueError("Select exactly one held fixed characterization profile.")
     if set(acknowledgments) != set(FIXED_CHARACTERIZATION_ACKNOWLEDGMENTS):
         raise ValueError("The combined unchanged-setup authorization is required.")
@@ -1076,6 +1138,7 @@ def run_authorized_session(output, *, expected_physical_port,
             word0_100_unit=word0_100_unit,
             word0_500_unit=word0_500_unit,
             word0_plus_500_unit=word0_plus_500_unit,
+            word1_500_unit=word1_500_unit,
             **acknowledgments,
         )
         runs.append(str(evidence))
@@ -1102,6 +1165,9 @@ def main(argv=None):
     modes.add_argument(
         "--word0-plus-500-unit-installed-camera-diagnostic",
         action="store_true")
+    modes.add_argument(
+        "--word1-minus-500-unit-projector-diagnostic",
+        action="store_true")
     parser.add_argument("--expected-physical-port")
     parser.add_argument("--output", type=Path)
     all_acknowledgments = tuple(dict.fromkeys(
@@ -1111,7 +1177,8 @@ def main(argv=None):
          *DIRECTION_ACKNOWLEDGMENTS,
          *WORD0_100_UNIT_ACKNOWLEDGMENTS,
          *WORD0_500_UNIT_ACKNOWLEDGMENTS,
-         *WORD0_PLUS_500_UNIT_ACKNOWLEDGMENTS)))
+         *WORD0_PLUS_500_UNIT_ACKNOWLEDGMENTS,
+         *WORD1_500_UNIT_ACKNOWLEDGMENTS)))
     for name in all_acknowledgments:
         parser.add_argument(
             "--" + name.replace("_", "-"),
@@ -1128,7 +1195,8 @@ def main(argv=None):
         args.word1_five_degree_diagnostic, args.word0_direction_diagnostic,
         args.word0_100_unit_direction_diagnostic,
         args.word0_500_unit_installed_camera_diagnostic,
-        args.word0_plus_500_unit_installed_camera_diagnostic)
+        args.word0_plus_500_unit_installed_camera_diagnostic,
+        args.word1_minus_500_unit_projector_diagnostic)
     acknowledgments = {
         name: getattr(args, name) for name in profile["acknowledgments"]}
     unused_acknowledgments = set(all_acknowledgments) - set(profile["acknowledgments"])
@@ -1146,14 +1214,16 @@ def main(argv=None):
                 word0_100_unit=args.word0_100_unit_direction_diagnostic,
                 word0_500_unit=args.word0_500_unit_installed_camera_diagnostic,
                 word0_plus_500_unit=(
-                    args.word0_plus_500_unit_installed_camera_diagnostic))
+                    args.word0_plus_500_unit_installed_camera_diagnostic),
+                word1_500_unit=args.word1_minus_500_unit_projector_diagnostic)
         else:
             if args.output is None:
                 raise ValueError("--output NEWDIR is required.")
             if (args.word0_direction_diagnostic
                     or args.word0_100_unit_direction_diagnostic
                     or args.word0_500_unit_installed_camera_diagnostic
-                    or args.word0_plus_500_unit_installed_camera_diagnostic):
+                    or args.word0_plus_500_unit_installed_camera_diagnostic
+                    or args.word1_minus_500_unit_projector_diagnostic):
                 result = run_authorized_session(
                     args.output,
                     expected_physical_port=args.expected_physical_port,
@@ -1162,6 +1232,8 @@ def main(argv=None):
                     word0_500_unit=args.word0_500_unit_installed_camera_diagnostic,
                     word0_plus_500_unit=(
                         args.word0_plus_500_unit_installed_camera_diagnostic),
+                    word1_500_unit=(
+                        args.word1_minus_500_unit_projector_diagnostic),
                     **acknowledgments,
                 )
             else:
@@ -1183,7 +1255,8 @@ def main(argv=None):
         if (args.word0_direction_diagnostic
                 or args.word0_100_unit_direction_diagnostic
                 or args.word0_500_unit_installed_camera_diagnostic
-                or args.word0_plus_500_unit_installed_camera_diagnostic):
+                or args.word0_plus_500_unit_installed_camera_diagnostic
+                or args.word1_minus_500_unit_projector_diagnostic):
             failure.update(
                 setup_session="ended",
                 operator_action="immediate_physical_power_off_required",

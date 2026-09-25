@@ -276,7 +276,7 @@ class SessionTests(unittest.TestCase):
     def test_large_held_front_servo_modes_keep_same_true_recorder_state(self):
         from tools.marvin_legacy_front_servo_mapper import (
             WORD0_100_UNIT_TRANSCRIPT, WORD0_500_UNIT_TRANSCRIPT,
-            WORD0_PLUS_500_UNIT_TRANSCRIPT)
+            WORD0_PLUS_500_UNIT_TRANSCRIPT, WORD1_500_UNIT_TRANSCRIPT)
         for flag, transcript, name in (
                 ("_front_servo_word0_100_unit_mapper",
                  WORD0_100_UNIT_TRANSCRIPT,
@@ -286,7 +286,10 @@ class SessionTests(unittest.TestCase):
                  "LegacyFrontCameraServoWord0500Unit"),
                 ("_front_servo_word0_plus_500_unit_mapper",
                  WORD0_PLUS_500_UNIT_TRANSCRIPT,
-                 "LegacyFrontCameraServoWord0Plus500Unit")):
+                 "LegacyFrontCameraServoWord0Plus500Unit"),
+                ("_front_servo_word1_projector_500_unit_mapper",
+                 WORD1_500_UNIT_TRANSCRIPT,
+                 "LegacyProjectorServoWord1Minus500Unit")):
             with self.subTest(flag=flag):
                 self.output = Path(self.temp.name) / flag
                 self.finished = False
@@ -304,9 +307,14 @@ class SessionTests(unittest.TestCase):
                     result["requested_application_bytes"],
                     sum(map(len, transcript)))
                 self.assertEqual(result["probe_name"], name)
+                command = self.popen.call_args.args[0]
                 self.assertIn(
-                    "--front-camera-tilt-only-connected-projector-servo-physically-disconnected",
-                    self.popen.call_args.args[0])
+                    ("--projector-servo-only-connected-"
+                     "front-camera-servo-physically-disconnected")
+                    if flag == "_front_servo_word1_projector_500_unit_mapper"
+                    else ("--front-camera-tilt-only-connected-"
+                          "projector-servo-physically-disconnected"),
+                    command)
                 runner.assert_called_once()
                 self.serial.assert_not_called()
 
