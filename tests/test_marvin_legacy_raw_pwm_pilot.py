@@ -1260,6 +1260,8 @@ class RawPwmPilotTests(unittest.TestCase):
                 self.assertEqual(plan["fixed_setter_words_uint16"], words)
                 self.assertEqual(plan["direction"], direction)
                 self.assertEqual(plan["physical_stop"], "not_established")
+                self.assertEqual(
+                    plan["maximum_setter_to_cleanup_start_seconds"], 1.0)
                 self.assertIn("--authorize-unvalidated-drive-step", plan["required"])
 
             stdout = io.StringIO()
@@ -1291,7 +1293,39 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertEqual(
             pilot._RawPwmLeftReverseRightForward2000Transport
             .absolute_cleanup_bound_seconds,
-            0.75)
+            1.0)
+        for transport_type in (
+                pilot._RawPwmDualForward2000ConnectedTransport,
+                pilot._RawPwmDualReverse2000ConnectedTransport,
+                pilot._RawPwmLeftReverseRightForward2000Transport,
+                pilot._RawPwmLeftForwardRightBackward2000Transport):
+            with self.subTest(transport_type=transport_type.__name__):
+                self.assertEqual(
+                    transport_type.absolute_cleanup_bound_seconds,
+                    pilot.RESPONSE_SECONDS + 0.250
+                    + pilot.CLEANUP_ADMISSION_SECONDS)
+
+        delayed_transport = _Transport()
+        delayed_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_CONNECTED
+        delayed_transport.success = pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED
+        delayed_transport.motor_connected = True
+        delayed_transport.physical_motor_label = "BOTH"
+        delayed_transport.observation_seconds = 0.250
+        delayed_transport.absolute_cleanup_bound_seconds = 1.0
+        delayed_report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()), \
+                patch.object(pilot, "_wait_until") as wait_until, \
+                redirect_stderr(io.StringIO()):
+            pilot._observe(
+                delayed_transport, delayed_report, clock=lambda: 0.501)
+        wait_until.assert_called_once_with(
+            delayed_transport, 0.751, 1.0, clock=ANY)
+        self.assertEqual(
+            delayed_transport.attempts,
+            ["baseline", "set", "cleanup", "verify"])
+        self.assertEqual(
+            delayed_report["status"],
+            pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED)
 
     def test_standalone_stop_reuses_proved_zero_frame_offline(self):
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \

@@ -1689,8 +1689,8 @@ Transcript SHA-256:
 `01062cff9b64d2334d9b7fb023db002723444922eb4f291d7ddf5dcc569de9bd`.
 Bounds are four writes / 56 TX / 56 expected RX / 8192 maximum RX, or three
 writes / 46 TX if verification is suppressed. The fixed observation is 250 ms
-after a clean setter response; cleanup starts by 750 ms after setter prewrite,
-or immediately on any fault. The existing strict prewrite, USB, unique
+after the complete clean setter-response window; cleanup starts by one second
+after setter prewrite, or immediately on any fault. The existing strict prewrite, USB, unique
 correlation, 500 ms response, no-retry, no-reconnect, and restoration-state
 gates are unchanged. A nonzero final getter faults and locks without a second
 cleanup.
@@ -1743,10 +1743,10 @@ is not established and is not part of either acceptance criterion.
 | A: left reverse / right forward | 3403..3406 | `[2000,0,0,2000]` | `534b0d0a00000042a745`; `534c0d0b000800d00700000000d0074e5345`; `534d0d0b0008000000000000000000290c45`; `534e0d0a00000042f245` | `e1b7c5fbe491c37b8c2b78dd352d6d96885049c61f9d3e3f46e242d139b475f2` |
 | B: left forward / right backward | 3407..3410 | `[0,2000,2000,0]` | `534f0d0a000000432345`; `53500d0b0008000000d007d00700001b4045`; `53510d0b000800000000000000000034d045`; `53520d0a00000040ae45` | `1673977cfce05b88411e568bd3fd1a5cf029a419c24f74b7b5da6622a2b3ea36` |
 
-Each profile retains one 250 ms setter, one mandatory all-zero cleanup, and a
+Each profile retains one 250 ms post-response observation, one mandatory all-zero cleanup, and a
 conditional exact-zero getter. Bounds are four writes / 56 TX / 56 expected RX
 / 8192 maximum RX, or three writes / 46 TX if verification is suppressed.
-Cleanup starts by 750 ms after setter prewrite or immediately on a fault.
+Cleanup starts by one second after setter prewrite or immediately on a fault.
 Strict prewrite, USB, unique correlation, 500 ms response, no-retry,
 no-reconnect, cutoff, and restoration-state gates remain unchanged. The
 operator reports each wheel direction independently, crosstalk/mismatch,

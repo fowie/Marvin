@@ -55,8 +55,11 @@ python -m marvin drive rotate-left \
   --output evidence/rotate-left-001 --confirm-safe-setup
 ```
 
-Each live drive command is exactly one proved 0.25-second raw-PWM step and owns
-one mandatory all-zero cleanup attempt. Camera up is limited to the directly
+Each live drive command waits through its complete correlated-response window,
+then observes exactly 0.25 seconds before one mandatory all-zero cleanup
+attempt. A separate fixed 0.25-second host admission margin keeps that full
+post-response observation inside a one-second setter-to-cleanup-start bound.
+Camera up is limited to the directly
 observed `2500 -> 2000` profile (approximately five degrees) and owns its
 `[2500,2730]` restore. Cleanup and restore run when an operation succeeds,
 fails, or receives Ctrl-C; write acceptance and protocol correlation still do

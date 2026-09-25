@@ -103,7 +103,11 @@ SERIAL_SECONDS = 10
 CLEANUP_SECONDS = 5
 RESPONSE_SECONDS = 0.500
 OBSERVATION_SECONDS = 3
-ONE_SECOND_CLEANUP_BOUND_SECONDS = 1.750
+CLEANUP_ADMISSION_SECONDS = 0.250
+QUARTER_SECOND_CLEANUP_BOUND_SECONDS = (
+    RESPONSE_SECONDS + 0.250 + CLEANUP_ADMISSION_SECONDS)
+ONE_SECOND_CLEANUP_BOUND_SECONDS = (
+    RESPONSE_SECONDS + 1.0 + CLEANUP_ADMISSION_SECONDS)
 SUCCESS = "raw_pwm_word0_one_pilot_complete_unverified"
 SUCCESS_1000 = "raw_pwm_word0_1000_pilot_complete_unverified"
 SUCCESS_2000 = "raw_pwm_word0_2000_pilot_complete_unverified"
@@ -236,6 +240,7 @@ PROFILES = {
             "unvalidated_raw_pwm_dual_motor_forward_2000_connected_proof_authorized"),
         "report_key": "raw_pwm_dual_motor_forward_2000_connected_proof",
         "observation_seconds": 0.250,
+        "absolute_cleanup_bound_seconds": QUARTER_SECOND_CLEANUP_BOUND_SECONDS,
     },
     consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE: {
         "steps": STEPS_BOTH_CONNECTED_LEFT_FORWARD_2000,
@@ -247,6 +252,7 @@ PROFILES = {
             "unvalidated_raw_pwm_both_connected_left_forward_2000_proof_authorized"),
         "report_key": "raw_pwm_both_connected_left_forward_2000_proof",
         "observation_seconds": 0.250,
+        "absolute_cleanup_bound_seconds": QUARTER_SECOND_CLEANUP_BOUND_SECONDS,
     },
     consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_SCOPE: {
         "steps": STEPS_BOTH_CONNECTED_RIGHT_FORWARD_2000,
@@ -258,6 +264,7 @@ PROFILES = {
             "unvalidated_raw_pwm_both_connected_right_forward_2000_proof_authorized"),
         "report_key": "raw_pwm_both_connected_right_forward_2000_proof",
         "observation_seconds": 0.250,
+        "absolute_cleanup_bound_seconds": QUARTER_SECOND_CLEANUP_BOUND_SECONDS,
     },
     consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE: {
         "steps": STEPS_DUAL_REVERSE_2000_CONNECTED,
@@ -269,6 +276,7 @@ PROFILES = {
             "unvalidated_raw_pwm_dual_motor_reverse_2000_connected_proof_authorized"),
         "report_key": "raw_pwm_dual_motor_reverse_2000_connected_proof",
         "observation_seconds": 0.250,
+        "absolute_cleanup_bound_seconds": QUARTER_SECOND_CLEANUP_BOUND_SECONDS,
     },
     consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE: {
         "steps": STEPS_LEFT_REVERSE_RIGHT_FORWARD_2000,
@@ -280,6 +288,7 @@ PROFILES = {
             "unvalidated_raw_pwm_left_reverse_right_forward_2000_connected_proof_authorized"),
         "report_key": "raw_pwm_left_reverse_right_forward_2000_connected_proof",
         "observation_seconds": 0.250,
+        "absolute_cleanup_bound_seconds": QUARTER_SECOND_CLEANUP_BOUND_SECONDS,
     },
     consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE: {
         "steps": STEPS_LEFT_FORWARD_RIGHT_BACKWARD_2000,
@@ -291,6 +300,7 @@ PROFILES = {
             "unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof_authorized"),
         "report_key": "raw_pwm_left_forward_right_backward_2000_connected_proof",
         "observation_seconds": 0.250,
+        "absolute_cleanup_bound_seconds": QUARTER_SECOND_CLEANUP_BOUND_SECONDS,
     },
     consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: {
         "steps": STEPS_DUAL_FORWARD_2000_ONE_SECOND,
@@ -569,7 +579,7 @@ class _RawPwmDualForward2000ConnectedTransport(_RawPwmTransport):
     steps = STEPS_DUAL_FORWARD_2000_CONNECTED
     success = SUCCESS_DUAL_FORWARD_2000_CONNECTED
     observation_seconds = 0.250
-    absolute_cleanup_bound_seconds = RESPONSE_SECONDS + observation_seconds
+    absolute_cleanup_bound_seconds = QUARTER_SECOND_CLEANUP_BOUND_SECONDS
     motor_connected = True
     physical_plug_label = "Motor L and Motor R"
     physical_motor_label = "BOTH"
