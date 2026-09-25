@@ -1,6 +1,7 @@
 """Local-only continuous Marvin sensor runtime and JSON API."""
 
 from datetime import datetime, timezone
+from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import itertools
@@ -22,6 +23,7 @@ from tools import marvin_legacy_protocol as protocol
 from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_raw_pwm_pilot as pilot
 from tools import marvin_legacy_attention_check as attention
+from tools import marvin_motor_power_off_consent as motor_consent
 from tools import marvin_legacy_zero as zero
 from tools.marvin_legacy_led_mapper import _frame
 from tools.marvin_legacy_live import LiveTransport
@@ -36,8 +38,13 @@ MAX_CHUNK_SECONDS = 3600
 MAX_BODY_BYTES = 4096
 MAX_REQUESTS = 65536
 STARTUP_SECONDS = 30.0
-OPERATOR_SESSION_SECONDS = 90
-OPERATOR_ACTIVE_SECONDS = 60
+OPERATOR_SESSION_SECONDS = 24 * 60 * 60
+OPERATOR_CLEANUP_RESERVE_SECONDS = 30
+OPERATOR_EVIDENCE_SECONDS = (
+    OPERATOR_SESSION_SECONDS + OPERATOR_CLEANUP_RESERVE_SECONDS)
+OPERATOR_USB_MAX_BYTES = 64 * 1024 * 1024
+OPERATOR_USB_MAX_RECORDS = 1_000_000
+OPERATOR_MAX_APPLICATION_BYTES = MAX_REQUESTS * (10 + 18)
 RAW_PWM_COMMAND = protocol.decode_packet(
     pilot.STEPS_DUAL_FORWARD_2000_CONNECTED["set"]).command
 LED_SET_COMMAND = protocol.decode_packet(
@@ -88,6 +95,10 @@ def managers_for_owner(owner, *, microphone=False, camera=False):
 class _OperatorTransport(LiveTransport):
     """One live owner with an exact getter/drive/LED transaction allowlist."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.application_bytes = 0
+
     def submit(self, raw, *, deadline):
         packet = protocol.decode_packet(raw)
         getter_commands = {spec.command for spec in protocol.GETTERS.values()}
@@ -100,6 +111,8 @@ class _OperatorTransport(LiveTransport):
             packet.response_field == 0
             and (
                 (packet.command in getter_commands and not packet.payload)
+                or (packet.command == protocol.GET_LED_STATE
+                    and not packet.payload)
                 or (packet.command == RAW_PWM_COMMAND
                     and packet.payload in drive_payloads)
                 or (packet.command == LED_SET_COMMAND
@@ -108,7 +121,12 @@ class _OperatorTransport(LiveTransport):
         )
         if not allowed:
             raise OSError("Operator transaction is outside the exact getter/drive/LED allowlist.")
-        return self._submit_once(raw, deadline=deadline)
+        if self.application_bytes + len(raw) > OPERATOR_MAX_APPLICATION_BYTES:
+            raise OSError("Operator application-byte budget exhausted.")
+        count = self._submit_once(raw, deadline=deadline)
+        if count == len(raw):
+            self.application_bytes += count
+        return count
 
 
 class ProductionControllerOwner:
@@ -132,6 +150,7 @@ class ProductionControllerOwner:
         self.started = False
         self.clock = clock
         self.operation_deadline = operation_deadline
+        self.nonzero_may_have_applied = False
 
     def start(self):
         if self.started:
@@ -211,7 +230,13 @@ class ProductionControllerOwner:
             raise OSError("Raw-PWM setter did not return the accepted empty raw-80 shape.")
 
     def stop(self):
-        self._setter(pilot.ZERO_PWM)
+        try:
+            self._setter(pilot.ZERO_PWM)
+        except BaseException as error:
+            if self.nonzero_may_have_applied:
+                motor_consent.notify_powered_trial_fault(error)
+            raise
+        self.nonzero_may_have_applied = False
 
     def drive_step(self, direction):
         try:
@@ -222,15 +247,28 @@ class ProductionControllerOwner:
                 and self.clock() >= self.operation_deadline):
             raise OSError(
                 "Operator motion admission window ended; no nonzero request was submitted.")
-        may_have_applied = False
+        primary = None
         try:
             self._setter(pilot.ZERO_PWM)
-            may_have_applied = True
+            self.nonzero_may_have_applied = True
             self._setter(payload)
             self.transport.wait(drive_step.DURATION_SECONDS)
+        except BaseException as error:
+            primary = error
+            raise
         finally:
-            if may_have_applied:
-                self.stop()
+            if self.nonzero_may_have_applied:
+                try:
+                    self.stop()
+                except BaseException as cleanup:
+                    if primary is not None:
+                        primary.add_note(
+                            f"Mandatory operator zero stop also failed: {cleanup}")
+                    else:
+                        raise
+                finally:
+                    if primary is not None:
+                        motor_consent.notify_powered_trial_fault(primary)
 
     def read_led_state(self):
         packet, _row = self._exchange(
@@ -286,11 +324,28 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         "automatic_reconnect": False,
         "application_acknowledgment": "not_established",
         "physical_stop": "not_established",
+        "maximum_application_bytes": OPERATOR_MAX_APPLICATION_BYTES,
+        "dynamic_allowlist": {
+            "empty_getter_commands": sorted({
+                *(spec.command for spec in protocol.GETTERS.values()),
+                protocol.GET_LED_STATE,
+            }),
+            "raw_pwm_command": RAW_PWM_COMMAND,
+            "raw_pwm_payload_sha256": sorted(
+                sha256(payload).hexdigest() for payload in {
+                    pilot.ZERO_PWM, pilot.DUAL_FORWARD_2000,
+                    pilot.DUAL_REVERSE_2000,
+                    pilot.LEFT_REVERSE_RIGHT_FORWARD_2000,
+                    pilot.LEFT_FORWARD_RIGHT_BACKWARD_2000,
+                }),
+            "led_set_command": LED_SET_COMMAND,
+            "led_payload_bytes": 18,
+        },
     }
     def observe(transport, shared_report):
         owner = ProductionControllerOwner(
             transport, shared_report,
-            operation_deadline=time.monotonic() + OPERATOR_ACTIVE_SECONDS)
+            operation_deadline=time.monotonic() + OPERATOR_SESSION_SECONDS)
         runtime = OperatorRuntime(
             owner, poll_seconds=poll_seconds, chunk_seconds=chunk_seconds,
             managers=managers_for_owner(
@@ -303,7 +358,7 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         shared_report["status"] = "serving"
         serve(
             runtime, port=port, ready=ready,
-            maximum_seconds=OPERATOR_ACTIVE_SECONDS)
+            maximum_seconds=OPERATOR_SESSION_SECONDS)
         shared_report["status"] = "operator_shutdown_complete"
 
     return zero._run_diagnostic(
@@ -313,11 +368,16 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
             first_sequence=4096, max_requests=MAX_REQUESTS, interval=0,
             max_rx_bytes=16 * 1024 * 1024, read_size=512),
         session_options={
-            "actuators_isolated": True, "_operator_console": True,
+            "actuators_isolated": False, "_operator_console": True,
             "allow_telemetry_state_change": True,
+            "operator_drive_authorized": True,
+            "operator_application_byte_budget":
+                OPERATOR_MAX_APPLICATION_BYTES,
+            **{name: drive_declarations[name]
+               for name in drive_step.COMMON_FLAGS},
         },
         declarations={
-            "actuator_power_and_signal_isolation_acknowledged": True,
+            "operator_connected_drive_scope_acknowledged": True,
             "ordinary_user_usb_recording_acknowledged": True,
             "secured_on_blocks_and_external_cutoff_acknowledged": True,
             **drive_declarations,
@@ -326,7 +386,9 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         success_status="operator_shutdown_complete",
         report_key="operator",
         authorizations={"bounded_operator_console_authorized": True},
-        serial_seconds=OPERATOR_SESSION_SECONDS,
+        serial_seconds=OPERATOR_EVIDENCE_SECONDS,
+        usb_max_bytes=OPERATOR_USB_MAX_BYTES,
+        usb_max_records=OPERATOR_USB_MAX_RECORDS,
     )
 
 

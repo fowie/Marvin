@@ -16,7 +16,9 @@ import subprocess
 import sys
 import time
 
-from tools.marvin_legacy_live import IngressClock, LiveTransport, UsbIngress, USB_PAYLOAD_LIMIT
+from tools.marvin_legacy_live import (
+    IngressClock, LiveTransport, MAX_USB_BYTES, MAX_USB_RECORDS, UsbIngress,
+    USB_PAYLOAD_LIMIT)
 from tools.marvin_legacy_protocol import decode_packet
 from tools.marvin_legacy_stream import LegacyStreamDecoder
 from tools.marvin_paths import new_output_path
@@ -243,7 +245,8 @@ def run_zero(output, *, expected_physical_port, actuators_isolated=False,
 def _run_diagnostic(output, *, expected_physical_port, review, transport_type, observe,
                     limits, session_options, declarations, expected_tx, success_status,
                     report_key="zero_observation", authorizations=None, capture_validator=None,
-                    on_failure=None, serial_seconds=SERIAL_SECONDS):
+                    on_failure=None, serial_seconds=SERIAL_SECONDS,
+                    usb_max_bytes=MAX_USB_BYTES, usb_max_records=MAX_USB_RECORDS):
     """Shared evidence/USB lifecycle; each fixed diagnostic keeps its own consent gate."""
     if (not isinstance(expected_physical_port, str) or len(expected_physical_port) > 100 or
             not re.fullmatch(r"[1-9][0-9]*-[1-9][0-9]*(?:\.[1-9][0-9]*)*", expected_physical_port)):
@@ -256,7 +259,10 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
     baseline = marvin_session.preflight(marvin_probe.DEFAULT_PORT)
     _validate_baseline(baseline, expected_physical_port, marvin_campaign.DESCRIPTOR_HASH)
     clock = IngressClock()
-    ingress = UsbIngress(output / "capture" / "usb" / "binary-events.bin", baseline["usb"], clock)
+    ingress = UsbIngress(
+        output / "capture" / "usb" / "binary-events.bin",
+        baseline["usb"], clock, max_bytes=usb_max_bytes,
+        max_records=usb_max_records)
     report = {"status": "not_started", "accepted_tx_bytes": 0, "uncertain_tx_bytes": 0,
               "write_status": "not_attempted"}
     metadata = {"status": "incomplete", "evidence_kind": "recorded",
@@ -292,6 +298,8 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
             probe_profile="legacy", usbmon_backend="binary", expected_usb_identity=baseline["usb"],
             ready_callback=lambda _: clock.check(), usb_tail_seconds=5, usb_close_grace_seconds=5,
             capture_runner=capture, binary_payload_limit=USB_PAYLOAD_LIMIT, **session_options,
+            operator_usb_max_bytes=usb_max_bytes,
+            operator_usb_max_records=usb_max_records,
         )
         ingress.finish(expected_tx(report) if callable(expected_tx) else expected_tx)
         clock.check()

@@ -223,10 +223,11 @@ reconnects, wraps sequences, or exposes arbitrary opcodes. Tests and embedding
 applications may still inject the same typed owner boundary without weakening
 the installed path.
 
-Each production live invocation has a 60-second control-admission window inside
-its 90-second evidence envelope. The remaining 30 seconds are reserved for
-mandatory stop, LED restore, transport close, and evidence sealing; a runtime or
-cleanup failure closes the HTTP listener and cannot be reported as success.
+Each production live invocation admits controls for a 24-hour operator session.
+Its serial evidence envelope reserves a further 30 seconds for mandatory stop,
+LED restore, transport close, and evidence sealing, followed by the existing
+coordinated usbmon tail/close allowance. A runtime or cleanup failure closes the
+HTTP listener and cannot be reported as success.
 `OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.

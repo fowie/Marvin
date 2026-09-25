@@ -720,6 +720,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             binary_payload_limit=binary.PAYLOAD_LIMIT,
             motor_supply_off=False, motor_left_only_connected=False,
             motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
+            operator_console=False, authorize_unvalidated_drive_step=False,
             unprivileged_usbmon=False, new_boot_declared=False,
             left_motor_powered_observation=False, operator_at_external_cutoff=False,
             encoder_feedback_observation=False, motor_power_plugs_disconnected=False,
@@ -951,7 +952,17 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         raise UsbmonError("Front-servo one-shot recording requires the connected-servo declaration.")
     if front_camera_servo_single_getter and front_camera_servo_single_baseline_restore:
         raise UsbmonError("Select one front-servo one-shot recorder profile.")
-    if front_servo_profile:
+    if operator_console:
+        from tools import marvin_legacy_drive_step as operator_drive
+        if (actuators_isolated is not False
+                or authorize_unvalidated_drive_step is not True
+                or any(declarations[name] is not True
+                       for name in operator_drive.COMMON_FLAGS)):
+            raise UsbmonError(
+                "Operator recorder requires the complete literal connected-drive "
+                "scope and must not claim actuator isolation.")
+        scope = None
+    elif front_servo_profile:
         if actuators_isolated or any(declarations.values()):
             raise UsbmonError(
                 "Front-servo recording requires its own connected-servo profile, "
@@ -964,7 +975,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         except ValueError as error:
             raise UsbmonError(str(error)) from error
     preparation = scope == "preparation"
-    powered_trial = scope in motor_consent.POWERED_TRIAL_SCOPES
+    powered_trial = operator_console or scope in motor_consent.POWERED_TRIAL_SCOPES
     observation = (
         left_motor_powered_observation or encoder_feedback_observation
         or powered_trial or front_servo_profile)
@@ -972,7 +983,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
               motor_consent.notify_collection_ended if encoder_feedback_observation else motor_consent.notify_cut_power)
     if not observation:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
-    if observation and (
+    if observation and not operator_console and (
             drop_to_invoking_user is not False or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096
             or seconds != (
@@ -1000,6 +1011,8 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
     ids = validate_privilege_drop(drop_to_invoking_user)
     if type(coordinator_stop) is not bool:
         raise UsbmonError("coordinator_stop must be a boolean.")
+    if type(operator_console) is not bool:
+        raise UsbmonError("operator_console must be a boolean.")
     if backend not in ("text", "binary"):
         raise UsbmonError("USB monitor backend must be text or binary.")
     binary.payload_budget(binary_payload_limit)
@@ -1007,10 +1020,23 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         raise UsbmonError("An extended payload budget requires the binary backend.")
     binary_options = ({} if binary_payload_limit == binary.PAYLOAD_LIMIT
                       else {"payload_limit": binary_payload_limit})
+    maximum_seconds = 86440 if operator_console else 120
     if (not isinstance(seconds, (int, float)) or isinstance(seconds, bool)
             or (isinstance(seconds, float) and not math.isfinite(seconds))
-            or not 0 < seconds <= 120):
-        raise UsbmonError("seconds must be finite, greater than zero and at most 120.")
+            or not 0 < seconds <= maximum_seconds):
+        raise UsbmonError(
+            "seconds must be finite, greater than zero and at most "
+            f"{maximum_seconds}.")
+    if operator_console and (
+            seconds != 86440
+            or os.geteuid() == 0 or backend != "binary"
+            or binary_payload_limit != 4096 or coordinator_stop is not True
+            or max_bytes != 64 * DEFAULT_MAX_BYTES
+            or max_records != 1_000_000 or max_line_bytes != 16384
+            or max_pending != DEFAULT_MAX_PENDING):
+        raise UsbmonError(
+            "Operator console recorder requires the fixed 24-hour private "
+            "binary evidence profile.")
     if actuators_isolated is not True and not (
             preparation or observation or front_servo_profile):
         raise UsbmonError("Explicit --actuators-isolated confirmation is required.")
@@ -1072,7 +1098,17 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             if encoder_feedback_observation:
                 metadata.update(**motor_consent.encoder_history(declarations),
                                 consent_profile="encoder_feedback_observation")
-            if powered_trial:
+            if operator_console:
+                metadata.update(
+                    operator_drive_scope={
+                        name: declarations[name]
+                        for name in operator_drive.COMMON_FLAGS
+                    },
+                    operator_drive_authorized=True,
+                    actuators_isolated=False,
+                    consent_profile="continuous_operator_connected_drive",
+                )
+            elif powered_trial:
                 metadata.update(**motor_consent.powered_trial_history(declarations),
                                 consent_profile=scope)
             if front_servo_profile:
@@ -1380,6 +1416,10 @@ def main(argv=None):
     parser.add_argument("--binary-payload-limit", type=int, default=binary.PAYLOAD_LIMIT)
     parser.add_argument("--coordinator-stop", action="store_true",
                         help=f"Allow an empty regular {COORDINATOR_STOP_FILE} file in the output directory to stop capture")
+    parser.add_argument("--operator-console", action="store_true",
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--authorize-unvalidated-drive-step",
+                        action="store_true", help=argparse.SUPPRESS)
     args = motor_consent.parse_observation_arguments(parser, argv)
     if args.analyze:
         if (args.usb_path or args.output or args.drop_to_invoking_user or args.actuators_isolated
@@ -1387,7 +1427,9 @@ def main(argv=None):
                 or args.projector_servo_only_connected_front_camera_servo_physically_disconnected
                 or args.front_camera_servo_single_getter
                 or args.front_camera_servo_single_baseline_restore
-                or args.coordinator_stop or any(motor_consent.arguments(args).values())
+                or args.coordinator_stop or args.operator_console
+                or args.authorize_unvalidated_drive_step
+                or any(motor_consent.arguments(args).values())
                 or any(motor_consent.observation_arguments(args).values())
                 or any(motor_consent.powered_trial_arguments(args).values())):
             if any(getattr(args, scope) for scope in motor_consent.POWERED_TRIAL_SCOPES):
@@ -1431,6 +1473,9 @@ def main(argv=None):
             max_records=args.max_records, max_line_bytes=args.max_line_bytes, max_pending=args.max_pending,
             backend=args.backend, coordinator_stop=args.coordinator_stop,
             binary_payload_limit=args.binary_payload_limit,
+            operator_console=args.operator_console,
+            authorize_unvalidated_drive_step=(
+                args.authorize_unvalidated_drive_step),
             **motor_consent.arguments(args),
             **motor_consent.observation_arguments(args),
             **motor_consent.powered_trial_arguments(args),

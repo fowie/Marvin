@@ -221,8 +221,14 @@ class IngressClock:
 class UsbIngress:
     """Tail the recorder's unbuffered, target-only binary evidence, without devices."""
 
-    def __init__(self, path, baseline, clock):
+    def __init__(self, path, baseline, clock, *,
+                 max_bytes=MAX_USB_BYTES, max_records=MAX_USB_RECORDS):
         self.path, self.baseline, self.clock = Path(path), baseline, clock
+        if (type(max_bytes) is not int or not 1 <= max_bytes <= 64 * 1024 * 1024
+                or type(max_records) is not int
+                or not 1 <= max_records <= 1_000_000):
+            raise ValueError("USB ingress evidence limits are invalid.")
+        self.max_bytes, self.max_records = max_bytes, max_records
         self.stream = None
         self.pending = bytearray()
         self.started = False
@@ -244,7 +250,7 @@ class UsbIngress:
             raise OSError("USB evidence reader is not open.")
         data = self.stream.read(16384)
         self.bytes += len(data)
-        if self.bytes > MAX_USB_BYTES:
+        if self.bytes > self.max_bytes:
             raise OSError("USB evidence byte budget exceeded.")
         self.pending.extend(data)
         if not self.started:
@@ -265,7 +271,7 @@ class UsbIngress:
             payload = bytes(self.pending[2 + binary.HEADER.size:size])
             del self.pending[:size]
             self.records += 1
-            if self.records > MAX_USB_RECORDS:
+            if self.records > self.max_records:
                 raise OSError("USB evidence record budget exceeded.")
             self._event(header, payload)
 

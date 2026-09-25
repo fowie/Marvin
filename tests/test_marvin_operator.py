@@ -88,7 +88,7 @@ class OperatorTests(unittest.TestCase):
                 "operator", "serve", "--run", "--port", "0",
                 "--expected-physical-port", "1-3",
                 "--evidence-root", directory,
-                "--actuators-isolated", "--unprivileged-usbmon",
+                "--unprivileged-usbmon",
                 "--authorize-unvalidated-drive-step",
                 *("--" + name.replace("_", "-")
                   for name in marvin_operator.drive_step.COMMON_FLAGS
@@ -99,6 +99,42 @@ class OperatorTests(unittest.TestCase):
             options = live.call_args.kwargs
             self.assertEqual(options["expected_physical_port"], "1-3")
             self.assertTrue(all(options["drive_declarations"].values()))
+
+    def test_production_bootstrap_uses_24_hour_session_and_cleanup_reserve(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                marvin_operator.zero, "_run_diagnostic",
+                return_value={"status": "planned"}) as run:
+            os.chmod(directory, 0o700)
+            declarations = {
+                "authorize_unvalidated_drive_step": True,
+                **dict.fromkeys(
+                    marvin_operator.drive_step.COMMON_FLAGS, True),
+            }
+            result = marvin_operator.serve_live(
+                port=0, poll_seconds=2, chunk_seconds=300,
+                expected_physical_port="1-3", evidence_root=directory,
+                configuration={}, drive_declarations=declarations)
+            self.assertEqual(result["status"], "planned")
+            options = run.call_args.kwargs
+            self.assertEqual(
+                options["serial_seconds"],
+                marvin_operator.OPERATOR_SESSION_SECONDS
+                + marvin_operator.OPERATOR_CLEANUP_RESERVE_SECONDS)
+            self.assertEqual(
+                options["usb_max_bytes"],
+                marvin_operator.OPERATOR_USB_MAX_BYTES)
+            self.assertEqual(
+                options["usb_max_records"],
+                marvin_operator.OPERATOR_USB_MAX_RECORDS)
+            session = options["session_options"]
+            self.assertFalse(session["actuators_isolated"])
+            self.assertTrue(session["operator_drive_authorized"])
+            self.assertEqual(
+                session["operator_application_byte_budget"],
+                marvin_operator.OPERATOR_MAX_APPLICATION_BYTES)
+            self.assertTrue(all(
+                session[name]
+                for name in marvin_operator.drive_step.COMMON_FLAGS))
 
     def test_deadman_cancels_pending_acquire_without_motion(self):
         script = marvin_dashboard.DEADMAN_CORE + """
@@ -144,11 +180,71 @@ if(cases.some(([event,want])=>sseRequiresRelease(event)!==want))process.exit(1);
                 "managers": {"drive": {"error": "unsafe"}}}),
             "error")
 
+    def test_heartbeat_loop_serializes_requests(self):
+        script = marvin_dashboard.DEADMAN_CORE + """
+const token={cancelled:false};let active=0,max=0,count=0;
+runHeartbeatLoop(token,t=>!t.cancelled,
+  ()=>Promise.resolve(),
+  async()=>{active++;max=Math.max(max,active);await Promise.resolve();active--;
+    if(++count===4)token.cancelled=true;
+  }).then(()=>{if(max!==1||count!==4)process.exit(1)});
+"""
+        subprocess.run(
+            ["node", "-e", script], check=True, timeout=5,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertNotIn("heartbeat=setInterval", marvin_dashboard.JS)
+
+    def test_operator_transport_admits_exact_led_getter_only(self):
+        class Transport:
+            submit = marvin_operator._OperatorTransport.submit
+            application_bytes = 0
+            submitted = []
+            def _submit_once(self, raw, *, deadline):
+                self.submitted.append((raw, deadline))
+                return len(raw)
+
+        transport = Transport()
+        getter = marvin_operator._frame(
+            5000, marvin_operator.protocol.GET_LED_STATE)
+        self.assertEqual(
+            transport.submit(getter, deadline=1), len(getter))
+        self.assertEqual(transport.submitted, [(getter, 1)])
+        with self.assertRaisesRegex(OSError, "outside the exact"):
+            transport.submit(
+                marvin_operator._frame(
+                    5001, marvin_operator.protocol.GET_LED_STATE, b"\0"),
+                deadline=2)
+        self.assertEqual(len(transport.submitted), 1)
+
+    def test_nonzero_fault_notifies_and_still_submits_stop(self):
+        class Transport:
+            token = b"identity"
+            def wait(self, _seconds): return None
+
+        owner = marvin_operator.ProductionControllerOwner(
+            Transport(), {}, operation_deadline=time.monotonic() + 10)
+        owner.started = True
+        submitted = []
+
+        def setter(payload):
+            submitted.append(payload)
+            if payload != marvin_operator.pilot.ZERO_PWM:
+                raise OSError("nonzero submission uncertain")
+
+        owner._setter = setter
+        with patch.object(
+                marvin_operator.motor_consent,
+                "notify_powered_trial_fault") as notify, \
+                self.assertRaisesRegex(OSError, "nonzero submission uncertain"):
+            owner.drive_step("forward")
+        self.assertEqual(submitted[-1], marvin_operator.pilot.ZERO_PWM)
+        notify.assert_called()
+
     def test_drive_cleanup_ignores_expired_admission_window(self):
         self.assertGreaterEqual(
-            marvin_operator.OPERATOR_SESSION_SECONDS
-            - marvin_operator.OPERATOR_ACTIVE_SECONDS,
-            20)
+            marvin_operator.OPERATOR_EVIDENCE_SECONDS
+            - marvin_operator.OPERATOR_SESSION_SECONDS,
+            30)
         now = [5.0]
 
         class Transport:

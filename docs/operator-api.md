@@ -39,7 +39,6 @@ of that same interface remains available for tests. Live configuration is:
 --run
 --expected-physical-port PORT
 --evidence-root PRIVATE_DIR
---actuators-isolated
 --unprivileged-usbmon
 --authorize-unvalidated-drive-step
 --physical-left-motor-connected-to-robot-right-motor-l-connector
@@ -61,13 +60,14 @@ prevent live startup. Missing media paths omit those managers, so their controls
 remain visibly disabled. The CLI opens no device until all required live
 configuration is present and does not fall back to a weaker serial path.
 
-The production coordinator admits live controls for 60 seconds inside a
-90-second serial/USB evidence envelope. At the admission limit it shuts down the
-HTTP server and runtime, leaving 30 seconds for priority stop, LED baseline
-restore, transport close, and evidence finalization. Motion admission expiry
-never applies to the mandatory all-zero stop path. Any runtime/cleanup failure
-closes the listener and seals a failed result rather than leaving a success-like
-dashboard running.
+The production coordinator admits live controls for a 24-hour operator session
+inside a 24-hour-plus-30-second serial evidence envelope. Its private binary
+usbmon recorder has a further ten-second coordinated tail/close allowance. At
+the session limit it shuts down the HTTP server and runtime, leaving 30 seconds
+for priority stop, LED baseline restore, transport close, and evidence
+finalization. Motion admission expiry never applies to the mandatory all-zero
+stop path. Any runtime/cleanup failure closes the listener and seals a failed
+result rather than leaving a success-like dashboard running.
 
 ## JSON and SSE routes
 

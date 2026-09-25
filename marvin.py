@@ -584,8 +584,6 @@ and physical stop remain unproved and require operator observation/cutoff.""",
                        help="exact reviewed controller USB topology")
     serve.add_argument("--evidence-root", type=Path, metavar="PRIVATE_DIR",
                        help="existing private directory for sensor JSONL/evidence")
-    serve.add_argument("--actuators-isolated", action="store_true",
-                       help="declare reviewed actuator power and signal isolation")
     serve.add_argument("--unprivileged-usbmon", action="store_true",
                        help="declare ordinary-user target-scoped usbmon")
     serve.add_argument("--media-directory", type=Path, metavar="PRIVATE_DIR",
@@ -659,7 +657,7 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
                 "evidence_root": (
                     None if args.evidence_root is None
                     else str(args.evidence_root.resolve())),
-                "actuators_isolated": args.actuators_isolated,
+                "actuators_isolated": False,
                 "unprivileged_usbmon": args.unprivileged_usbmon,
                 "media_directory": (
                     None if args.media_directory is None
@@ -670,11 +668,10 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
             if args.run and (
                     not args.expected_physical_port
                     or args.evidence_root is None
-                    or args.actuators_isolated is not True
                     or args.unprivileged_usbmon is not True):
                 raise ValueError(
                     "Live operator sensors require expected controller port, "
-                    "private evidence root, actuator isolation, and ordinary-user usbmon.")
+                    "private evidence root and ordinary-user usbmon.")
             drive_declarations = {
                 "authorize_unvalidated_drive_step":
                     args.authorize_unvalidated_drive_step,

@@ -255,6 +255,10 @@ def run_session(
     _front_servo_baseline_restore=False,
     _sensor_snapshot=False,
     _operator_console=False,
+    operator_drive_authorized=False,
+    operator_application_byte_budget=0,
+    operator_usb_max_bytes=1048576,
+    operator_usb_max_records=10000,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -361,6 +365,8 @@ def run_session(
             _front_servo_baseline_restore,
             _sensor_snapshot, _operator_console)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
+    if type(operator_drive_authorized) is not bool:
+        raise ValueError("operator_drive_authorized must be a literal boolean.")
     front_servo_profile = (
         _front_servo_mapper or _front_servo_getter or _front_servo_baseline_restore)
     if (_sensor_snapshot or _operator_console) and any((
@@ -529,7 +535,17 @@ def run_session(
         left_motor_powered_observation=left_motor_powered_observation,
         operator_at_external_cutoff=operator_at_external_cutoff,
     )
-    if front_servo_profile:
+    if _operator_console:
+        from tools import marvin_legacy_drive_step as operator_drive
+        if (actuators_isolated is not False
+                or operator_drive_authorized is not True
+                or any(declarations[name] is not True
+                       for name in operator_drive.COMMON_FLAGS)):
+            raise ValueError(
+                "Operator console requires the complete literal connected-drive "
+                "scope and must not claim actuator isolation.")
+        scope = None
+    elif front_servo_profile:
         if actuators_isolated or any(declarations.values()):
             raise ValueError(
                 "Front-servo mapping requires its own connected-servo profile, "
@@ -618,7 +634,7 @@ def run_session(
                         allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
                 or probe_schedule != fixed_schedule or probe_delay):
             raise ValueError("Observation requires its scope's fixed legacy getter plan.")
-    elif not powered_trial and not front_servo_profile:
+    elif not powered_trial and not front_servo_profile and not _operator_console:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
     if _motor_power_off_preparation or powered_trial or front_servo_profile:
         if _front_servo_baseline_restore:
@@ -746,13 +762,25 @@ def run_session(
     )
     if actuators_isolated is not True and not (
             _motor_power_off_preparation or observation or powered_trial
-            or front_servo_profile):
+            or front_servo_profile or _operator_console):
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
         raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
-    marvin_probe.validate_capture_limits(seconds, baudrate, marvin_probe.MAX_CAPTURE_BYTES)
-    if seconds > 90:
+    if _operator_console:
+        if (seconds != 86430
+                or type(operator_application_byte_budget) is not int
+                or operator_application_byte_budget <= 0
+                or operator_usb_max_bytes != 64 * 1024 * 1024
+                or operator_usb_max_records != 1_000_000):
+            raise ValueError(
+                "Operator console requires the fixed 24-hour session, "
+                "30-second cleanup reserve, and full evidence budgets.")
+        marvin_probe.validate_framing(bytesize, parity, stopbits)
+    else:
+        marvin_probe.validate_capture_limits(
+            seconds, baudrate, marvin_probe.MAX_CAPTURE_BYTES)
+    if seconds > 90 and not _operator_console:
         raise ValueError("Serial observation must be greater than 0 and at most 90 seconds.")
     marvin_probe.validate_framing(bytesize, parity, stopbits)
     marvin_tx_policy.validate_profile(probe_profile)
@@ -770,7 +798,7 @@ def run_session(
         raise ValueError("USB close grace must be finite and between 0 and 30 seconds.")
     usb_nominal_seconds = seconds + usb_tail_seconds
     usb_max_seconds = usb_nominal_seconds + usb_close_grace_seconds
-    if usb_max_seconds > 120:
+    if usb_max_seconds > 120 and not _operator_console:
         raise ValueError("Serial duration plus USB tail and close grace must not exceed 120 seconds.")
     if usbmon_backend not in ("text", "binary"):
         raise ValueError("USB monitor backend must be text or binary.")
@@ -836,7 +864,7 @@ def run_session(
             sum(map(len, TRANSCRIPT))
             if _motor_power_off_preparation or powered_trial or front_servo_profile else
             sum(map(len, SENSOR_TRANSCRIPT)) if _sensor_snapshot else
-            0 if _operator_console else
+            operator_application_byte_budget if _operator_console else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
             else len(probe) if probe is not None else 0
@@ -901,6 +929,12 @@ def run_session(
     if _operator_console:
         metadata.update(
             dynamic_allowlisted_operator_transcript=True,
+            operator_application_byte_budget=operator_application_byte_budget,
+            operator_drive_scope={
+                name: declarations[name] for name in operator_drive.COMMON_FLAGS
+            },
+            operator_drive_authorized=True,
+            actuator_power_and_signal_isolation_acknowledged=False,
             application_acknowledgment="not_established",
             physical_stop="not_established",
         )
@@ -1138,6 +1172,8 @@ def run_session(
         command.extend("--" + name.replace("_", "-") for name in motor_consent.OBSERVATION_FLAGS)
     elif _motor_power_off_preparation:
         command.extend("--" + name.replace("_", "-") for name in motor_consent.PREPARATION_FLAGS)
+    elif _operator_console:
+        pass
     else:
         command.append("--actuators-isolated")
     if usb_close_grace_seconds:
@@ -1145,6 +1181,16 @@ def run_session(
     if binary_payload_limit != 32:
         command.extend(("--binary-payload-limit", str(binary_payload_limit),
                         "--max-line-bytes", "16384"))
+    if _operator_console:
+        command.extend((
+            "--operator-console",
+            "--authorize-unvalidated-drive-step",
+            "--max-bytes", str(operator_usb_max_bytes),
+            "--max-records", str(operator_usb_max_records),
+        ))
+        command.extend(
+            "--" + name.replace("_", "-")
+            for name in operator_drive.COMMON_FLAGS)
     if sudo_usbmon:
         command = ["sudo", "-n", *command, "--drop-to-invoking-user"]
     process = None

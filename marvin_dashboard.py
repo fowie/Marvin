@@ -112,6 +112,13 @@ async function acquireHeld(direction,token,acquireLease,releaseLease,sendPulse){
   if(token.cancelled){await releaseLease(candidate);return null}
   return candidate
 }
+async function runHeartbeatLoop(token,isActive,wait,sendPulse){
+  while(isActive(token)){
+    await wait();
+    if(!isActive(token))return;
+    await sendPulse();
+  }
+}
 function sseRequiresRelease(event){
   if(!event.data)return true;
   const failed=JSON.parse(event.data);
@@ -135,7 +142,7 @@ async function api(path,body={}){
 }
 async function safe(path,body){try{error("");return await api(path,body)}catch(e){error(e.message);await release("API error");throw e}}
 function setDisabled(){
-  const managers=status.managers||{}, drive=!!managers.drive&&managers.drive.state!=="failed";
+  const managers=status.managers||{}, drive=status.state==="running"&&!!managers.drive&&["ready","leased"].includes(managers.drive.state);
   controls.forEach(button=>button.disabled=!drive||busy);$("stop").disabled=!drive;
   $("record-start").disabled=status.connection?.status!=="connected"||status.recording?.active;$("record-stop").disabled=!status.recording?.active;
   const led=managers.leds, active=led?.active_channel;document.querySelectorAll("[data-led]").forEach(input=>{input.disabled=!led||led.state!=="ready"||(active&&active!==input.dataset.led)});
@@ -162,10 +169,10 @@ function refreshFreshness(){const fresh=status.freshness?.fresh&&sensorStamp;$("
 function renderLeds(manager){const root=$("leds");if(root.children.length===0){Object.keys(manager?.channels||{}).forEach(name=>{const label=document.createElement("label"),input=document.createElement("input");input.type="checkbox";input.dataset.led=name;input.addEventListener("change",()=>led(name,input.checked));label.append(input,document.createTextNode(" "+name));root.append(label)})}document.querySelectorAll("[data-led]").forEach(input=>{const value=manager?.channels?.[input.dataset.led]?.value;input.checked=value===255;input.title=value===undefined||value===null?"unknown":`current ${value}`});$("led-status").textContent=manager?`Active: ${manager.active_channel||"none"}; baseline ${manager.baseline_hex?"captured":"unknown"}; restore uses captured baseline.`:"LEDs disabled: baseline getter/setter not configured."}
 async function pulse(direction,owned=lease){await safe(`/api/drive/heartbeat/${direction}`,{lease:owned});driveResult=`${direction} pulse accepted`}
 async function releaseLease(owned){await api("/api/drive/release",{lease:owned})}
-async function hold(direction){if(held||busy)return;held=direction;const token={cancelled:false};holdToken=token;busy=true;setDisabled();try{const owned=await acquireHeld(direction,token,async()=>(await safe("/api/drive/acquire")).drive.lease,releaseLease,pulse);if(!owned)return;lease=owned;heartbeat=setInterval(()=>{if(held&&holdToken===token)pulse(direction).catch(()=>{})},400)}finally{busy=false;setDisabled()}}
-async function release(reason){held=null;if(holdToken)holdToken.cancelled=true;holdToken=null;clearInterval(heartbeat);heartbeat=null;if(!lease)return;const owned=lease;lease=null;try{await releaseLease(owned)}catch(e){error(`${reason}: ${e.message}`)}}
+async function hold(direction){if(held||busy)return;held=direction;const token={cancelled:false};holdToken=token;busy=true;setDisabled();try{const owned=await acquireHeld(direction,token,async()=>(await safe("/api/drive/acquire")).drive.lease,releaseLease,pulse);if(!owned)return;lease=owned;heartbeat=runHeartbeatLoop(token,current=>held===direction&&holdToken===current&&!current.cancelled,()=>new Promise(resolve=>setTimeout(resolve,400)),()=>pulse(direction));heartbeat.catch(()=>{})}finally{busy=false;setDisabled()}}
+async function release(reason){held=null;if(holdToken)holdToken.cancelled=true;holdToken=null;heartbeat=null;if(!lease)return;const owned=lease;lease=null;try{await releaseLease(owned)}catch(e){error(`${reason}: ${e.message}`)}}
 async function activate(direction){if($("drive-mode").value==="fixed"){if(busy)return;busy=true;setDisabled();try{await safe(`/api/drive/fixed/${direction}`);driveResult=`${direction}: four pulses completed`}finally{busy=false;setDisabled()}}else await hold(direction)}
-async function priorityStop(){held=null;if(holdToken)holdToken.cancelled=true;holdToken=null;clearInterval(heartbeat);heartbeat=null;lease=null;try{await safe("/api/drive/stop");driveResult="explicit stop requested"}catch(_){}}
+async function priorityStop(){held=null;if(holdToken)holdToken.cancelled=true;holdToken=null;heartbeat=null;lease=null;try{await safe("/api/drive/stop");driveResult="explicit stop requested"}catch(_){}}
 controls.forEach(button=>{const direction=button.dataset.drive;button.addEventListener("pointerdown",event=>{event.preventDefault();button.setPointerCapture(event.pointerId);activate(direction)});for(const event of ["pointerup","pointercancel","lostpointercapture"])button.addEventListener(event,()=>release(event.type));button.addEventListener("click",event=>{if(event.detail===0)activate(direction)})});
 addEventListener("keydown",event=>{if(event.code==="Space"){event.preventDefault();priorityStop();return}const direction=directions[event.key.toLowerCase()];if(direction&&!event.repeat){event.preventDefault();activate(direction)}});
 addEventListener("keyup",event=>{if(directions[event.key.toLowerCase()])release("keyup")});addEventListener("blur",()=>release("window blur"));addEventListener("pagehide",()=>release("pagehide"));document.addEventListener("visibilitychange",()=>{if(document.hidden)release("visibility hidden")});
