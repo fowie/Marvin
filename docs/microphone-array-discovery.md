@@ -246,6 +246,50 @@ reviewed maintenance window; do not perform them during capture. After any
 kernel update, treat the override as incompatible until its two changes and
 build inputs are revalidated. Do not carry only the device quirk forward.
 
+## Public offline-default interface
+
+`tools.marvin_microphone` imports without hardware access and defaults to an
+offline status report:
+
+```sh
+python -m tools.marvin_microphone
+```
+
+The report names the expected override module for the running kernel, reports
+whether that path exists, and leaves its signature/loaded image and device
+readiness explicitly unchecked. Live operations refuse to proceed when the
+override path is absent. The interface uses standard ALSA only.
+It never sends recovered successor controller power/enable commands: those
+commands are unrelated to this USB microphone, and their opcodes collide with
+proved legacy meanings. A live, non-streaming list verifies the exact USB
+identity, ALSA metadata and selected endpoint:
+
+```sh
+python -m tools.marvin_microphone list \
+  --run --device hw:CARD=Array,DEV=0
+```
+
+Capture accepts only the proved native `S16_LE`, 16000 Hz, 8-channel profile,
+requires a new output path, and is limited to one through five seconds. The
+caller must supply the exact byte bound: `duration * 16000 * 8 * 2`, plus 44
+bytes for WAV. For example, a five-second WAV is:
+
+```sh
+python -m tools.marvin_microphone capture \
+  --run --authorize-audio-capture \
+  --device hw:CARD=Array,DEV=0 \
+  --duration 5 --max-bytes 1280044 --type wav \
+  --output /private/microphone-array-5s.wav
+```
+
+This command is an example, not authorization to record. Every live capture
+requires current user consent and an appropriate private destination. The
+command uses an independent seven-second subprocess timeout, rejects partial or
+oversized results, never overwrites a path, and writes successful output mode
+`0600`. It exposes ALSA errors rather than retrying or falling back to another
+device. The signed override containing both the DMA fix and exact device quirk
+is a prerequisite.
+
 ## Upstream references
 
 - ALSA defines [`hw` as direct kernel PCM access and `plug` as automatic
