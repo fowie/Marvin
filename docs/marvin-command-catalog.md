@@ -159,6 +159,61 @@ contract enum and struct layouts are in
 [`data/protocol-catalog.json`](../data/protocol-catalog.json). That file is
 explicitly successor-only.
 
+## Projector power negative-effect observation
+
+The sealed 2026-09-24 fixed command-`27` run submitted ON sequence 3600 and
+mandatory OFF sequence 3601 around a measured `10.000316396`-second hold.
+Both writes were included in the 22 accepted transmit bytes with zero uncertain
+bytes; both had CRC-valid, empty correlated responses, with opaque raw fields
+`82` for ON and `81` for OFF. OFF identity was revalidated. These correlations
+are not ACKs and do not prove physical power state.
+
+The operator observed no illumination, fan, LED, click, or other projector
+power sign during the hold. By contrast, every Marvin power-on visibly
+illuminates the projector for about 0.5 seconds before it turns off, so the
+illumination hardware/path is known to function. The run is therefore direct
+negative physical-effect evidence for this exact command transcript and setup,
+not proof of a general projector or power-switch failure. Marvin was physically
+powered off afterward.
+
+The USB trace retained two OUT completions / 22 bytes and reported zero dropped
+events, but final kernel statistics reported eight queued events. Strict
+evidence validation therefore correctly failed the overall run. The parsed
+pairing summary had no pending submissions, unmatched completions, or retained
+pending IN/OUT, so this is a recorder shutdown-tail problem rather than
+permission to weaken the zero-tail requirement.
+
+Recovered newer firmware source explains why the run was not a valid
+illumination proof:
+
+- `m_src/m_shutter.c:51-94` closes the shutter during startup, while
+  `m_src/m_projector.c:118-185` never opens it.
+- `m_src/m_projector.c:118-185` sets the logical power state, then waits 12
+  seconds for focus/home positioning before video sync. It later applies normal
+  brightness and reads the firmware version. The 10-second OFF therefore
+  arrived before that setup sequence could reach sync or brightness.
+- `m_src/m_projector.c:365-375,433-442` implements brightness and PC-video sync;
+  setup already invokes both, so separate writes are not the first follow-up.
+- `m_src/m_projector.c:411-431` routes ON to setup only when cached power is
+  false; otherwise the same call enters the power-off branch. A pre-test state
+  read is required before another ON transcript can be considered.
+- `m_src/m_heartbeat.c:72-91` exposes cached projector power, brightness and idle
+  state in newer heartbeat data. Command `0E GetPowerState` is the only
+  installed-profile read with existing live evidence, but its `0x1000`
+  projector-bit interpretation remains source-derived rather than installed
+  legacy proof.
+- Newer command `26 GetProjectorVersion` is not a safe installed read:
+  `m_src/m_protocol.c:146` maps it to a cached projector version, but the legacy
+  S/E command map assigns the same ID to a different operation.
+
+The smallest next bounded test is read-only: perform one fixed legacy
+`0E GetPowerState` read and preserve the raw two-byte mask, with no projector
+writes. If separate authorization is later granted for an illumination test,
+its transcript must first establish logical projector-off state, allow more
+than the source's 12.5 seconds of fixed setup delays, and address the
+independently closed shutter; adding brightness, sync, or successor commands is
+not justified by current evidence.
+
 ## Command `11` rejection boundary
 
 The old sample establishes only the two-word request and three send sites. The
