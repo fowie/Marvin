@@ -157,10 +157,15 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                  expected_identity: bytes, session_timeout: float,
                  limits: Limits = Limits(), first_sequence: int = 0,
                  cleanup_timeout: float = 1.0, clock: Callable[[], float] = time.monotonic,
-                 evidence_kind: str = "unspecified", on_failure=None, on_evidence=None):
+                 evidence_kind: str = "unspecified", on_failure=None, on_evidence=None,
+                 startup_timeout: float | None = None):
         self._key = _identity("ownership_key", ownership_key)
         self._expected_identity = _identity("expected_identity", expected_identity)
         self._session_timeout = _number("session_timeout", session_timeout, 0.001, 86400)
+        self._startup_timeout = (
+            self._session_timeout if startup_timeout is None else
+            _number("startup_timeout", startup_timeout, 0.001, 120)
+        )
         self._cleanup_timeout = _number("cleanup_timeout", cleanup_timeout, 0.001, 30)
         if not isinstance(limits, Limits):
             raise ValueError("limits must be a Limits instance.")
@@ -299,10 +304,12 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                 self._claimed = True
             with self._guard_failure():
                 self._session_deadline = self._now() + self._session_timeout
-                observed = self._transport.revalidate(deadline=self._session_deadline)
+                startup_deadline = min(
+                    self._session_deadline, self._last_now + self._startup_timeout)
+                observed = self._transport.revalidate(deadline=startup_deadline)
                 if _identity("revalidated identity", observed) != self._expected_identity:
                     self._abort("identity_changed", "Fresh revalidation did not match the expected identity.")
-                self._check_identity(self._session_deadline)
+                self._check_identity(startup_deadline)
                 self._state = "active"
         return self
 

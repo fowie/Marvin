@@ -24,6 +24,7 @@ MIN_CHUNK_SECONDS = 10
 MAX_CHUNK_SECONDS = 3600
 MAX_BODY_BYTES = 4096
 MAX_REQUESTS = 65536
+STARTUP_SECONDS = 30.0
 
 
 def _utc_now():
@@ -46,13 +47,14 @@ class PersistentSensorSource:
     """Repeated exact four-getter snapshots over one injected transport."""
 
     def __init__(self, transport, *, ownership_key, expected_identity,
-                 session_timeout=86400):
+                 session_timeout=86400, startup_timeout=STARTUP_SECONDS):
         if type(ownership_key) is not bytes or type(expected_identity) is not bytes:
             raise ValueError("ownership_key and expected_identity must be immutable bytes.")
         self.transport = transport
         self.ownership_key = ownership_key
         self.expected_identity = expected_identity
         self.session_timeout = session_timeout
+        self.startup_timeout = startup_timeout
         self.client = None
 
     def start(self):
@@ -63,6 +65,7 @@ class PersistentSensorSource:
             ownership_key=self.ownership_key,
             expected_identity=self.expected_identity,
             session_timeout=self.session_timeout,
+            startup_timeout=self.startup_timeout,
             cleanup_timeout=5,
             limits=Limits(
                 max_requests=MAX_REQUESTS, max_rx_bytes=16 * 1024 * 1024,
@@ -172,7 +175,8 @@ class OperatorRuntime:
     def __init__(self, source: SensorSource | None, *,
                  poll_seconds=DEFAULT_POLL_SECONDS,
                  chunk_seconds=DEFAULT_CHUNK_SECONDS,
-                 managers: dict[str, RuntimeManager] | None = None):
+                 managers: dict[str, RuntimeManager] | None = None,
+                 startup_timeout=None):
         if type(poll_seconds) not in (int, float) or not MIN_POLL_SECONDS <= poll_seconds <= MAX_POLL_SECONDS:
             raise ValueError(f"poll_seconds must be {MIN_POLL_SECONDS}..{MAX_POLL_SECONDS}.")
         if type(chunk_seconds) is not int or not MIN_CHUNK_SECONDS <= chunk_seconds <= MAX_CHUNK_SECONDS:
@@ -184,6 +188,14 @@ class OperatorRuntime:
             raise ValueError("Manager names must be identifiers.")
         self.poll_seconds = float(poll_seconds)
         self.chunk_seconds = chunk_seconds
+        startup_timeout = (
+            getattr(source, "startup_timeout", STARTUP_SECONDS)
+            if startup_timeout is None else startup_timeout
+        )
+        if (type(startup_timeout) not in (int, float)
+                or not 0.001 <= startup_timeout <= 120):
+            raise ValueError("startup_timeout must be 0.001..120 seconds.")
+        self.startup_timeout = float(startup_timeout)
         self._lock = RLock()
         self._changed = Condition(self._lock)
         self._stop = Event()
@@ -204,12 +216,17 @@ class OperatorRuntime:
             self._state = "starting"
         self._thread = Thread(target=self._run, name="marvin-operator", daemon=False)
         self._thread.start()
+        failure = None
         with self._changed:
-            self._changed.wait_for(lambda: self._state != "starting", timeout=5)
+            self._changed.wait_for(
+                lambda: self._state != "starting", timeout=self.startup_timeout)
             if self._state == "starting":
-                raise TimeoutError("Operator runtime startup did not complete.")
-            if self._state == "failed":
-                raise RuntimeError(self._last_error)
+                failure = TimeoutError("Operator runtime startup did not complete.")
+            elif self._state == "failed":
+                failure = RuntimeError(self._last_error)
+        if failure is not None:
+            self.close()
+            raise failure
         return self
 
     def _publish(self):
@@ -388,9 +405,7 @@ class OperatorRuntime:
     def close(self):
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=10)
-            if self._thread.is_alive():
-                raise TimeoutError("Operator runtime did not stop.")
+            self._thread.join()
 
 
 class OperatorServer(ThreadingHTTPServer):
@@ -419,7 +434,26 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _require_loopback_host(self):
+        host = self.headers.get("Host", "")
+        if host.split(":", 1)[0] != "127.0.0.1":
+            self._json(400, {
+                "status": "failed",
+                "error": "Host must be the loopback address.",
+            })
+            return False
+        return True
+
+    @staticmethod
+    def _event_type(status):
+        if status.get("state") == "failed" or status.get("error"):
+            return "error"
+        drive = status.get("managers", {}).get("drive", {})
+        return "error" if drive.get("error") else "status"
+
     def do_GET(self):
+        if self.path.startswith("/api/") and not self._require_loopback_host():
+            return
         if self.path == "/api/status":
             self._json(200, self.server.runtime.status())
         elif self.path == "/api/sensors/latest":
@@ -440,7 +474,9 @@ class _Handler(BaseHTTPRequestHandler):
                     status = self.server.runtime.wait_event(revision)
                     revision = status["revision"]
                     data = json.dumps(status, ensure_ascii=True, allow_nan=False)
-                    self.wfile.write(f"id: {revision}\nevent: status\ndata: {data}\n\n".encode("ascii"))
+                    event = self._event_type(status)
+                    self.wfile.write(
+                        f"id: {revision}\nevent: {event}\ndata: {data}\n\n".encode("ascii"))
                     self.wfile.flush()
                     if status["state"] in ("failed", "stopped"):
                         break
@@ -457,6 +493,8 @@ class _Handler(BaseHTTPRequestHandler):
         command = routes.get(self.path)
         if command is None:
             self._json(404, {"status": "not_found"})
+            return
+        if not self._require_loopback_host():
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -482,7 +520,10 @@ def serve(runtime, *, port=8765, ready=None):
     try:
         runtime.start()
     except Exception:
-        server.server_close()
+        try:
+            runtime.close()
+        finally:
+            server.server_close()
         raise
     if ready is not None:
         ready(server.server_address)

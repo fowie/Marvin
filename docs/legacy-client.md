@@ -152,6 +152,8 @@ requests. Every operational adapter call receives the same absolute deadline
 for that operation, no later than the session deadline. There is no background
 timer: an idle expired session cannot write when next called. Reads returning
 at/after the deadline cannot deliver success, even with earlier RX timestamps.
+An optional startup timeout (0.001..120 seconds) further bounds initial
+revalidation and identity checks without shortening the established session.
 Cleanup has a separate 0.001..30 second grace (default 1 second); if the clock
 fails, it uses the last validated time and reports the clock diagnostic.
 

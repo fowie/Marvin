@@ -377,6 +377,20 @@ class LegacyClientTests(unittest.TestCase):
             with self.assertRaises(client.SessionError):
                 session.start()
         self.assert_failed(session, transport, "deadline", writes=0)
+        session, transport, clock = self.make_client(
+            session_timeout=60, startup_timeout=0.25)
+        startup_deadlines = []
+
+        def slow_revalidate(*, deadline):
+            startup_deadlines.append(deadline)
+            clock.now = deadline
+            return transport.token
+
+        with patch.object(transport, "revalidate", side_effect=slow_revalidate):
+            with self.assertRaises(client.SessionError):
+                session.start()
+        self.assertEqual(startup_deadlines, [10.25])
+        self.assert_failed(session, transport, "deadline", writes=0)
         session, transport, clock = self.make_client()
         session.start()
         transport.on_identity = lambda: setattr(clock, "now", 15)
@@ -770,6 +784,9 @@ class LegacyClientTests(unittest.TestCase):
             for name in ("session_timeout", "cleanup_timeout"):
                 with self.assertRaises(ValueError):
                     self.make_client(**{name: bad})
+            if bad is not None:
+                with self.assertRaises(ValueError):
+                    self.make_client(startup_timeout=bad)
             for name in ("max_requests", "max_rx_bytes", "max_events", "max_reads", "read_size"):
                 with self.assertRaises(ValueError):
                     client.Limits(**{name: bad})
