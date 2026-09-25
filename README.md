@@ -33,6 +33,9 @@ python -m marvin camera up 5
 python -m marvin camera center
 python -m marvin projector status
 python -m marvin projector power on
+python -m marvin leds status
+python -m marvin leds plan left-position-0-red
+python -m marvin leds wheel-blink
 ```
 
 Live actions require `--run`, the reviewed physical USB port, a new evidence
@@ -78,6 +81,24 @@ Standalone live OFF remains rejected. Source semantics and a correlated OFF
 response do not prove the physical power state; the external cutoff remains
 primary.
 
+LED controls preserve the completed mapping evidence without inventing a color
+model. `leds plan NAME` prints an immutable offline plan for one mapped channel
+at the only tested value, `255`; every other payload byte is zero, so this is an
+exclusive full-intensity plan rather than a composable per-LED setter. Named
+steady LED plans cannot run live because the mapping procedure restored in a
+separate process and therefore does not own cleanup.
+
+`leds wheel-blink` is the sole live LED action. It reuses the exact completed
+three-second wheel pilot, requires the fixed OFF-start state/blink baselines,
+and attempts the exact blink baseline followed by the exact LED-state baseline
+once after either setter may have applied. It does not expose payload, color,
+intensity, timing, animation, or standalone-OFF controls. The restore is the
+captured baseline, not all-off: no all-off cleanup has been live-proven.
+The smallest remaining proof for live named steady LEDs is one fixed,
+single-process smoke that verifies a captured baseline, sets one mapped index
+to `255`, and restores that exact baseline from `finally`, with visible effect
+and restoration recorded.
+
 Python API:
 
 ```python
@@ -87,6 +108,8 @@ robot = Marvin()                 # offline plans; no hardware access
 print(robot.status())
 print(robot.drive("forward"))
 print(robot.camera_up(5))
+print(robot.leds.full_intensity_plan("left-position-0-red"))
+print(robot.leds.wheel_blink())   # offline immutable plan by default
 ```
 
 ## Confirmed findings and limits

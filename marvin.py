@@ -21,6 +21,7 @@ from tools import marvin_legacy_protocol
 from tools import marvin_legacy_projector_power as projector_power
 from tools import marvin_probe
 from tools import marvin_session
+from marvin_leds import LEDS, MarvinLEDs
 
 
 DRIVE_DIRECTIONS = tuple(drive_step.DIRECTIONS)
@@ -85,6 +86,12 @@ class Marvin:
         self.expected_physical_port = expected_physical_port
         self.output = Path(output) if output is not None else None
         self.safety_confirmed = safety_confirmed
+        self.leds = MarvinLEDs(
+            run=run,
+            expected_physical_port=expected_physical_port,
+            output=output,
+            safety_confirmed=safety_confirmed,
+        )
 
     def status(self):
         """Report offline capabilities or read-only live connection readiness."""
@@ -100,6 +107,7 @@ class Marvin:
                 },
             },
             "standalone_motor_stop": False,
+            "leds": self.leds.status(),
         }
         if not self.run:
             return {
@@ -308,7 +316,8 @@ def _live_arguments(parser, *, safety=True):
         parser.add_argument(
             "--confirm-safe-setup", action="store_true",
             help="confirm reviewed wiring, robot on blocks, external cutoff ready, "
-                 "encoders connected, required servo isolation, and ordinary-user usbmon")
+                 "encoders connected, required motor/servo isolation, and "
+                 "ordinary-user usbmon")
 
 
 def _servo_subcommands(parser, *, status=False):
@@ -362,14 +371,23 @@ observed 5-degree profile and always attempts baseline restore.""",
     projector = actions.add_parser(
         "projector", help="inspect the unverified projector-servo surface")
     _servo_subcommands(projector, status=True)
+    leds = actions.add_parser("leds", help="inspect or run bounded LED operations")
+    led_actions = leds.add_subparsers(dest="led_command", required=True)
+    led_actions.add_parser("status", help="show mapped LED evidence and boundaries")
+    led_plan = led_actions.add_parser(
+        "plan", help="print one exclusive full-intensity offline plan")
+    led_plan.add_argument("led", choices=tuple(LEDS))
+    led_blink = led_actions.add_parser(
+        "wheel-blink", help="plan the fixed three-second wheel blink pilot")
+    _live_arguments(led_blink)
     return parser
 
 
 def main(argv=None):
     args = _parser().parse_args(argv)
     marvin = Marvin(
-        run=args.run,
-        expected_physical_port=args.expected_physical_port,
+        run=getattr(args, "run", False),
+        expected_physical_port=getattr(args, "expected_physical_port", None),
         output=getattr(args, "output", None),
         safety_confirmed=getattr(args, "confirm_safe_setup", False),
     )
@@ -386,6 +404,12 @@ def main(argv=None):
             result = marvin.camera_down(args.degrees)
         elif args.command == "camera":
             result = marvin.camera_center()
+        elif args.command == "leds" and args.led_command == "status":
+            result = marvin.leds.status()
+        elif args.command == "leds" and args.led_command == "plan":
+            result = marvin.leds.full_intensity_plan(args.led)
+        elif args.command == "leds":
+            result = marvin.leds.wheel_blink()
         elif args.servo_command == "status":
             result = marvin.projector_status()
         elif args.servo_command == "power":
