@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 from threading import Event, Thread
@@ -15,6 +16,13 @@ from urllib.request import Request, urlopen
 
 import marvin_managers
 import marvin_operator
+
+
+def wave_bytes(data=b"\0\0"):
+    fmt = struct.pack("<HHIIHH", 1, 8, 16000, 256000, 16, 16)
+    chunks = b"fmt " + len(fmt).to_bytes(4, "little") + fmt
+    chunks += b"data" + len(data).to_bytes(4, "little") + data
+    return b"RIFF" + (len(chunks) + 4).to_bytes(4, "little") + b"WAVE" + chunks
 
 
 class ManagerTests(unittest.TestCase):
@@ -173,7 +181,7 @@ class ManagerTests(unittest.TestCase):
                         stderr=options["stderr"], close_fds=options["close_fds"])
                 return start
 
-            wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\0" * 28
+            wave = wave_bytes()
             audio = marvin_managers.MicrophoneManager(
                 device_check=lambda **_options: {"status": "ready"},
                 popen=popen_with(wave))
@@ -186,6 +194,20 @@ class ManagerTests(unittest.TestCase):
             audio.action("stop", {})
             self.assertEqual(wav.stat().st_mode & 0o777, 0o600)
             self.assertEqual(wav.stat().st_size, len(wave))
+
+            interrupted = marvin_managers.MicrophoneManager(
+                device_check=lambda **_options: {"status": "ready"},
+                popen=popen_with(
+                    wave, b"arecord: pcm_read: Interrupted system call\n",
+                    exit_code=1))
+            interrupted.start()
+            interrupted_wav = root / "interrupted.wav"
+            interrupted.action("start", {
+                "output": str(interrupted_wav), "usb_path": "1-2.3",
+                "privacy_authorized": True})
+            time.sleep(0.1)
+            interrupted.action("stop", {})
+            self.assertEqual(interrupted_wav.read_bytes(), wave)
 
             candidate = {
                 "node": "/dev/video-test", "rejected": False,
@@ -225,7 +247,7 @@ class ManagerTests(unittest.TestCase):
     def test_recorder_escalation_and_nonzero_exit_never_publish(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\0" * 28
+            wave = wave_bytes()
 
             def process(script):
                 def start(_argv, **options):
@@ -252,6 +274,44 @@ class ManagerTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "Invalid bounded WAV"):
                 failed.action("stop", {})
             self.assertFalse(failed_output.exists())
+
+            unexpected = (
+                "import os,sys\n"
+                f"os.write(1,{wave!r})\n"
+                "os.write(2,b'arecord: pcm_read: Interrupted system call\\n')\n"
+                "sys.exit(1)\n"
+            )
+            unexpected_recorder = marvin_managers.MicrophoneManager(
+                device_check=lambda **_options: {}, popen=process(unexpected))
+            unexpected_recorder.start()
+            unexpected_output = root / "unexpected.wav"
+            unexpected_recorder.action("start", {
+                "output": str(unexpected_output), "usb_path": "1-2.3",
+                "privacy_authorized": True})
+            time.sleep(0.1)
+            with self.assertRaisesRegex(OSError, "Invalid bounded WAV"):
+                unexpected_recorder.action("stop", {})
+            self.assertFalse(unexpected_output.exists())
+
+            malformed = (
+                "import os,signal,sys,time\n"
+                "def done(*_):\n"
+                " os.write(1,b'RIFF\\x24\\0\\0\\0WAVEfmt ')\n"
+                " os.write(2,b'arecord: pcm_read: Interrupted system call\\n')\n"
+                " sys.exit(1)\n"
+                "signal.signal(signal.SIGINT,done)\ntime.sleep(30)\n"
+            )
+            malformed_recorder = marvin_managers.MicrophoneManager(
+                device_check=lambda **_options: {}, popen=process(malformed))
+            malformed_recorder.start()
+            malformed_output = root / "malformed.wav"
+            malformed_recorder.action("start", {
+                "output": str(malformed_output), "usb_path": "1-2.3",
+                "privacy_authorized": True})
+            time.sleep(0.1)
+            with self.assertRaisesRegex(OSError, "Invalid bounded WAV"):
+                malformed_recorder.action("stop", {})
+            self.assertFalse(malformed_output.exists())
 
             scripts = {
                 "terminate": (

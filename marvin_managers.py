@@ -530,22 +530,43 @@ class MicrophoneManager(_RecorderManager):
         ]
         return self._spawn(destination, stage, fd, argv)
 
-    def _validate_output(self, returncode, _stop_result):
+    def _validate_output(self, returncode, stop_result):
         size = self._stage.stat().st_size
-        with self._stage.open("rb") as stream:
-            header = stream.read(12)
         maximum = (
             MEDIA_LIMIT_SECONDS * marvin_microphone.RATE
             * marvin_microphone.CHANNELS * marvin_microphone.SAMPLE_BYTES + 44
         )
-        if (returncode or not 44 <= size <= maximum
-                or header[:4] != b"RIFF" or header[8:12] != b"WAVE"):
+        detail = self._stderr.decode(errors="replace").lower()
+        expected_sigint = (
+            stop_result == "sigint" and returncode == 1
+            and "pcm_read" in detail and "interrupted system call" in detail
+        )
+        if ((returncode and not expected_sigint) or not 44 <= size <= maximum
+                or not self._complete_wave(size)):
             raise OSError(
                 f"Invalid bounded WAV result (exit {returncode}, {size} bytes).")
-        if int.from_bytes(header[4:8], "little") + 8 != size:
-            raise OSError(
-                f"Incomplete WAV result (declared {int.from_bytes(header[4:8], 'little') + 8}, "
-                f"received {size} bytes).")
+
+    def _complete_wave(self, size):
+        with self._stage.open("rb") as stream:
+            header = stream.read(12)
+            if (header[:4] != b"RIFF" or header[8:12] != b"WAVE"
+                    or int.from_bytes(header[4:8], "little") + 8 != size):
+                return False
+            position = 12
+            while position < size:
+                stream.seek(position)
+                chunk = stream.read(8)
+                if len(chunk) != 8:
+                    return False
+                chunk_size = int.from_bytes(chunk[4:8], "little")
+                end = position + 8 + chunk_size
+                padded_end = end + (chunk_size & 1)
+                if padded_end > size:
+                    return False
+                if chunk[:4] == b"data":
+                    return chunk_size > 0 and padded_end == size
+                position = padded_end
+        return False
 
 
 class CameraManager(_RecorderManager):
