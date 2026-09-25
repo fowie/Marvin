@@ -29,7 +29,10 @@ the matching human-facing CLI. Both are offline by default:
 python -m marvin --help
 python -m marvin status
 python -m marvin drive forward
+python -m marvin stop
+python -m marvin teleop
 python -m marvin camera up 5
+python -m marvin camera down 5
 python -m marvin camera center
 python -m marvin projector status
 python -m marvin projector power on
@@ -51,11 +54,19 @@ observed `2500 -> 2000` profile (approximately five degrees) and owns its
 fails, or receives Ctrl-C; write acceptance and protocol correlation still do
 not prove physical stop or restoration.
 
-There is deliberately no arbitrary command, PWM, duration, servo target or
-standalone live-stop escape hatch. `stop` reports that physical standalone-stop
-semantics are not established. Camera down reports that increasing word 0 is
-only an inferred inverse and has not been exercised with the installed linkage.
-Use the external cutoff whenever cleanup or restoration is reported uncertain.
+There is deliberately no arbitrary command, PWM, duration or servo target.
+`stop` sends the fixed all-zero raw-PWM request and conditionally verifies the
+zero getter; it is a stop request with previously observed stopped wheels, not
+proof of braking, de-energization or causation. Camera down 5 provides the fixed
+offline `2500 -> 3000` inverse-hypothesis plan, but live camera-down remains
+blocked until the installed linkage is observed. Use the external cutoff
+whenever cleanup or restoration is reported uncertain.
+
+`teleop` is a line-oriented wrapper over only the proved bounded drive and stop
+primitives: `w` forward, `s` backward, `a` rotate left, `d` rotate right, `x`
+stop, and `q` stop then quit. Live mode creates one `run-NNNN` evidence
+subdirectory per action. EOF and Ctrl-C make one stop request before exit when
+one has not just succeeded; action failure ends the loop without retry.
 
 Camera and projector use one internal two-word servo-axis implementation.
 Changing one axis constructs the complete setter pair from `[2500,2730]` and
@@ -65,18 +76,14 @@ is physically disconnected and its routing, direction, and local scale have not
 been exercised. `projector status` and offline `projector center` expose that
 boundary; all live projector writes and projector movement are rejected.
 
-The legacy command map and recovered firmware establish dedicated command
-`0x27` with one byte: `1` requests projector power on and `0` requests power
-off. This is distinct from servo position and avoids the unrelated rails in
-the generic power mask. `projector power on|off` produces fixed offline plans.
-The only live form is `projector power on`: one exact ON request, a fixed
-10.0-second powered observation, then one OFF attempt from `finally` after
-normal completion, Ctrl-C, or any failure where ON may have applied. It
-revalidates identity before both writes, records and seals USB/serial evidence,
-does not retry or reconnect, and does not interpret a response field as an ACK.
-Standalone live OFF remains rejected. Source semantics and a correlated OFF
-response do not prove the physical power state; the external cutoff remains
-primary.
+Recovered newer source labels command `0x27` as projector power, but that source
+map conflicts with the installed legacy profile: installed `0x1D/0x1E` are the
+proved servo getter/setter while the recovered map assigns those IDs to sonar
+operations. The sealed `0x27` collision experiment produced correlated opaque
+responses but no observed illumination, fan, LED, click or other power effect.
+`projector power on|off` therefore preserves offline transcript evidence only;
+live projector power and source-only shutter commands `0x2B/0x2C` are disabled
+until an installed-legacy mapping is established.
 
 Python API:
 
@@ -86,7 +93,9 @@ from marvin import Marvin
 robot = Marvin()                 # offline plans; no hardware access
 print(robot.status())
 print(robot.drive("forward"))
+print(robot.stop())
 print(robot.camera_up(5))
+print(robot.camera_down(5))      # offline fixed plan; live remains blocked
 ```
 
 ## Confirmed findings and limits

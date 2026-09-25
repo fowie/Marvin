@@ -19,12 +19,23 @@ from tools import marvin_legacy_front_servo_mapper as servo
 from tools import marvin_legacy_probe
 from tools import marvin_legacy_protocol
 from tools import marvin_legacy_projector_power as projector_power
+from tools import marvin_legacy_stop as legacy_stop
+from tools import marvin_motor_power_off_consent as motor_consent
 from tools import marvin_probe
 from tools import marvin_session
 
 
 DRIVE_DIRECTIONS = tuple(drive_step.DIRECTIONS)
 CAMERA_UP_DEGREES = 5
+CAMERA_DOWN_DEGREES = 5
+TELEOP_CONTROLS = {
+    "w": "forward",
+    "s": "backward",
+    "a": "rotate-left",
+    "d": "rotate-right",
+    "x": "stop",
+    "q": "stop then quit",
+}
 
 
 @dataclass(frozen=True)
@@ -92,14 +103,19 @@ class Marvin:
             "drive": list(DRIVE_DIRECTIONS),
             "drive_step_seconds": drive_step.DURATION_SECONDS,
             "servos": {
-                CAMERA_AXIS.name: CAMERA_AXIS.status(),
+                CAMERA_AXIS.name: {
+                    **CAMERA_AXIS.status(),
+                    "offline_down_degrees": [CAMERA_DOWN_DEGREES],
+                    "live_down_verified": False,
+                },
                 PROJECTOR_AXIS.name: {
                     **PROJECTOR_AXIS.status(),
-                            "power_plan": True,
-                            "live_power_smoke": True,
+                    "power_plan": True,
+                    "live_power_smoke": False,
                 },
             },
-            "standalone_motor_stop": False,
+            "standalone_motor_stop": True,
+            "teleop": dict(TELEOP_CONTROLS),
         }
         if not self.run:
             return {
@@ -176,23 +192,21 @@ class Marvin:
         return self._servo_center(PROJECTOR_AXIS)
 
     def projector_power(self, state):
-        """Return a fixed offline power plan; live execution is not authorized."""
+        """Return the source-derived collision experiment; never execute it live."""
         if state not in ("on", "off"):
             raise ValueError("Projector power state must be 'on' or 'off'.")
         if self.run:
-            if state != "on":
-                raise UnsupportedOperation(
-                    "Standalone live projector OFF is not exposed; the live surface "
-                    "is one fixed ON, 10.0-second observation, then OFF smoke test.")
-            self._require_live_action()
-            return projector_power.run_smoke(
-                self.output,
-                expected_physical_port=self.expected_physical_port,
-                run=True,
-                **dict.fromkeys(projector_power.ACKNOWLEDGMENTS, True),
+            raise UnsupportedOperation(
+                "Live projector power is disabled: command 0x27 came from a "
+                "mismatched source map and produced no observable projector effect."
             )
         if state == "on":
-            return projector_power.prepare()
+            return {
+                **projector_power.prepare(),
+                "classification": "disabled_source_collision_experiment",
+                "installed_command_semantics": "not_established",
+                "observed_physical_effect": "none",
+            }
         enabled = state == "on"
         requests = [
             marvin_legacy_protocol.projector_power_request(
@@ -206,8 +220,8 @@ class Marvin:
             "operation": f"projector_power_{state}",
             "command": marvin_legacy_protocol.SET_PROJECTOR_POWER,
             "payload_uint8": int(enabled),
-            "source_semantics": "1=on, 0=off",
-            "reversible_in_source": True,
+            "source_semantics": "mismatched newer source labels 1=on, 0=off",
+            "reversible_in_source": "mismatched_source_only",
             "live_execution_authorized": False,
             "immutable_application_transcript_hex": [
                 request.hex() for request in requests
@@ -219,8 +233,8 @@ class Marvin:
                 if enabled else "single fixed power-off request; no retry"
             ),
             "evidence": (
-                "recovered firmware source and existing command catalog only; "
-                "no installed-hardware execution or response evidence"
+                "source-derived collision experiment; correlated installed responses "
+                "had no observable illumination, fan, LED, click, or other power effect"
             ),
         }
 
@@ -231,9 +245,18 @@ class Marvin:
                 "direction, routing, and units-per-degree have not been directly "
                 "exercised, and the projector is physically disconnected.")
         if direction == "down":
-            raise UnsupportedOperation(
-                "Camera down is not exposed: increasing word 0 is only an inferred "
-                "inverse and has not been exercised with the installed linkage.")
+            if degrees != CAMERA_DOWN_DEGREES:
+                raise UnsupportedOperation(
+                    "Only the fixed camera down 5 plan exists; other angles would "
+                    "assume unproved linearity.")
+            if axis.target_words(axis.baseline + degrees * axis.units_per_degree) != (
+                    servo.WORD0_PLUS_500_UNIT_TARGET):
+                raise ValueError("Camera axis configuration differs from the fixed profile.")
+            if self.run:
+                raise UnsupportedOperation(
+                    "Live camera down remains blocked: 2500 -> 3000 is a fixed "
+                    "inverse hypothesis without an installed-linkage observation.")
+            return servo.prepare(word0_plus_500_unit=True)
         if type(degrees) is not int or degrees not in axis.live_up_degrees:
             raise UnsupportedOperation(
                 "Only camera up 5 is supported: 2500 -> 2000 was directly "
@@ -281,10 +304,74 @@ class Marvin:
         )
 
     def stop(self):
-        raise UnsupportedOperation(
-            "Standalone motor stop is not exposed: physical stop semantics are "
-            "not established. Every drive step makes one mandatory all-zero "
-            "cleanup attempt and surfaces cleanup uncertainty.")
+        """Request all-zero raw PWM; this does not prove braking or de-energization."""
+        if not self.run:
+            return legacy_stop.prepare()
+        self._require_live_action()
+        return legacy_stop.run_stop(
+            self.output,
+            expected_physical_port=self.expected_physical_port,
+            run=True,
+            **dict.fromkeys(motor_consent.RAW_PWM_STOP_FLAGS, True),
+        )
+
+    def teleop(self, *, input_fn=None, output_stream=None):
+        """Run the bounded line-oriented drive/stop loop, or return its offline plan."""
+        plan = {
+            "status": "offline_ready" if not self.run else "live_ready",
+            "controls": dict(TELEOP_CONTROLS),
+            "evidence_subdirectories": "run-NNNN",
+            "automatic_repeat": False,
+        }
+        if not self.run:
+            return plan
+        self._require_live_action()
+        input_fn = input if input_fn is None else input_fn
+        output_stream = sys.stdout if output_stream is None else output_stream
+        self.output.mkdir(parents=True, exist_ok=True)
+        print("Controls: w forward, s backward, a left, d right, "
+              "x stop, q stop then quit", file=output_stream, flush=True)
+        run_number = 0
+        stopped = False
+
+        def action(command):
+            nonlocal run_number, stopped
+            run_number += 1
+            robot = Marvin(
+                run=True,
+                expected_physical_port=self.expected_physical_port,
+                output=self.output / f"run-{run_number:04d}",
+                safety_confirmed=True,
+            )
+            if command == "stop":
+                stopped = True
+                result = robot.stop()
+            else:
+                result = robot.drive(command)
+                stopped = False
+            print(f"{run_number:04d} {command}: {result['status']}",
+                  file=output_stream, flush=True)
+
+        try:
+            while True:
+                try:
+                    key = input_fn("> ").strip().lower()
+                except EOFError:
+                    key = "q"
+                if key == "q":
+                    if not stopped:
+                        action("stop")
+                    break
+                if key == "x":
+                    action("stop")
+                elif key in TELEOP_CONTROLS:
+                    action(TELEOP_CONTROLS[key])
+                elif key:
+                    print("Use w/s/a/d, x, or q.", file=output_stream, flush=True)
+        except KeyboardInterrupt:
+            if not stopped:
+                action("stop")
+        return {**plan, "status": "completed", "actions": run_number}
 
     def _require_live_action(self):
         if not self.expected_physical_port or self.output is None:
@@ -311,22 +398,28 @@ def _live_arguments(parser, *, safety=True):
                  "encoders connected, required servo isolation, and ordinary-user usbmon")
 
 
-def _servo_subcommands(parser, *, status=False):
+def _servo_subcommands(parser, *, status=False, camera=False):
     actions = parser.add_subparsers(dest="servo_command", required=True)
     if status:
         state = actions.add_parser("status", help="show axis evidence status")
         _live_arguments(state, safety=False)
         power = actions.add_parser(
-            "power", help="show the offline-only fixed projector power plan")
+            "power", help="show the disabled source-collision experiment")
         power.add_argument("state", choices=("on", "off"))
         _live_arguments(power)
-    up = actions.add_parser("up", help="tilt up by a supported angle")
+    up = actions.add_parser(
+        "up", help=("run the proved camera-up profile" if camera
+                    else "unavailable unverified projector movement"))
     up.add_argument("degrees", type=int)
     _live_arguments(up)
-    down = actions.add_parser("down", help="tilt down by a supported angle")
+    down = actions.add_parser(
+        "down", help=("show the fixed offline plan; live remains blocked" if camera
+                      else "unavailable unverified projector movement"))
     down.add_argument("degrees", type=int)
     _live_arguments(down)
-    center = actions.add_parser("center", help="center this axis")
+    center = actions.add_parser(
+        "center", help=("write the proved camera baseline" if camera
+                        else "show the offline historical baseline"))
     _live_arguments(center)
 
 
@@ -339,14 +432,19 @@ def _parser():
   python -m marvin drive forward
   python -m marvin camera up 5
   python -m marvin camera center
+  python -m marvin stop
+  python -m marvin teleop
   python -m marvin projector status
   python -m marvin projector power on
   python -m marvin drive rotate-left --run --expected-physical-port 1-3 \\
       --output evidence/left-001 --confirm-safe-setup
 
-Commands are offline plans unless --run is present. Live drive steps last 0.25
-seconds and always attempt zero cleanup. Camera up supports only the directly
-observed 5-degree profile and always attempts baseline restore.""",
+Commands are offline plans unless --run is present. Proven live operations are
+the fixed 0.25-second drive steps, camera up 5, camera center, standalone stop,
+and teleop over those drive/stop primitives. Live projector power is disabled
+because its source map conflicts with the installed legacy command map. Camera
+down 5 is a fixed offline-only inverse hypothesis. Teleop creates one evidence
+subdirectory per action.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     actions = parser.add_subparsers(dest="command", required=True)
@@ -355,10 +453,13 @@ observed 5-degree profile and always attempts baseline restore.""",
     drive = actions.add_parser("drive", help="run one bounded drive step")
     drive.add_argument("direction", choices=DRIVE_DIRECTIONS)
     _live_arguments(drive)
-    stop = actions.add_parser("stop", help="report standalone-stop evidence gap")
+    stop = actions.add_parser("stop", help="request fixed all-zero raw PWM")
     _live_arguments(stop)
+    teleop = actions.add_parser(
+        "teleop", help="line-oriented bounded drive/stop controls")
+    _live_arguments(teleop)
     camera = actions.add_parser("camera", help="control front-camera tilt")
-    _servo_subcommands(camera)
+    _servo_subcommands(camera, camera=True)
     projector = actions.add_parser(
         "projector", help="inspect the unverified projector-servo surface")
     _servo_subcommands(projector, status=True)
@@ -380,6 +481,8 @@ def main(argv=None):
             result = marvin.drive(args.direction)
         elif args.command == "stop":
             result = marvin.stop()
+        elif args.command == "teleop":
+            result = marvin.teleop()
         elif args.command == "camera" and args.servo_command == "up":
             result = marvin.camera_up(args.degrees)
         elif args.command == "camera" and args.servo_command == "down":

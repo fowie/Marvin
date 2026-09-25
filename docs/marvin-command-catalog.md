@@ -205,73 +205,26 @@ pairing summary had no pending submissions, unmatched completions, or retained
 pending IN/OUT, so this is a recorder shutdown-tail problem rather than
 permission to weaken the zero-tail requirement.
 
-Recovered newer firmware source explains why the run was not a valid
-illumination proof:
+The recovered projector source cannot supply installed command semantics.
+Installed live proof establishes `1D` as the servo getter and `1E` as the
+two-word servo setter, while recovered `m_src/m_protocol.c:137-138` assigns
+those same IDs to `ResetSonarFilter` and `SonarMode`. The map also labels `27`
+as projector power and `2B`/`2C` as shutter motion, but those source-only labels
+cannot be transferred across the demonstrated collision. The negative `27`
+physical observation reinforces that boundary; correlated raw fields are not
+ACKs or semantic proof.
 
-- `m_src/m_shutter.c:51-94` closes the shutter during startup, while
-  `m_src/m_projector.c:118-185` never opens it.
-- `m_src/m_projector.c:118-185` sets the logical power state, then waits 12
-  seconds for focus/home positioning before video sync. It later applies normal
-  brightness and reads the firmware version. The 10-second OFF therefore
-  arrived before that setup sequence could reach sync or brightness.
-- `m_src/m_projector.c:365-375,433-442` implements brightness and PC-video sync;
-  setup already invokes both, so separate writes are not the first follow-up.
-- `m_src/m_projector.c:411-431` routes ON to setup only when cached power is
-  false; otherwise the same call enters the power-off branch. A pre-test state
-  read is required before another ON transcript can be considered.
-- `m_src/m_heartbeat.c:72-91` exposes cached projector power, brightness and idle
-  state in newer heartbeat data. Command `0E GetPowerState` is the only
-  installed-profile read with existing live evidence, but its `0x1000`
-  projector-bit interpretation remains source-derived rather than installed
-  legacy proof.
-- Newer command `26 GetProjectorVersion` is not a safe installed read:
-  `m_src/m_protocol.c:146` maps it to a cached projector version, but the legacy
-  S/E command map assigns the same ID to a different operation.
-
-The smallest next bounded test is read-only: perform one fixed legacy
-`0E GetPowerState` read and preserve the raw two-byte mask, with no projector
-writes.
-
-### Conditional visible-projector transcript
-
-The smallest source-backed candidate is defined here for review only. It is not
-implemented or generally live-enabled:
-
-1. Read `0E GetPowerState` with no payload. Require a CRC-valid two-byte
-   response and preserve the raw little-endian mask. Newer source assigns
-   projector power to bit `0x1000` (`m_src/m_power.c:102-119`,
-   `m_inc/protocol.cs:2515-2524`), but that bit meaning still needs installed
-   legacy confirmation. If the bit is set or the response is uncertain, stop
-   with no write: source `ProjectorPower` would route another ON into its OFF
-   branch.
-2. Send dedicated `27 SetProjectorPower` with the one-byte payload `01`.
-   From `finally` after any write-may-have-applied outcome, always attempt
-   dedicated `27` with payload `00`; never substitute generic `0F`.
-3. Before any shutter command, wait exactly 36.75 seconds. `ProjectorSetup`
-   contains fixed timers of 0.25 + 12 + 0.25 + 12 + 0.25 = 24.75 seconds:
-   the second 12-second interval is started by `ProjectorMotorHomeHelp`
-   (`m_src/m_projector.c:97-98,115-185,198-238`) and the last 0.25-second
-   interval completes vertical positioning (`m_src/m_projector.c:284-350`).
-   The additional margin is one full source-defined 12-second home interval,
-   not an inferred warm-up time. I2C callbacks have no source timeout, so even
-   this bound does not prove setup completion.
-4. Only after exact installed legacy semantics are independently confirmed,
-   send `2B OpenShutter` with no payload. Wait 2.15 seconds: the source open
-   timeout is 2 seconds and successful finishing runs for 0.15 seconds
-   (`m_src/m_shutter.c:39-43,149-157,199-224`). Observe for exactly 2 seconds.
-5. If open may have applied, attempt `2C CloseShutter` with no payload from
-   `finally`, wait 2.15 seconds for its matching timeout/finish bound, and then
-   perform the mandatory projector OFF attempt. A failed or uncertain close
-   must not suppress OFF.
-
-Commands `2B` and `2C` are source-defined no-payload open/close operations
-(`m_src/m_protocol.c:151-152`, `m_src/m_shutter.c:199-208`), and close has a
-bounded motor-stop/error path. They are nevertheless successor-source-only:
-the installed legacy PCTestApp has no matching call site, so this visible-output
-stage remains blocked rather than guessed. Command `26` is explicitly excluded:
-newer source calls it `GetProjectorVersion`, while the installed legacy sample
-uses `26` for `DisableHeartbeat`. Separate brightness `23` and sync `24` writes
-are also excluded because setup already performs them.
+There is therefore no authorized visible-projector transcript. Live `27`,
+source-only shutter `2B`/`2C`, brightness `23`, sync `24`, and version `26`
+remain disabled. In particular, installed PCTestApp uses `26` for
+`DisableHeartbeat`, directly contradicting the recovered source's version
+getter. A narrow search of installed-legacy `PCTestApp` finds only display of a
+projector-position telemetry field (`Form1.cs:510`), with no projector power or
+shutter send site. The next investigation remains offline: locate explicit
+installed-legacy source or captured command evidence, without broad opcode
+probing. Installed-proven `0E GetPowerState` may still be read as an opaque
+two-byte mask, but the recovered `0x1000` projector-bit label is not an
+installed interpretation and must not authorize a write.
 
 ## Command `11` rejection boundary
 
