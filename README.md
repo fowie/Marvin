@@ -86,6 +86,23 @@ motion, including before a successive teleop action, so public drive plans
 never request or interpret that unsupported telemetry. Operator observation
 and the external cutoff remain required.
 
+### Operator acceptance boundary
+
+Supervised runs `teleop-006`, `teleop-008`, and `teleop-009` accepted bounded
+forward, reverse, rotate-left, rotate-right, explicit stop, and exit cleanup.
+The camera servo's center and fixed up profile, the fixed wheel-blink pilot,
+and a direct-host microphone capture also passed their supervised checks.
+These results establish completed gated transactions plus the recorded
+operator observations; they do not establish application acknowledgments,
+braking, de-energization, or protocol-proved physical state.
+
+The selected product architecture connects the microphone array and LifeCam
+directly to the Jetson, not through Marvin's old internal USB hub. LifeCam
+through Marvin produced corrupted/truncated V4L2 buffers and is deferred;
+media-through-Marvin is not required for this operator acceptance.
+Direct-to-Jetson LifeCam capture has not yet been accepted. Projector movement
+and power remain unsupported, and camera-down remains an offline-only plan.
+
 Camera and projector use one internal two-word servo-axis implementation.
 Changing one axis constructs the complete setter pair from `[2500,2730]` and
 retains the sibling word. Camera is proved on word 0 near its 2500 baseline.
