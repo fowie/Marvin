@@ -240,8 +240,13 @@ reuse this server and shutdown path instead of creating parallel runtimes.
 
 Layer 2 adds injected `drive`, `leds`, `microphone`, and `camera` managers plus
 narrow JSON actions on that same server. Controller actions execute on the
-polling owner thread, pause sensor polling, reject movement backlog, and publish
-state/errors through the existing SSE stream. Dead-man motion requires a fresh
+polling owner thread, pause sensor polling only through each bounded action and
+mandatory zero cleanup, reject movement backlog, and publish state/errors
+through the existing SSE stream. Between held pulses the owner admits one
+150 ms-bounded getter at a time, checks priority commands between getters, and
+publishes only complete four-getter snapshots, so proximity and unresolved raw
+cliff timestamps continue advancing without a read overlapping nonzero PWM.
+Dead-man motion requires a fresh
 0.75-second lease heartbeat for each proved 250 ms pulse; fixed-key motion is
 four sequential proved pulses, not calibrated distance or uninterrupted exact
 motion. LED control preserves one exact 18-byte baseline and permits only one

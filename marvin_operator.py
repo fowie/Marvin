@@ -47,6 +47,7 @@ OPERATOR_FIRST_SEQUENCE = 4096
 MAX_REQUESTS = 65536 - OPERATOR_FIRST_SEQUENCE
 OPERATOR_CLEANUP_REQUESTS = 64
 OPERATOR_MIN_LIVE_POLL_SECONDS = 2.0
+OPERATOR_GETTER_TIMEOUT_SECONDS = 0.15
 OPERATOR_JOURNAL_MAX_BYTES = 256 * 1024 * 1024
 OPERATOR_JOURNAL_MAX_RECORDS = 500_000
 OPERATOR_JOURNAL_RESERVE_BYTES = 1024 * 1024
@@ -166,6 +167,7 @@ class ProductionControllerOwner:
         self.clock = clock
         self.operation_deadline = operation_deadline
         self.nonzero_may_have_applied = False
+        self._snapshot_evidence = {}
 
     def start(self):
         if self.started:
@@ -264,6 +266,17 @@ class ProductionControllerOwner:
     def read(self):
         return marvin_sensors.read_session_snapshot(
             self, expected_identity=self.expected_identity)
+
+    def read_incremental(self):
+        query = marvin_sensors.QUERIES[len(self._snapshot_evidence)]
+        self._snapshot_evidence[query] = self.request(
+            query, timeout=OPERATOR_GETTER_TIMEOUT_SECONDS,
+            allow_telemetry_state_change=query == "get-unit-info")
+        if len(self._snapshot_evidence) != len(marvin_sensors.QUERIES):
+            return None
+        evidence, self._snapshot_evidence = self._snapshot_evidence, {}
+        return marvin_sensors.snapshot_from_evidence(
+            self, evidence, expected_identity=self.expected_identity)
 
     def _setter(self, payload, *, mandatory=False, submit_deadline=None):
         packet, _row = self._exchange(
@@ -699,32 +712,33 @@ class OperatorRuntime:
                 if changed:
                     with self._changed:
                         self._publish()
-                drive = self.managers.get("drive")
-                drive_leased = (
-                    drive is not None
-                    and drive.status().get("owner_active") is True)
-                if self.source is not None and now >= deadline and not drive_leased:
+                if self.source is not None and now >= deadline:
                     try:
-                        snapshot = self.source.read()
+                        incremental = getattr(
+                            self.source, "read_incremental", None)
+                        snapshot = (
+                            self.source.read() if incremental is None
+                            else incremental())
                     except Exception as error:
                         with self._changed:
                             self._state = "failed"
                             self._last_error = f"{type(error).__name__}: {error}"[:1024]
                             self._publish()
                         break
-                    completed = time.monotonic()
-                    with self._changed:
-                        self._latest = {
-                            "observed_at": _utc_now(),
-                            "monotonic": completed,
-                            "snapshot": snapshot,
-                        }
-                        self._latest_monotonic = completed
-                        self._publish()
-                    self._record(snapshot, completed)
-                    deadline = now + self.poll_seconds
+                    if snapshot is not None:
+                        completed = time.monotonic()
+                        with self._changed:
+                            self._latest = {
+                                "observed_at": _utc_now(),
+                                "monotonic": completed,
+                                "snapshot": snapshot,
+                            }
+                            self._latest_monotonic = completed
+                            self._publish()
+                        self._record(snapshot, completed)
+                        deadline = now + self.poll_seconds
                 delay = (
-                    0.1 if self.source is None or drive_leased else
+                    0.1 if self.source is None else
                     max(0.0, deadline - time.monotonic()))
                 self._stop.wait(min(0.1, delay))
         except Exception as error:

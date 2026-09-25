@@ -114,9 +114,13 @@ sensor snapshot is also sent as a `sensor` event.
 
 ## Drive boundary
 
-A dead-man heartbeat admits at most one fresh proved 250 ms action. Sensor
-polling pauses for the lifetime of its lease, and a matched getter completes
-without consuming its full one-second failure timeout. Its lease is 0.75
+A dead-man heartbeat admits at most one fresh proved 250 ms action. The same
+owner runs no getter while nonzero PWM may be applied. After mandatory zero
+cleanup it admits at most one getter with a 150 ms failure deadline, checks the
+priority queue again, and publishes a fresh SSE sensor event only after all four
+correlated getters complete one coherent cycle. Proximity and unresolved raw
+cliff readings therefore keep advancing between held pulses without concurrent
+serial ownership or a false partial-snapshot timestamp. Its lease is 0.75
 seconds and one owner is allowed. Release, expiry, observable response
 disconnect, shutdown, cancellation, or action error requests the accepted
 all-zero stop primitive. Each setter retains the accepted 500 ms response
@@ -187,9 +191,12 @@ presenting video recording as verified.
    Do not retry after an identity, write, cleanup, or evidence failure.
 4. Verify sensor freshness and start/stop one JSONL recording. Inspect only its
    private path and sealed evidence outside the dashboard.
-5. Exercise each dead-man direction briefly, releasing by pointer/key, then test
-   window blur and the priority Stop control. Treat completed transactions as
-   protocol evidence only, not proof of physical stop.
+5. Exercise each dead-man direction briefly. Confirm proximity and raw cliff
+   timestamps continue advancing between pulses, then release by pointer/key
+   and test window blur and the priority Stop control. A sensor timeout must
+   fail and close the runtime; it must never publish a partial cycle as fresh.
+   Treat completed transactions as protocol evidence only, not proof of
+   physical stop.
 6. Toggle one LED at a time and Reset to the captured baseline. Cut power on a
    mismatch or uncertain restore.
 7. With explicit privacy confirmation and no bystanders, record a short WAV.

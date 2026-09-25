@@ -366,28 +366,103 @@ class OperatorTests(unittest.TestCase):
         self.assertEqual(transport.reads, 1)
         self.assertLess(time.monotonic() - started, 0.1)
 
-    def test_sensor_polling_pauses_during_deadman_lease(self):
-        source = Source()
+    def test_sse_sensors_advance_between_held_pulses_and_stop_is_bounded(self):
+        movement = {"active": False}
+
+        class IncrementalSource(Source):
+            def __init__(self):
+                super().__init__()
+                self.parts = 0
+                self.snapshots = 0
+                self.overlap = False
+
+            def read_incremental(self):
+                if movement["active"]:
+                    self.overlap = True
+                    raise AssertionError("sensor getter overlapped a motor pulse")
+                self.parts += 1
+                if self.parts % 4:
+                    return None
+                self.snapshots += 1
+                return super().read()
+
+        source = IncrementalSource()
+
+        def pulse(_direction):
+            movement["active"] = True
+            try:
+                time.sleep(0.08)
+            finally:
+                movement["active"] = False
+
+        stops = []
         drive = marvin_operator.marvin_managers.DriveManager(
-            lambda _direction: None, lambda: None)
+            pulse, lambda: stops.append(time.monotonic()))
         runtime = marvin_operator.OperatorRuntime(
             source, poll_seconds=0.5, managers={"drive": drive})
+        server = marvin_operator.OperatorServer(("127.0.0.1", 0), runtime)
         runtime.start()
+        server_thread = Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        sensor_events = []
+        done = False
+
+        def read_events():
+            nonlocal done
+            try:
+                with urlopen(base + "/api/events", timeout=3) as events:
+                    sensor = False
+                    while not done:
+                        line = events.readline().decode()
+                        if not line:
+                            return
+                        if line == "event: sensor\n":
+                            sensor = True
+                        elif sensor and line.startswith("data: "):
+                            sensor_events.append(
+                                json.loads(line.removeprefix("data: ")))
+                            sensor = False
+            except (OSError, TimeoutError):
+                return
+
+        event_thread = Thread(target=read_events, daemon=True)
+        event_thread.start()
+
+        def post(path, value):
+            request = Request(
+                base + path, data=json.dumps(value).encode(),
+                headers={"Content-Type": "application/json"}, method="POST")
+            return json.load(urlopen(request, timeout=2))
+
         try:
             deadline = time.monotonic() + 2
-            while source.reads == 0 and time.monotonic() < deadline:
+            while source.snapshots == 0 and time.monotonic() < deadline:
                 time.sleep(0.01)
-            lease = runtime.manager_action("drive", "acquire", {})["lease"]
-            reads = source.reads
-            time.sleep(0.6)
-            self.assertEqual(source.reads, reads)
-            runtime.manager_action("drive", "release", {"lease": lease})
+            snapshots = source.snapshots
+            lease = post("/api/drive/acquire", {})["drive"]["lease"]
+            for _ in range(6):
+                post("/api/drive/heartbeat/forward", {"lease": lease})
+                time.sleep(0.1)
+            self.assertGreater(source.snapshots, snapshots)
+            stop_started = time.monotonic()
+            post("/api/drive/stop", {})
+            self.assertLess(time.monotonic() - stop_started, 0.3)
+            self.assertFalse(source.overlap)
             deadline = time.monotonic() + 2
-            while source.reads == reads and time.monotonic() < deadline:
+            while len({
+                    event["observed_at"] for event in sensor_events
+                    }) < 2 and time.monotonic() < deadline:
                 time.sleep(0.01)
-            self.assertGreater(source.reads, reads)
+            self.assertGreaterEqual(
+                len({event["observed_at"] for event in sensor_events}), 2)
+            self.assertTrue(stops)
         finally:
+            done = True
+            server.shutdown()
+            server.server_close()
             runtime.close()
+            server_thread.join(2)
 
     def test_deadman_cancels_pending_acquire_without_motion(self):
         script = marvin_dashboard.DEADMAN_CORE + """

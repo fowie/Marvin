@@ -113,18 +113,26 @@ def read_snapshot(transport, *, ownership_key, expected_identity,
 
 def read_session_snapshot(client, *, expected_identity):
     """Read the exact snapshot from an already active, identity-pinned client."""
-    decoded = {}
     evidence_by_query = {}
     for query in QUERIES:
-        evidence = client.request(
+        evidence_by_query[query] = client.request(
             query, timeout=1,
             allow_telemetry_state_change=query == "get-unit-info",
         )
+    return snapshot_from_evidence(
+        client, evidence_by_query, expected_identity=expected_identity)
+
+
+def snapshot_from_evidence(client, evidence_by_query, *, expected_identity):
+    if set(evidence_by_query) != set(QUERIES):
+        raise ValueError("A complete four-getter evidence cycle is required.")
+    decoded = {}
+    for query in QUERIES:
+        evidence = evidence_by_query[query]
         decoded[query] = interpret_packet(
             evidence.stream.packet, direction="received",
             evidence=evidence.evidence_kind,
         )
-        evidence_by_query[query] = evidence
     if any(item["status"] != "decoded" for item in decoded.values()):
         raise ValueError("A matched getter did not produce a proven decoded profile.")
     raw = decoded["read-raw-data"]["fields"]
