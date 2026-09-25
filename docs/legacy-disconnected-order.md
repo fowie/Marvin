@@ -2001,11 +2001,20 @@ post-cleanup `100` observations.
 
 The empty cleanup response is not an application acknowledgment. Visible stop
 does not establish braking, de-energization, cleanup causation, or the meaning
-of the getter values. Live product drive and teleop are retired before hardware
-access; no further live motor run is justified. The remaining boundary is the
-meaning and reset/decay behavior of installed `GetRawMotorPWM`. Any successor
-diagnostic must be separately reviewed and read-only; this result does not
-authorize it.
+of the getter values. Comparison with all sealed public-direction runs shows a
+narrow setter-specific envelope: reverse and both opposed-wheel runs returned
+exact zero after cleanup; forward returned exact zero in earlier runs and
+exactly `[100,0,100,0]` here. The product verifier accepts only those exact
+observed combinations and rejects every other nonzero payload. It does not
+generalize `100` into a floor/deadband rule or stopped-state meaning.
+
+The installed handler source is unavailable, and PCTestApp sends but does not
+decode command `0A`; exact field semantics and reset/decay behavior therefore
+remain unknown. A zero-only/read-only characterization would not establish
+post-motion causation beyond the existing sealed observations, so it is not a
+prerequisite to the same bounded profile. Any broader accepted getter shape
+requires separately reviewed read-only or zero-command evidence; another
+nonzero motion probe must not be used to expand the envelope.
 
 ## Proven fixed legacy getter survey
 

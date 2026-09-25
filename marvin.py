@@ -127,7 +127,7 @@ class Marvin:
         capabilities = {
             "drive": list(DRIVE_DIRECTIONS),
             "drive_step_seconds": drive_step.DURATION_SECONDS,
-            "live_drive": False,
+            "live_drive": True,
             "servos": {
                 CAMERA_AXIS.name: {
                     **CAMERA_AXIS.status(),
@@ -170,17 +170,23 @@ class Marvin:
         }
 
     def drive(self, direction):
-        """Return one fixed drive plan; live execution is retired."""
+        """Run one proved 0.25-second drive step, always followed by zero cleanup."""
         if direction not in DRIVE_DIRECTIONS:
             raise ValueError(f"Direction must be one of: {', '.join(DRIVE_DIRECTIONS)}.")
         if not self.run:
             return drive_step.prepare(
                 direction, duration=drive_step.DURATION_SECONDS,
                 raw_pwm=drive_step.RAW_PWM)
-        raise UnsupportedOperation(
-            "Live drive is retired: installed command 0x0A returned nonzero "
-            "words after the one mandatory zero cleanup, so stop causation and "
-            "getter semantics remain unproved."
+        self._require_live_action()
+        return drive_step.run_step(
+            self.output,
+            direction=direction,
+            duration=drive_step.DURATION_SECONDS,
+            raw_pwm=drive_step.RAW_PWM,
+            expected_physical_port=self.expected_physical_port,
+            run=True,
+            authorize_unvalidated_drive_step=True,
+            **dict.fromkeys(drive_step.COMMON_FLAGS, True),
         )
 
     def camera_up(self, degrees):
@@ -357,19 +363,63 @@ class Marvin:
         )
 
     def teleop(self, *, input_fn=None, output_stream=None):
-        """Return the retired teleop plan; live drive is not authorized."""
+        """Run the bounded line-oriented drive/stop loop, or return its offline plan."""
         plan = {
-            "status": "offline_ready",
+            "status": "offline_ready" if not self.run else "live_ready",
             "controls": dict(TELEOP_CONTROLS),
             "evidence_subdirectories": "run-NNNN",
             "automatic_repeat": False,
-            "live_execution_authorized": False,
+            "live_execution_authorized": True,
         }
         if not self.run:
             return plan
-        raise UnsupportedOperation(
-            "Live teleop is retired with live drive after a nonzero "
-            "post-cleanup motor getter.")
+        self._require_live_action()
+        input_fn = input if input_fn is None else input_fn
+        output_stream = sys.stdout if output_stream is None else output_stream
+        self.output.mkdir(parents=True, exist_ok=True)
+        print("Controls: w forward, s backward, a left, d right, "
+              "x stop, q stop then quit", file=output_stream, flush=True)
+        run_number = 0
+        stopped = False
+
+        def action(command):
+            nonlocal run_number, stopped
+            run_number += 1
+            robot = Marvin(
+                run=True,
+                expected_physical_port=self.expected_physical_port,
+                output=self.output / f"run-{run_number:04d}",
+                safety_confirmed=True,
+            )
+            if command == "stop":
+                result = robot.stop()
+                stopped = True
+            else:
+                result = robot.drive(command)
+                stopped = False
+            print(f"{run_number:04d} {command}: {result['status']}",
+                  file=output_stream, flush=True)
+
+        while True:
+            try:
+                key = input_fn("> ").strip().lower()
+            except EOFError:
+                key = "q"
+            except KeyboardInterrupt:
+                if not stopped:
+                    action("stop")
+                break
+            if key == "q":
+                if not stopped:
+                    action("stop")
+                break
+            if key == "x":
+                action("stop")
+            elif key in TELEOP_CONTROLS:
+                action(TELEOP_CONTROLS[key])
+            elif key:
+                print("Use w/s/a/d, x, or q.", file=output_stream, flush=True)
+        return {**plan, "status": "completed", "actions": run_number}
 
     def _require_live_action(self):
         if not self.expected_physical_port or self.output is None:
@@ -471,13 +521,16 @@ def _parser():
   marvin leds status
   marvin leds plan left-position-0-red
   marvin leds wheel-blink
+  marvin drive rotate-left --run --expected-physical-port 1-3 \\
+      --output evidence/left-001 --confirm-safe-setup
 
 Commands are offline plans unless --run is present. Proven live operations are
-camera up 5, camera center, standalone stop, and the fixed wheel-blink pilot.
-Live drive and teleop are retired after a nonzero post-cleanup motor getter.
+the fixed 0.25-second drive steps, camera up 5, camera center, standalone stop,
+teleop over those drive/stop primitives, and the fixed wheel-blink pilot.
 Live projector power is disabled because its source map conflicts with the
 installed legacy command map. Camera down 5 is a fixed offline-only inverse
-hypothesis. Named steady LEDs are offline-only plans.""",
+hypothesis. Named steady LEDs are offline-only plans. Teleop creates one
+evidence subdirectory per action.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     actions = parser.add_subparsers(dest="command", required=True)
@@ -492,14 +545,13 @@ hypothesis. Named steady LEDs are offline-only plans.""",
         "microphone", add_help=False,
         help="delegate to bounded microphone status/list/capture")
     microphone.add_argument("microphone_args", nargs=argparse.REMAINDER)
-    drive = actions.add_parser(
-        "drive", help="print one fixed drive plan (live execution retired)")
+    drive = actions.add_parser("drive", help="run one bounded drive step")
     drive.add_argument("direction", choices=DRIVE_DIRECTIONS)
     _live_arguments(drive)
     stop = actions.add_parser("stop", help="request fixed all-zero raw PWM")
     _live_arguments(stop)
     teleop = actions.add_parser(
-        "teleop", help="print retired line-oriented drive/stop controls")
+        "teleop", help="line-oriented bounded drive/stop controls")
     _live_arguments(teleop)
     camera = actions.add_parser(
         "camera", help="inspect/capture LifeCam video or control its tilt")

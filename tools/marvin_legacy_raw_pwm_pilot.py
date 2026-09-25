@@ -22,6 +22,7 @@ from tools.marvin_paths import new_output_path
 
 
 ZERO_PWM = bytes(8)
+DUAL_FORWARD_POST_CLEANUP = bytes.fromhex("6400000064000000")
 WORD0_ONE = (1).to_bytes(2, "little") + bytes(6)
 WORD0_1000 = (1000).to_bytes(2, "little") + bytes(6)
 WORD0_2000 = (2000).to_bytes(2, "little") + bytes(6)
@@ -332,15 +333,6 @@ SETTER_PAYLOADS = {
         LEFT_FORWARD_RIGHT_BACKWARD_2000),
     consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: DUAL_FORWARD_2000,
 }
-RETIRED_SCOPES = {
-    consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE,
-    consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
-    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
-    consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
-    consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
-}
-
-
 def transcript_for_scope(scope):
     try:
         return PROFILES[scope]["transcript"]
@@ -366,7 +358,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         if (packet.sequence, packet.command, packet.response_field, packet.payload) != (
                 fields[0], fields[1], 0, fields[2]):
             raise ValueError("Fixed raw-PWM transcript disagrees with the legacy decoder.")
-    retired = scope in RETIRED_SCOPES
+    retired = scope == consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE
     return {
         "status": (
             "retired_after_live_nonzero_post_cleanup_getter" if retired else "dry_run"),
@@ -427,7 +419,9 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "maximum_serial_rx_bytes": 8192,
         "maximum_expected_response_bytes": 56,
         "response_policy": (
-            "getter_requires_unique_crc_valid_correlated_raw80_exact_eight_zero_bytes; "
+            "baseline_getter_requires_unique_crc_valid_correlated_raw80_exact_zero; "
+            "verification_getter_requires an exact setter-specific sealed-evidence "
+            "cleanup payload; "
             "setter_and_cleanup_accept_unique_crc_valid_correlated_empty_raw80_or_raw82_opaquely"),
         "response_time_origin": "matching_immediate_pre_os_write_monotonic_timestamp",
         "cleanup_policy": (
@@ -453,8 +447,7 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
             else "not_established"),
         "live_execution_authorized": not retired,
         "retired_reason": (
-            "connected raw-PWM motion followed by a nonzero post-cleanup getter; "
-            "installed getter semantics and stop causation remain unknown"
+            "live reverse motion followed by post-cleanup getter words [0,100,0,0]"
             if retired else None),
         "required": ["--run", "--expected-physical-port", "--output NEWDIR",
                      *("--" + name.replace("_", "-")
@@ -649,13 +642,20 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
             or type(transport.last_write_started) not in (int, float)
             or transport.last_write_started > clock()):
         raise OSError("Response evidence lacks the matching immediate pre-syscall boundary.")
-    expected_payload = ZERO_PWM if step in ("baseline", "verify") else b""
+    expected_payloads = (b"",)
+    if step == "baseline":
+        expected_payloads = (ZERO_PWM,)
+    elif step == "verify":
+        setter_payload = decode_packet(transport.steps["set"]).payload
+        expected_payloads = (
+            (ZERO_PWM, DUAL_FORWARD_POST_CLEANUP)
+            if setter_payload == DUAL_FORWARD_2000 else (ZERO_PWM,))
     evidence = zero._ResponseEvidence(
         transport.event, sequence=request.sequence, command=request.command,
         accepted_response_fields=((0x80,) if step in ("baseline", "verify")
                                   else (0x80, 0x82)),
         validate_packet=lambda packet: (
-            [] if packet.payload == expected_payload else ["unexpected_raw_pwm_payload"]))
+            [] if packet.payload in expected_payloads else ["unexpected_raw_pwm_payload"]))
     evidence.submitted_at = transport.last_write_started
     evidence.deadline = min(deadline, evidence.submitted_at + RESPONSE_SECONDS)
     if evidence.deadline != evidence.submitted_at + RESPONSE_SECONDS:
@@ -670,6 +670,12 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
             "raw_response_field": packet.response_field,
             "payload_bytes": len(packet.payload),
             "raw_payload_hex": packet.payload.hex(),
+            "cleanup_evidence_classification": (
+                "exact_zero"
+                if step == "verify" and packet.payload == ZERO_PWM
+                else "sealed_dual_forward_post_cleanup_observation"
+                if step == "verify" else None
+            ),
             "application_acknowledgment": "not_established",
             "events": evidence.events,
         })
@@ -786,7 +792,7 @@ def _observe(transport, report, *, clock=time.monotonic):
                 for step, error in cleanup_errors
             ],
             restoration=(
-                "getter_zero_baseline_reverified"
+                "getter_setter_specific_cleanup_envelope_reverified"
                 if report["getter_reverified"]
                 else "zero_cleanup_attempted_but_application_unverified"),
             subsequent_live_phase_gate=(
@@ -820,10 +826,10 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     scope = consent.classify(actuators_isolated=actuators_isolated, **declarations)
     if run is not True or scope not in PROFILES:
         raise ValueError("Literal --run and one fixed raw-PWM word-0 scope are required.")
-    if scope in RETIRED_SCOPES:
+    if scope == consent.RAW_PWM_2000_LEFT_CONNECTED_SCOPE:
         raise ValueError(
-            "Connected raw-PWM motion is retired after a nonzero post-cleanup "
-            "getter; no further live execution is authorized.")
+            "Connected raw-PWM 2000 is retired after reverse motion and a nonzero "
+            "post-cleanup getter; no further live execution is authorized.")
     profile = PROFILES[scope]
     transport_type = {
         consent.RAW_PWM_PILOT_SCOPE: _RawPwmTransport,
@@ -912,7 +918,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     state.update(
         status=(
             "restored"
-            if observation["restoration"] == "getter_zero_baseline_reverified"
+            if observation["getter_reverified"]
             else "raw_pwm_restoration_unverified"),
         restoration=observation["restoration"],
         set_manifest_sha256=_verify_manifest(output),

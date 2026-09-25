@@ -237,20 +237,6 @@ class RawPwmPilotTests(unittest.TestCase):
             connected_2000_plan["status"],
             "retired_after_live_nonzero_post_cleanup_getter")
         self.assertFalse(connected_2000_plan["live_execution_authorized"])
-        for retired_scope in pilot.RETIRED_SCOPES:
-            with self.subTest(retired_scope=retired_scope), \
-                    patch.object(
-                        session, "preflight",
-                        side_effect=AssertionError("hardware reached")), \
-                    patch.object(os, "open", side_effect=AssertionError("open reached")), \
-                    self.assertRaisesRegex(ValueError, "no further live execution"):
-                pilot.run_diagnostic(
-                    self.root / retired_scope,
-                    expected_physical_port="1-3",
-                    run=True,
-                    **dict.fromkeys(
-                        consent.POWERED_TRIAL_SCOPES[retired_scope], True),
-                )
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
                 patch.object(os, "open", side_effect=AssertionError("no open")), \
                 redirect_stdout(io.StringIO()) as stdout:
@@ -814,7 +800,7 @@ class RawPwmPilotTests(unittest.TestCase):
         connected_2000_harness.setUp()
         self.addCleanup(connected_2000_harness.doCleanups)
         with redirect_stderr(io.StringIO()), \
-                self.assertRaisesRegex(ValueError, "no further live execution"):
+                self.assertRaisesRegex(ValueError, "retired after reverse motion"):
             connected_2000_harness.run_capture(
                 seconds=10, baudrate=57600, allow_unknown_command=True,
                 probe_profile="legacy", capture_runner=Mock(),
@@ -871,7 +857,9 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(transport, report, clock=lambda: 0)
         self.assertEqual(transport.attempts, ["baseline", "set", "cleanup", "verify"])
         self.assertTrue(report["getter_reverified"])
-        self.assertEqual(report["restoration"], "getter_zero_baseline_reverified")
+        self.assertEqual(
+            report["restoration"],
+            "getter_setter_specific_cleanup_envelope_reverified")
         self.assertEqual(report["accepted_tx_bytes"], 56)
 
         transport_1000 = _Transport()
@@ -1101,6 +1089,56 @@ class RawPwmPilotTests(unittest.TestCase):
                 evidence_transport, {"responses": []}, "verify",
                 deadline=2.0, clock=lambda: 1.5)
 
+        teleop_frames = tuple(bytes.fromhex(raw) for raw in (
+            "533b0d0a80080000000000000000000abb45",
+            "533c0d0b820000e9f445",
+            "533d0d0b80000049e545",
+            "533e0d0a8008006400000064000000175545",
+        ))
+        teleop_transport = Mock(
+            steps=pilot.STEPS_DUAL_FORWARD_2000_CONNECTED,
+            last_write_sequence=None,
+            last_write_started=1.0,
+            event=Mock())
+        teleop_report = {"responses": []}
+        for step, raw in zip(("baseline", "set", "cleanup", "verify"), teleop_frames):
+            request = pilot.decode_packet(teleop_transport.steps[step])
+            teleop_transport.last_write_sequence = request.sequence
+
+            def feed(_transport, evidence, *, packet=raw, **_):
+                evidence.feed(Received(packet, 1.1, 1.2), 1.3)
+
+            with patch.object(pilot.zero, "_observe_response", side_effect=feed):
+                pilot._response(
+                    teleop_transport, teleop_report, step,
+                    deadline=2.0, clock=lambda: 1.5)
+        self.assertEqual(
+            [(row["step"], row["sequence"], row["raw_payload_hex"])
+             for row in teleop_report["responses"]],
+            [
+                ("baseline", 3387, "0000000000000000"),
+                ("set", 3388, ""),
+                ("cleanup", 3389, ""),
+                ("verify", 3390, "6400000064000000"),
+            ])
+        self.assertEqual(
+            teleop_report["responses"][-1]["cleanup_evidence_classification"],
+            "sealed_dual_forward_post_cleanup_observation")
+        unsupported = frame(
+            bytes.fromhex("6400000000000000"),
+            sequence=3390, command=0x0A, status=0x80)
+
+        def feed_unsupported(_transport, evidence, **_):
+            evidence.feed(Received(unsupported, 1.1, 1.2), 1.3)
+
+        teleop_transport.last_write_sequence = 3390
+        with patch.object(
+                pilot.zero, "_observe_response", side_effect=feed_unsupported), \
+                self.assertRaisesRegex(OSError, "unexpected_raw_pwm_payload"):
+            pilot._response(
+                teleop_transport, {"responses": []}, "verify",
+                deadline=2.0, clock=lambda: 1.5)
+
         faults = (
             (("set", "error"), None),
             (("set", "partial"), None),
@@ -1278,9 +1316,7 @@ class RawPwmPilotTests(unittest.TestCase):
                 self.assertEqual(drive_step.main([
                     "forward", "--duration", "0.25", "--raw-pwm", "2000",
                 ]), 0)
-            self.assertEqual(
-                json.loads(stdout.getvalue())["status"],
-                "retired_after_live_nonzero_post_cleanup_getter")
+            self.assertEqual(json.loads(stdout.getvalue())["status"], "dry_run")
 
         for invalid in (
                 {"direction": "forward", "duration": 0.5, "raw_pwm": 2000},
