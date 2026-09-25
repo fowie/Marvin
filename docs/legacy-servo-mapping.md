@@ -728,6 +728,69 @@ The sealed run manifest verified and has SHA-256
 This completed execution is not standing authorization, and no further
 hardware action is authorized by it.
 
+### Installed-camera 50-unit result and offline 500-unit profile
+
+After the camera linkage was installed, one setup-scoped 50-unit execution
+completed its fixed transcript with 48 accepted and zero uncertain TX bytes,
+unique correlated setter and restore responses, actual hold
+`0.250172804` seconds, restore start `0.265741556` seconds after setter start,
+and final getter `[2500,2730]`. The operator reported no visible camera
+movement and confirmed physical power-off. This does not negate the earlier
+unattached-servo movement; it establishes only that the installed-camera
+effect was not visible for this bounded 50-unit run.
+
+The next offline-default named profile keeps the same setup-scoped `RUN`/`END`
+machinery and changes only the fixed target:
+
+```text
+baseline [2500,2730]
+setter   [2000,2730]
+restore  [2500,2730]
+verify   GetServoPosition
+```
+
+It holds for 0.250 seconds from clean correlated setter-response end, permits
+at most 0.010 seconds of scheduling overrun, and retains the 0.760-second
+maximum setter-start-to-restore-start exposure. The one mandatory restore
+remains in `finally`, and the final getter remains conditional on a uniquely
+correlated restore response.
+
+Dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-500-unit-installed-camera-diagnostic
+```
+
+Reviewed live template for a future separately authorized setup session:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-500-unit-installed-camera-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEW-SESSION-DIR \
+  --authorize-unchanged-setup-session-after-fresh-safety-confirmation
+```
+
+The immutable requests are:
+
+```text
+53c20d1d000000584a45
+53c30d1e000400d007aa0a554445
+53c40d1e000400c409aa0a80ad45
+53c50d1d00000059fd45
+```
+
+Their concatenated SHA-256 is
+`315b53b29cd79596168b8f5333ec0a942376ab835dd97517411af3147abb15e1`.
+If the observed positive integer division continues, expected AX Goal Position
+is `2000 // 3 = 666`, 167 counts below baseline 833. Extrapolating the directly
+observed -100-unit clockwise servo output and the subsequently installed
+linkage's clockwise-to-upward mapping suggests approximately 5 degrees upward,
+but this is a hypothesis, not precision calibration, linearity, endpoint or
+full-range proof. The CLI exposes no arbitrary target, delta, dwell, sequence,
+retry, reconnect or unattended count. This profile has not been run and is not
+standing authorization.
+
 ## Historically named word-1 50-unit diagnostic
 
 The next discriminator is a separate named profile only. It preserves word 0

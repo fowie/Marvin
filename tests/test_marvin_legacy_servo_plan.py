@@ -418,6 +418,35 @@ class LegacyServoPlanTests(unittest.TestCase):
                 "camera_tilt_direction"],
             "upward_for_2500_to_2400_by_composed_post_run_operator_observations")
         self.assertTrue(mapper._Word0100UnitTransport.direction_hold)
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(
+                mapper.main(["--word0-500-unit-installed-camera-diagnostic"]), 0)
+        five_hundred = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (five_hundred["fixed_mode"],
+             five_hundred["target_words_uint16"],
+             five_hundred["expected_ax_goal_position"],
+             five_hundred["expected_ax_goal_delta_from_baseline_833"],
+             five_hundred["operator_camera_displacement_hypothesis_degrees"]),
+            ("word0-500-unit-installed-camera-characterization",
+             [2000, 2730], 666, -167, 5.0))
+        five_hundred_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in five_hundred["immutable_application_transcript_hex"]]
+        self.assertEqual(
+            [(packet.sequence, packet.command, packet.payload)
+             for packet in five_hundred_frames],
+            [(3522, 0x1D, b""),
+             (3523, 0x1E, bytes.fromhex("d007aa0a")),
+             (3524, 0x1E, bytes.fromhex("c409aa0a")),
+             (3525, 0x1D, b"")])
+        self.assertEqual(five_hundred["required"], [
+            "--run", "--expected-physical-port", "--output NEW-SESSION-DIR",
+            "--word0-500-unit-installed-camera-diagnostic",
+            "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
+        ])
+        self.assertTrue(mapper._Word0500UnitTransport.direction_hold)
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
             root = Path(directory) / "session"
             with patch.object(
