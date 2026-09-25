@@ -266,7 +266,7 @@ identity, ALSA metadata and selected endpoint:
 
 ```sh
 python -m tools.marvin_microphone list \
-  --run --device hw:CARD=Array,DEV=0
+  --run --hub-path CURRENT_HUB_PATH --device hw:CARD=Array,DEV=0
 ```
 
 Capture accepts only the proved native `S16_LE`, 16000 Hz, 8-channel profile,
@@ -277,6 +277,7 @@ bytes for WAV. For example, a five-second WAV is:
 ```sh
 python -m tools.marvin_microphone capture \
   --run --authorize-audio-capture \
+  --hub-path CURRENT_HUB_PATH \
   --device hw:CARD=Array,DEV=0 \
   --duration 5 --max-bytes 1280044 --type wav \
   --output /private/microphone-array-5s.wav
@@ -289,6 +290,96 @@ oversized results, never overwrites a path, and writes successful output mode
 `0600`. It exposes ALSA errors rather than retrying or falling back to another
 device. The signed override containing both the DMA fix and exact device quirk
 is a prerequisite.
+
+## Operator work item: reconnect through Marvin
+
+**Goal:** with Marvin unpowered, reconnect the intended Microsoft microphone
+array through its internal/harness USB connector, then prove that exactly one
+`045e:fff0` device descends from the intended `2109:2817` hub before one
+privacy-authorized two-second capture. The discovery-era path `1-1.1.2.4` is
+historical evidence, not an expected or stable path.
+
+The patched host already passed the same CLI's direct-PC live list and bounded
+two-second capture. That is a host/module baseline only; it does not identify
+the internal connector or prove the Marvin harness path.
+
+**Stop without capturing** if the connector or intended hub is ambiguous; any
+new over-current or electrical warning appears; zero or multiple microphones
+match; the microphone is not a descendant of the selected hub; the ALSA card or
+`pcmCND0c` node is missing or has different USB ancestry; or any list/capture
+command fails. Do not retry automatically, issue controller commands, reset
+USB, change mixers, reload modules or move to another connector.
+
+1. With Marvin unpowered, have the operator identify and record the intended
+   internal/harness microphone USB connector. Do not infer the connector from
+   the old sysfs path. Make the physical connection while power remains off.
+2. Immediately before power/connect, record a timestamp for a bounded
+   kernel-log review, then power/connect only under the operator's normal
+   reviewed procedure:
+
+   ```sh
+   START="$(date --iso-8601=seconds)"
+   ```
+
+3. Passively inventory USB topology. These commands do not open the audio
+   stream:
+
+   ```sh
+   lsusb -t
+   lsusb -d 2109:2817
+   lsusb -d 045e:fff0
+   for d in /sys/bus/usb/devices/*; do
+     test -r "$d/idVendor" -a -r "$d/idProduct" || continue
+     printf '%s %s:%s\n' "${d##*/}" "$(cat "$d/idVendor")" "$(cat "$d/idProduct")"
+   done | sort
+   journalctl -k --since "$START" --no-pager
+   ```
+
+   Stop on any new over-current/electrical warning or ambiguous identity.
+   From this inventory, record the current sysfs name of the intended
+   `2109:2817` hub as `HUB_PATH`. Confirm exactly one `045e:fff0` entry has a
+   name beginning with `${HUB_PATH}.`; do not assume `1-1.1.2` or
+   `1-1.1.2.4`.
+
+4. Verify the exact USB identity/profile and that the enumerated ALSA
+   `pcmCND0c` symlink resolves beneath that same microphone USB node:
+
+   ```sh
+   HUB_PATH='REPLACE_WITH_RECORDED_SYSFS_HUB_NAME'
+   python -m tools.marvin_microphone list \
+     --run --hub-path "$HUB_PATH" --device hw:CARD=Array,DEV=0
+   ```
+
+   The command itself enforces the hub identity, exactly one descendant
+   microphone, native profile, one ALSA card, and PCM-to-USB ancestry. Preserve
+   its JSON result as the handoff record. Stop if it reports anything but
+   `status: ready`.
+
+5. Only after fresh privacy consent, choose a new file in an existing private
+   mode-`0700` directory and run exactly one two-second WAV capture:
+
+   ```sh
+   PRIVATE_CAPTURE_DIR='/REPLACE/WITH/PRIVATE/DIRECTORY'
+   test -d "$PRIVATE_CAPTURE_DIR" &&
+   test "$(stat -c %a "$PRIVATE_CAPTURE_DIR")" = 700 &&
+   python -m tools.marvin_microphone capture \
+     --run --authorize-audio-capture \
+     --hub-path "$HUB_PATH" --device hw:CARD=Array,DEV=0 \
+     --duration 2 --max-bytes 512044 --type wav \
+     --output "$PRIVATE_CAPTURE_DIR/microphone-array-through-marvin-2s.wav"
+   ```
+
+6. Accept the result only when the command exits 0, reports exactly 512044
+   bytes, and the new file is mode `0600`:
+
+   ```sh
+   stat -c '%n %s bytes mode %a' \
+     "$PRIVATE_CAPTURE_DIR/microphone-array-through-marvin-2s.wav"
+   ```
+
+   Do not play back, upload, transcribe or repeat the capture without separate
+   authorization. A successful file proves this bounded host path delivered
+   PCM; it does not prove physical capsule placement or broader Marvin safety.
 
 ## Upstream references
 
