@@ -45,6 +45,7 @@ python -m marvin projector status
 python -m marvin projector power on
 python -m marvin leds status
 python -m marvin leds plan left-position-0-red
+python -m marvin leds attention-check
 python -m marvin leds wheel-blink
 ```
 
@@ -112,16 +113,42 @@ exclusive full-intensity plan rather than a composable per-LED setter. Named
 steady LED plans cannot run live because the mapping procedure restored in a
 separate process and therefore does not own cleanup.
 
-`leds wheel-blink` is the sole live LED action. It reuses the exact completed
+`leds attention-check` is one fixed live acceptance sweep, not a general setter.
+It requires the exact captured 18-byte baseline, then shows each mapped
+robot-left and robot-right red/blue position plus the mapped front-left blue and
+front-right red channels at `255` for 0.25 seconds. Every state is exclusive.
+The exact baseline is restored once between states and from `finally` after a
+setter may apply; restoration is never retried. A final command-`0x17` getter
+must exactly match the baseline. Raw `0x80` and `0x82` remain opaque and visible
+effect must be recorded by the supervising operator.
+
+`leds wheel-blink` reuses the exact completed
 three-second wheel pilot, requires the fixed OFF-start state/blink baselines,
 and attempts the exact blink baseline followed by the exact LED-state baseline
 once after either setter may have applied. It does not expose payload, color,
 intensity, timing, animation, or standalone-OFF controls. The restore is the
 captured baseline, not all-off: no all-off cleanup has been live-proven.
-The smallest remaining proof for live named steady LEDs is one fixed,
-single-process smoke that verifies a captured baseline, sets one mapped index
-to `255`, and restores that exact baseline from `finally`, with visible effect
-and restoration recorded.
+Neither live action permits selecting a channel, intensity, color, or timing.
+
+Supervised attention acceptance, only after reviewing the disconnected-load
+setup and arranging an operator at the external cutoff:
+
+```sh
+python3 -m marvin leds attention-check \
+  --run --expected-physical-port 1-3 \
+  --output evidence/attention-check-001 --confirm-safe-setup
+```
+
+The supervisor records each visible named effect and cuts external power on any
+mismatch, missing restore, or reported uncertainty. Do not retry. If the run
+cannot getter-verify its final baseline, first confirm visible restoration and
+power-cycle the controller, then clear only the evidence-bound lock offline:
+
+```sh
+python3 -m tools.marvin_legacy_attention_check \
+  --acknowledge-restoration --evidence evidence/attention-check-001 \
+  --physical-restoration-confirmed --power-cycle-confirmed
+```
 
 Python API:
 
@@ -135,6 +162,7 @@ print(robot.stop())
 print(robot.camera_up(5))
 print(robot.camera_down(5))      # offline fixed plan; live remains blocked
 print(robot.leds.full_intensity_plan("left-position-0-red"))
+print(robot.leds.attention_check()) # offline immutable plan by default
 print(robot.leds.wheel_blink())   # offline immutable plan by default
 ```
 

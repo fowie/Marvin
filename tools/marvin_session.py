@@ -324,6 +324,8 @@ def run_session(
     authorize_unvalidated_led_mapping_phase=False,
     disconnected_load_wheel_led_blink_pilot=False,
     authorize_unvalidated_wheel_led_blink_pilot=False,
+    disconnected_load_attention_led_check=False,
+    authorize_unvalidated_attention_led_check=False,
     _led_mapping_phase=None,
     _led_mapping_index=None,
     _led_mapping_baseline=None,
@@ -500,6 +502,9 @@ def run_session(
         disconnected_load_wheel_led_blink_pilot=disconnected_load_wheel_led_blink_pilot,
         authorize_unvalidated_wheel_led_blink_pilot=(
             authorize_unvalidated_wheel_led_blink_pilot),
+        disconnected_load_attention_led_check=disconnected_load_attention_led_check,
+        authorize_unvalidated_attention_led_check=(
+            authorize_unvalidated_attention_led_check),
         powered_left_stop_characterization=powered_left_stop_characterization,
         motor_left_connected=motor_left_connected,
         motor_right_disconnected=motor_right_disconnected,
@@ -642,6 +647,8 @@ def run_session(
                 from tools.marvin_legacy_disconnected_led_state import TRANSCRIPT
             elif scope == motor_consent.WHEEL_LED_BLINK_SCOPE:
                 from tools.marvin_legacy_wheel_led_blink import TRANSCRIPT
+            elif scope == motor_consent.ATTENTION_LED_CHECK_SCOPE:
+                from tools.marvin_legacy_attention_check import TRANSCRIPT
             elif scope in motor_consent.VELOCITY_TRAIN_SCOPES:
                 from tools.marvin_legacy_velocity_train import transcript_for_scope
                 TRANSCRIPT = transcript_for_scope(scope)
@@ -669,7 +676,8 @@ def run_session(
                 or probe_profile != "legacy" or baudrate != 57600
                 or (bytesize, parity, stopbits) != (8, "N", 1)
                 or seconds != (
-                    15 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                    25 if scope == motor_consent.ATTENTION_LED_CHECK_SCOPE
+                    else 15 if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
                     else 7 if _front_servo_getter or _front_servo_baseline_restore
                     else 8 if _front_servo_mapper
                     else 10 if scope in (
@@ -924,6 +932,8 @@ def run_session(
                             if scope == motor_consent.LED_MAPPING_SCOPE
                             else "DisconnectedLoadWheelLedBlinkPilot"
                             if scope == motor_consent.WHEEL_LED_BLINK_SCOPE
+                            else "DisconnectedLoadAttentionLedCheck"
+                            if scope == motor_consent.ATTENTION_LED_CHECK_SCOPE
                             else "DisconnectedLoadLeftPlus1000VelocityTrain"
                             if scope == motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE
                             else "DisconnectedLoadRightPlus1000VelocityTrain"
@@ -993,6 +1003,8 @@ def run_session(
                             scope == motor_consent.LED_MAPPING_SCOPE),
                         fixed_wheel_led_blink_pilot_authorized=(
                             scope == motor_consent.WHEEL_LED_BLINK_SCOPE),
+                        fixed_attention_led_check_authorized=(
+                            scope == motor_consent.ATTENTION_LED_CHECK_SCOPE),
                         fixed_left_plus_1000_velocity_train_authorized=(
                             scope == motor_consent.DISCONNECTED_VELOCITY_TRAIN_SCOPE),
                         fixed_right_plus_1000_velocity_train_authorized=(
