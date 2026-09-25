@@ -239,13 +239,22 @@ class BinaryCaptureTests(unittest.TestCase):
                             (output / usbmon.COORDINATOR_STOP_FILE).write_bytes(b"")
                         return (fds if records else [], [], [])
 
+                    stats_reads = 0
+
+                    def read_stats(fd):
+                        nonlocal stats_reads
+                        stats_reads += 1
+                        return {
+                            "queued": 0 if stats_reads == 1 else len(records),
+                            "dropped": 0 if stats_reads == 1 else dropped,
+                        }
+
                     try:
                         with patch.object(usbmon, "read_identity", return_value=identity), \
                              patch.object(usbmon, "_cached_descriptors", return_value=descriptors), \
                              patch.object(binary, "open_monitor", return_value=read_fd), \
                              patch.object(binary, "read_event", side_effect=lambda fd, **kw: records.pop(0)), \
-                             patch.object(binary, "read_stats", side_effect=[
-                                 {"queued": 0, "dropped": 0}, {"queued": 0, "dropped": dropped}]), \
+                             patch.object(binary, "read_stats", side_effect=read_stats), \
                              patch.object(usbmon.select, "select", side_effect=select), \
                              patch.object(usbmon.time, "monotonic", side_effect=lambda: now[0]):
                             if dropped:

@@ -1106,9 +1106,10 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                         })
                         metadata["status"] = "recording"
                         _write_json(output / "metadata.json", metadata, replace=True)
+                        draining = False
 
                         def boundary():
-                            nonlocal last_check
+                            nonlocal draining, last_check
                             if interrupt["signal"] is not None:
                                 raise _Stop("interrupted", "signal")
                             now = time.monotonic()
@@ -1129,7 +1130,22 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                                     raise _Stop("interrupted", "signal")
                                 if time.monotonic() >= deadline:
                                     raise _Stop("completed", "duration")
-                                raise _Stop("completed", "coordinator_stop")
+                                if backend != "binary":
+                                    raise _Stop("completed", "coordinator_stop")
+                                draining = True
+                            if draining:
+                                stats = binary.read_stats(fd)
+                                if (not isinstance(stats, dict)
+                                        or set(stats) != {"queued", "dropped"}
+                                        or any(type(value) is not int or value < 0
+                                               for value in stats.values())):
+                                    raise UsbmonError(
+                                        "USB monitor returned invalid queued/dropped statistics.")
+                                if stats["dropped"]:
+                                    raise UsbmonError(
+                                        "USB monitor dropped events; capture is incomplete.")
+                                if not stats["queued"] and pending_raw is None:
+                                    raise _Stop("completed", "coordinator_stop")
                             return now
 
                         while True:
@@ -1245,6 +1261,13 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
                     metadata["monitor_final_stats"] = stats
                     if metadata["status"] == "completed":
                         validate_monitor_final_stats(metadata)
+                    if (not isinstance(stats, dict)
+                            or set(stats) != {"queued", "dropped"}
+                            or any(type(value) is not int or value < 0
+                                   for value in stats.values())):
+                        raise UsbmonError(
+                            "Incomplete USB capture: final queued/dropped statistics "
+                            "must be non-negative integers.")
                     dropped = stats["dropped"] + metadata.get("monitor_initial_stats", {}).get("dropped", 0)
                     if dropped:
                         raise UsbmonError("USB monitor dropped events; capture is incomplete.")

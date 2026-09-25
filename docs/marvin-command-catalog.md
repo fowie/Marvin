@@ -208,11 +208,48 @@ illumination proof:
 
 The smallest next bounded test is read-only: perform one fixed legacy
 `0E GetPowerState` read and preserve the raw two-byte mask, with no projector
-writes. If separate authorization is later granted for an illumination test,
-its transcript must first establish logical projector-off state, allow more
-than the source's 12.5 seconds of fixed setup delays, and address the
-independently closed shutter; adding brightness, sync, or successor commands is
-not justified by current evidence.
+writes.
+
+### Conditional visible-projector transcript
+
+The smallest source-backed candidate is defined here for review only. It is not
+implemented or generally live-enabled:
+
+1. Read `0E GetPowerState` with no payload. Require a CRC-valid two-byte
+   response and preserve the raw little-endian mask. Newer source assigns
+   projector power to bit `0x1000` (`m_src/m_power.c:102-119`,
+   `m_inc/protocol.cs:2515-2524`), but that bit meaning still needs installed
+   legacy confirmation. If the bit is set or the response is uncertain, stop
+   with no write: source `ProjectorPower` would route another ON into its OFF
+   branch.
+2. Send dedicated `27 SetProjectorPower` with the one-byte payload `01`.
+   From `finally` after any write-may-have-applied outcome, always attempt
+   dedicated `27` with payload `00`; never substitute generic `0F`.
+3. Before any shutter command, wait exactly 36.75 seconds. `ProjectorSetup`
+   contains fixed timers of 0.25 + 12 + 0.25 + 12 + 0.25 = 24.75 seconds:
+   the second 12-second interval is started by `ProjectorMotorHomeHelp`
+   (`m_src/m_projector.c:97-98,115-185,198-238`) and the last 0.25-second
+   interval completes vertical positioning (`m_src/m_projector.c:284-350`).
+   The additional margin is one full source-defined 12-second home interval,
+   not an inferred warm-up time. I2C callbacks have no source timeout, so even
+   this bound does not prove setup completion.
+4. Only after exact installed legacy semantics are independently confirmed,
+   send `2B OpenShutter` with no payload. Wait 2.15 seconds: the source open
+   timeout is 2 seconds and successful finishing runs for 0.15 seconds
+   (`m_src/m_shutter.c:39-43,149-157,199-224`). Observe for exactly 2 seconds.
+5. If open may have applied, attempt `2C CloseShutter` with no payload from
+   `finally`, wait 2.15 seconds for its matching timeout/finish bound, and then
+   perform the mandatory projector OFF attempt. A failed or uncertain close
+   must not suppress OFF.
+
+Commands `2B` and `2C` are source-defined no-payload open/close operations
+(`m_src/m_protocol.c:151-152`, `m_src/m_shutter.c:199-208`), and close has a
+bounded motor-stop/error path. They are nevertheless successor-source-only:
+the installed legacy PCTestApp has no matching call site, so this visible-output
+stage remains blocked rather than guessed. Command `26` is explicitly excluded:
+newer source calls it `GetProjectorVersion`, while the installed legacy sample
+uses `26` for `DisableHeartbeat`. Separate brightness `23` and sync `24` writes
+are also excluded because setup already performs them.
 
 ## Command `11` rejection boundary
 
