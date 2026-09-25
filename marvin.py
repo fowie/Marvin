@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 import marvin_camera
+import marvin_operator
 from tools import marvin_microphone
 from tools import marvin_campaign
 from tools import marvin_legacy_drive_step as drive_step
@@ -567,6 +568,18 @@ and physical stop remain unproved and require operator observation/cutoff.""",
     sensors.add_argument(
         "--unprivileged-usbmon", action="store_true",
         help="confirm ordinary-user target-scoped USB recording")
+    operator = actions.add_parser(
+        "operator", help="run the localhost-only continuous operator API")
+    operator_actions = operator.add_subparsers(dest="operator_command", required=True)
+    serve = operator_actions.add_parser(
+        "serve", help="serve local status, sensor snapshots, events, and recording")
+    serve.add_argument("--run", action="store_true",
+                       help="use an injected validated live sensor transport")
+    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--poll-seconds", type=float,
+                       default=marvin_operator.DEFAULT_POLL_SECONDS)
+    serve.add_argument("--chunk-seconds", type=int,
+                       default=marvin_operator.DEFAULT_CHUNK_SECONDS)
     microphone = actions.add_parser(
         "microphone", add_help=False,
         help="delegate to bounded microphone status/list/capture")
@@ -601,7 +614,8 @@ and physical stop remain unproved and require operator observation/cutoff.""",
 
 
 def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
-         sensor_expected_identity=None):
+         sensor_expected_identity=None, operator_source=None,
+         operator_ready=None):
     parser = _parser()
     args, extra = parser.parse_known_args(argv)
     if args.command == "microphone":
@@ -618,6 +632,20 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
         sensor_expected_identity=sensor_expected_identity,
     )
     try:
+        if args.command == "operator":
+            if operator_source is not None and args.run is not True:
+                raise ValueError("Injected operator sensors require --run.")
+            if args.run and operator_source is None:
+                raise ValueError(
+                    "Live operator service requires an injected validated transport; "
+                    "no device was opened.")
+            runtime = marvin_operator.OperatorRuntime(
+                operator_source,
+                poll_seconds=args.poll_seconds,
+                chunk_seconds=args.chunk_seconds,
+            )
+            marvin_operator.serve(runtime, port=args.port, ready=operator_ready)
+            return 0
         if args.command == "status":
             result = marvin.status()
         elif args.command == "sensors":
@@ -663,7 +691,7 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
             result = marvin.projector_down(args.degrees)
         else:
             result = marvin.projector_center()
-    except (OSError, ValueError, SessionError,
+    except (OSError, ValueError, RuntimeError, TimeoutError, SessionError,
             subprocess.SubprocessError, KeyboardInterrupt) as error:
         details = {
             "status": "failed",

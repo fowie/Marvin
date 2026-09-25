@@ -160,7 +160,7 @@ Evidence properties are immutable snapshots, not a polling/recording service.
                  evidence_kind: str = "unspecified", on_failure=None, on_evidence=None):
         self._key = _identity("ownership_key", ownership_key)
         self._expected_identity = _identity("expected_identity", expected_identity)
-        self._session_timeout = _number("session_timeout", session_timeout, 0.001, 600)
+        self._session_timeout = _number("session_timeout", session_timeout, 0.001, 86400)
         self._cleanup_timeout = _number("cleanup_timeout", cleanup_timeout, 0.001, 30)
         if not isinstance(limits, Limits):
             raise ValueError("limits must be a Limits instance.")

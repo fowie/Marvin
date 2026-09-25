@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import marvin
+import marvin_operator
 import marvin_sensors
 from tests.test_marvin_legacy_protocol import frame
 from tools.marvin_legacy_client import Received
@@ -95,6 +96,29 @@ class MarvinSensorTests(unittest.TestCase):
         self.assertEqual(snapshot["servos"]["word0"]["value"]["unsigned"], 2500)
         self.assertEqual(snapshot["battery"]["status"], "unsupported")
         self.assertEqual(snapshot["bump"]["status"], "unsupported")
+
+        persistent = FakeTransport()
+        persistent.on_write = lambda packet: setattr(
+            persistent, "incoming", frame(
+                payloads[next(
+                    name for name, spec in marvin_sensors.protocol.GETTERS.items()
+                    if spec.command == packet.command)],
+                command=packet.command, sequence=packet.sequence))
+        source = marvin_operator.PersistentSensorSource(
+            persistent, ownership_key=b"persistent-test-resource",
+            expected_identity=persistent.token)
+        source.start()
+        try:
+            first, second = source.read(), source.read()
+        finally:
+            source.close()
+        self.assertEqual(len(persistent.writes), 8)
+        self.assertEqual(first["connection"]["requests_completed"], 4)
+        self.assertEqual(second["connection"]["requests_completed"], 8)
+        self.assertEqual(
+            [row["sequence"] for row in second["request_evidence"]],
+            [4, 5, 6, 7],
+        )
         with self.assertRaisesRegex(ValueError, "cannot accept CLI evidence"):
             marvin.Marvin(
                 run=True, output="new", sensor_transport=FakeTransport(),

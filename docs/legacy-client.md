@@ -147,7 +147,7 @@ failures as `OSError`.
 ## Bounded operation
 
 Request timeout is explicit (0.001..120 seconds). Total-session timeout
-(0.001..600 seconds) starts before revalidation and includes time between
+(0.001..86400 seconds) starts before revalidation and includes time between
 requests. Every operational adapter call receives the same absolute deadline
 for that operation, no later than the session deadline. There is no background
 timer: an idle expired session cannot write when next called. Reads returning

@@ -1,0 +1,502 @@
+"""Local-only continuous Marvin sensor runtime and JSON API."""
+
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import queue
+import signal
+import stat
+from threading import Condition, Event, RLock, Thread, current_thread, main_thread
+import time
+from typing import Protocol
+
+import marvin_sensors
+from tools.marvin_legacy_client import LegacyClient, Limits
+
+
+DEFAULT_POLL_SECONDS = 2.0
+MIN_POLL_SECONDS = 0.5
+MAX_POLL_SECONDS = 60.0
+DEFAULT_CHUNK_SECONDS = 300
+MIN_CHUNK_SECONDS = 10
+MAX_CHUNK_SECONDS = 3600
+MAX_BODY_BYTES = 4096
+MAX_REQUESTS = 65536
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+class SensorSource(Protocol):
+    def start(self) -> None: ...
+    def read(self) -> dict: ...
+    def close(self) -> None: ...
+
+
+class RuntimeManager(Protocol):
+    def start(self) -> None: ...
+    def status(self) -> dict: ...
+    def close(self) -> None: ...
+
+
+class PersistentSensorSource:
+    """Repeated exact four-getter snapshots over one injected transport."""
+
+    def __init__(self, transport, *, ownership_key, expected_identity,
+                 session_timeout=86400):
+        if type(ownership_key) is not bytes or type(expected_identity) is not bytes:
+            raise ValueError("ownership_key and expected_identity must be immutable bytes.")
+        self.transport = transport
+        self.ownership_key = ownership_key
+        self.expected_identity = expected_identity
+        self.session_timeout = session_timeout
+        self.client = None
+
+    def start(self):
+        if self.client is not None:
+            raise RuntimeError("Sensor source already started.")
+        self.client = LegacyClient(
+            self.transport,
+            ownership_key=self.ownership_key,
+            expected_identity=self.expected_identity,
+            session_timeout=self.session_timeout,
+            cleanup_timeout=5,
+            limits=Limits(
+                max_requests=MAX_REQUESTS, max_rx_bytes=16 * 1024 * 1024,
+                max_events=65536, max_reads=65536, read_size=256,
+            ),
+            evidence_kind="recorded",
+        )
+        self.client.start()
+
+    def read(self):
+        if self.client is None:
+            raise RuntimeError("Sensor source is not active.")
+        return marvin_sensors.read_session_snapshot(
+            self.client, expected_identity=self.expected_identity)
+
+    def close(self):
+        if self.client is not None:
+            client, self.client = self.client, None
+            client.close()
+
+
+class _Recorder:
+    def __init__(self, directory, chunk_seconds):
+        path = Path(directory)
+        info = path.stat()
+        if not stat.S_ISDIR(info.st_mode) or path.is_symlink():
+            raise ValueError("Recording destination must be an existing directory.")
+        if info.st_mode & 0o077:
+            raise ValueError("Recording directory must be private (no group/other permissions).")
+        if info.st_uid != os.geteuid():
+            raise ValueError("Recording directory must be owned by the current user.")
+        self.directory = path
+        self.chunk_seconds = chunk_seconds
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        self.directory_fd = os.open(path, flags)
+        pinned = os.fstat(self.directory_fd)
+        if (pinned.st_dev, pinned.st_ino) != (info.st_dev, info.st_ino):
+            os.close(self.directory_fd)
+            self.directory_fd = None
+            raise OSError("Recording directory changed during validation.")
+        self.stream = None
+        self.path = None
+        self.started = None
+        self.chunk = 0
+        self.rows = 0
+        self.opened_at = None
+
+    def _open(self, now):
+        self.chunk += 1
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        path = self.directory / f"marvin-sensors-{stamp}-{self.chunk:04d}.jsonl"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path.name, flags, 0o600, dir_fd=self.directory_fd)
+        self.stream = os.fdopen(fd, "w", encoding="ascii", buffering=1)
+        self.path = path
+        self.started = now
+        self.opened_at = _utc_now()
+
+    def append(self, snapshot, now):
+        if self.stream is None or now - self.started >= self.chunk_seconds:
+            self._close_chunk()
+            self._open(now)
+        row = json.dumps(
+            {"recorded_at": _utc_now(), "snapshot": snapshot},
+            ensure_ascii=True, allow_nan=False, separators=(",", ":"),
+        )
+        self.stream.write(row + "\n")
+        self.rows += 1
+
+    def status(self):
+        return {
+            "active": self.directory_fd is not None,
+            "chunk_open": self.stream is not None,
+            "directory": str(self.directory),
+            "file": None if self.path is None else self.path.name,
+            "chunk": self.chunk,
+            "chunk_seconds": self.chunk_seconds,
+            "rows": self.rows,
+            "opened_at": self.opened_at,
+        }
+
+    def _close_chunk(self):
+        if self.stream is not None:
+            stream, self.stream = self.stream, None
+            try:
+                stream.flush()
+                os.fsync(stream.fileno())
+            finally:
+                stream.close()
+
+    def close(self):
+        try:
+            self._close_chunk()
+        finally:
+            if self.directory_fd is not None:
+                descriptor, self.directory_fd = self.directory_fd, None
+                os.close(descriptor)
+
+
+class OperatorRuntime:
+    """Own the source, polling, recording, and observable lifecycle."""
+
+    def __init__(self, source: SensorSource | None, *,
+                 poll_seconds=DEFAULT_POLL_SECONDS,
+                 chunk_seconds=DEFAULT_CHUNK_SECONDS,
+                 managers: dict[str, RuntimeManager] | None = None):
+        if type(poll_seconds) not in (int, float) or not MIN_POLL_SECONDS <= poll_seconds <= MAX_POLL_SECONDS:
+            raise ValueError(f"poll_seconds must be {MIN_POLL_SECONDS}..{MAX_POLL_SECONDS}.")
+        if type(chunk_seconds) is not int or not MIN_CHUNK_SECONDS <= chunk_seconds <= MAX_CHUNK_SECONDS:
+            raise ValueError(f"chunk_seconds must be {MIN_CHUNK_SECONDS}..{MAX_CHUNK_SECONDS}.")
+        self.source = source
+        self.managers = {} if managers is None else dict(managers)
+        if any(type(name) is not str or not name.isidentifier()
+               for name in self.managers):
+            raise ValueError("Manager names must be identifiers.")
+        self.poll_seconds = float(poll_seconds)
+        self.chunk_seconds = chunk_seconds
+        self._lock = RLock()
+        self._changed = Condition(self._lock)
+        self._stop = Event()
+        self._commands = queue.Queue()
+        self._thread = None
+        self._recorder = None
+        self._revision = 0
+        self._state = "new"
+        self._latest = None
+        self._latest_monotonic = None
+        self._last_error = None
+        self._recording = {"active": False, "error": None}
+
+    def start(self):
+        with self._lock:
+            if self._state != "new":
+                raise RuntimeError("Runtime start requires new state.")
+            self._state = "starting"
+        self._thread = Thread(target=self._run, name="marvin-operator", daemon=False)
+        self._thread.start()
+        with self._changed:
+            self._changed.wait_for(lambda: self._state != "starting", timeout=5)
+            if self._state == "starting":
+                raise TimeoutError("Operator runtime startup did not complete.")
+            if self._state == "failed":
+                raise RuntimeError(self._last_error)
+        return self
+
+    def _publish(self):
+        self._revision += 1
+        self._changed.notify_all()
+
+    def _run(self):
+        try:
+            if self.source is not None:
+                self.source.start()
+            for manager in self.managers.values():
+                manager.start()
+            with self._changed:
+                self._state = "running"
+                self._publish()
+            deadline = 0.0
+            while not self._stop.is_set():
+                self._drain_commands()
+                now = time.monotonic()
+                if self.source is not None and now >= deadline:
+                    try:
+                        snapshot = self.source.read()
+                    except Exception as error:
+                        with self._changed:
+                            self._state = "failed"
+                            self._last_error = f"{type(error).__name__}: {error}"[:1024]
+                            self._publish()
+                        break
+                    completed = time.monotonic()
+                    with self._changed:
+                        self._latest = {
+                            "observed_at": _utc_now(),
+                            "monotonic": completed,
+                            "snapshot": snapshot,
+                        }
+                        self._latest_monotonic = completed
+                        self._publish()
+                    self._record(snapshot, completed)
+                    deadline = now + self.poll_seconds
+                delay = 0.1 if self.source is None else max(
+                    0.0, deadline - time.monotonic())
+                self._stop.wait(min(0.1, delay))
+        except Exception as error:
+            with self._changed:
+                self._state = "failed"
+                self._last_error = f"{type(error).__name__}: {error}"[:1024]
+                self._publish()
+        finally:
+            errors = []
+            if self._recorder is not None:
+                try:
+                    self._recorder.close()
+                except Exception as error:
+                    errors.append(error)
+                self._recorder = None
+            for manager in reversed(tuple(self.managers.values())):
+                try:
+                    manager.close()
+                except Exception as error:
+                    errors.append(error)
+            if self.source is not None:
+                try:
+                    self.source.close()
+                except Exception as error:
+                    errors.append(error)
+            with self._changed:
+                if errors:
+                    self._state = "failed"
+                    self._last_error = "; ".join(
+                        f"{type(error).__name__}: {error}" for error in errors)[:1024]
+                elif self._state != "failed":
+                    self._state = "stopped"
+                self._recording["active"] = False
+                self._publish()
+
+    def _drain_commands(self):
+        while True:
+            try:
+                command, value, result = self._commands.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                if command == "start_recording":
+                    if self.source is None:
+                        raise ValueError("Recording requires a configured sensor source.")
+                    if self._recorder is not None:
+                        raise ValueError("Recording is already active.")
+                    self._recorder = _Recorder(value, self.chunk_seconds)
+                    self._recording = {**self._recorder.status(), "error": None}
+                else:
+                    if self._recorder is None:
+                        raise ValueError("Recording is not active.")
+                    self._recorder.close()
+                    self._recording = {**self._recorder.status(), "active": False, "error": None}
+                    self._recorder = None
+                with self._changed:
+                    self._publish()
+                result.put((True, self._recording))
+            except Exception as error:
+                result.put((False, error))
+
+    def _record(self, snapshot, now):
+        if self._recorder is None:
+            return
+        try:
+            self._recorder.append(snapshot, now)
+            with self._changed:
+                self._recording = {**self._recorder.status(), "error": None}
+                self._publish()
+        except Exception as error:
+            try:
+                self._recorder.close()
+            except Exception as close_error:
+                error.add_note(str(close_error))
+            self._recorder = None
+            with self._changed:
+                self._recording = {
+                    "active": False,
+                    "error": f"{type(error).__name__}: {error}"[:1024],
+                }
+                self._publish()
+
+    def recording(self, command, directory=None):
+        if command not in ("start_recording", "stop_recording"):
+            raise ValueError("Unknown recording command.")
+        result = queue.Queue(maxsize=1)
+        self._commands.put((command, directory, result))
+        try:
+            success, value = result.get(timeout=5)
+        except queue.Empty as error:
+            raise TimeoutError("Recording command timed out.") from error
+        if not success:
+            raise value
+        return value
+
+    def status(self):
+        with self._lock:
+            age = None if self._latest_monotonic is None else max(
+                0.0, time.monotonic() - self._latest_monotonic)
+            return {
+                "state": self._state,
+                "connection": {
+                    "configured": self.source is not None,
+                    "status": (
+                        "connected" if self._state == "running" and self.source is not None
+                        else "disabled" if self.source is None else self._state
+                    ),
+                },
+                "poll_seconds": self.poll_seconds,
+                "latest_observed_at": None if self._latest is None else self._latest["observed_at"],
+                "freshness": {
+                    "age_seconds": age,
+                    "fresh": age is not None and age <= self.poll_seconds * 2.5,
+                },
+                "error": self._last_error,
+                "recording": dict(self._recording),
+                "managers": {
+                    name: manager.status()
+                    for name, manager in self.managers.items()
+                },
+                "revision": self._revision,
+            }
+
+    def latest(self):
+        with self._lock:
+            return self._latest
+
+    def wait_event(self, revision, timeout=15):
+        with self._changed:
+            self._changed.wait_for(
+                lambda: self._revision > revision or self._state in ("failed", "stopped"),
+                timeout=timeout,
+            )
+            return self.status()
+
+    def close(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=10)
+            if self._thread.is_alive():
+                raise TimeoutError("Operator runtime did not stop.")
+
+
+class OperatorServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = False
+
+    def __init__(self, address, runtime):
+        if address[0] != "127.0.0.1":
+            raise ValueError("Operator API binds only to 127.0.0.1.")
+        self.runtime = runtime
+        super().__init__(address, _Handler)
+
+
+class _Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, format, *args):
+        return
+
+    def _json(self, status, value):
+        data = json.dumps(value, ensure_ascii=True, allow_nan=False).encode("ascii")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path == "/api/status":
+            self._json(200, self.server.runtime.status())
+        elif self.path == "/api/sensors/latest":
+            latest = self.server.runtime.latest()
+            self._json(200 if latest is not None else 503, latest or {
+                "status": "unavailable", "error": "No sensor snapshot is available."})
+        elif self.path == "/api/recording":
+            self._json(200, self.server.runtime.status()["recording"])
+        elif self.path == "/api/events":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            revision = -1
+            try:
+                while True:
+                    status = self.server.runtime.wait_event(revision)
+                    revision = status["revision"]
+                    data = json.dumps(status, ensure_ascii=True, allow_nan=False)
+                    self.wfile.write(f"id: {revision}\nevent: status\ndata: {data}\n\n".encode("ascii"))
+                    self.wfile.flush()
+                    if status["state"] in ("failed", "stopped"):
+                        break
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        else:
+            self._json(404, {"status": "not_found"})
+
+    def do_POST(self):
+        routes = {
+            "/api/recording/start": "start_recording",
+            "/api/recording/stop": "stop_recording",
+        }
+        command = routes.get(self.path)
+        if command is None:
+            self._json(404, {"status": "not_found"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= length <= MAX_BODY_BYTES:
+                raise ValueError("Request body is too large.")
+            body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("JSON body must be an object.")
+            allowed = {"directory"} if command == "start_recording" else set()
+            if set(body) != allowed:
+                raise ValueError("Unexpected or missing JSON fields.")
+            result = self.server.runtime.recording(command, body.get("directory"))
+        except (OSError, ValueError, TypeError, TimeoutError, json.JSONDecodeError) as error:
+            self._json(400, {"status": "failed", "error": str(error)[:1024]})
+        else:
+            self._json(200, {"status": "ok", "recording": result})
+
+
+def serve(runtime, *, port=8765, ready=None):
+    if type(port) is not int or not 0 <= port <= 65535:
+        raise ValueError("port must be an integer between 0 and 65535.")
+    server = OperatorServer(("127.0.0.1", port), runtime)
+    try:
+        runtime.start()
+    except Exception:
+        server.server_close()
+        raise
+    if ready is not None:
+        ready(server.server_address)
+    previous = {}
+    try:
+        if current_thread() is main_thread():
+            def stop_server(_signum, _frame):
+                Thread(target=server.shutdown, daemon=True).start()
+
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                previous[signum] = signal.signal(signum, stop_server)
+        server.serve_forever(poll_interval=0.2)
+    finally:
+        server.server_close()
+        runtime.close()
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)

@@ -209,6 +209,39 @@ in a new directory. There is no arbitrary command, retry, reconnect, successor
 fallback, or per-field subprocess. Dedicated `GetBatteryInfo` remains excluded
 because its installed eight-byte response has no proven legacy decoder.
 
+### Continuous local operator API
+
+`marvin operator serve` runs a long-lived stdlib HTTP service bound only to
+`127.0.0.1` (default port `8765`). Without `--run` it is status-only and opens
+no hardware. Live polling requires an application-injected, already validated
+`marvin_operator.SensorSource`; the CLI deliberately rejects `--run` without
+that boundary rather than falling back to a weaker serial path. The built-in
+`PersistentSensorSource` owns one identity-pinned `LegacyClient`, serializes all
+controller access, sends only the exact four sensor getters, and never retries,
+reconnects, wraps sequences, or exposes arbitrary opcodes.
+`OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
+their start/status/close lifecycle, so later drive, LED, and media layers can
+reuse this server and shutdown path instead of creating parallel runtimes.
+
+Poll intervals are bounded to `0.5..60` seconds (default `2`). Recording chunks
+are bounded to `10..3600` seconds (default `300`) and are new mode-`0600` JSONL
+files in an operator-selected existing directory with no group/other
+permissions. Recording errors stop recording and remain visible without
+silently stopping a healthy display session.
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/status` | GET | Lifecycle, connection, freshness, errors, recording |
+| `/api/sensors/latest` | GET | Latest complete timestamped exact snapshot |
+| `/api/events` | GET | One-way Server-Sent Events status stream |
+| `/api/recording` | GET | Recording status |
+| `/api/recording/start` | POST | `{"directory":"EXISTING_PRIVATE_DIR"}` |
+| `/api/recording/stop` | POST | Stop, fsync, and close the active chunk |
+
+The service sends no permissive CORS header and has no remote-bind, command,
+opcode, or arbitrary-file API. Snapshot labels retain raw source fields and
+their unknown/unsupported confidence boundaries; they do not invent units.
+
 `marvin microphone` delegates to the bounded microphone module without adding
 another capture implementation. `status` is offline, `list` verifies only
 `hw:CARD=Array,DEV=0`, and `capture` accepts only 1-5 seconds of native
