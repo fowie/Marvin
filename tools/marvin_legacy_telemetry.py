@@ -1,7 +1,8 @@
-"""Offline interpretation of three exact original-Marvin reply profiles.
+"""Offline interpretation of four exact original-Marvin reply profiles.
 
 Only received/status80 LegacyPackets with verified raw integrity are interpreted:
-ReadRawData00/134B, GetUnitInfo1B/12B, GetPowerState0E/2B. Config4 stays opaque.
+ReadRawData00/134B, GetUnitInfo1B/12B, GetPowerState0E/2B and
+GetServoPosition1D/4B. Config4 stays opaque.
 Nothing opens files/devices or loads successor schemas. Direction and evidence
 are caller declarations, not authenticated facts; no application ACK is inferred.
 
@@ -24,6 +25,7 @@ from tools import marvin_legacy_protocol as protocol
 RAW_DATA_PAYLOAD_BYTES = 134
 UNIT_INFO_PAYLOAD_BYTES = 12
 POWER_STATE_PAYLOAD_BYTES = 2
+SERVO_POSITION_PAYLOAD_BYTES = 4
 SENSOR_FIELDS = (
     *(f"proximity{i}" for i in range(1, 9)),
     *(f"cliff{i}" for i in range(1, 6)),
@@ -56,6 +58,7 @@ _PROFILES = {
     protocol.READ_RAW_DATA: ("pctestapp-raw-data-134", RAW_DATA_PAYLOAD_BYTES),
     protocol.GET_UNIT_INFO: ("legacy-unit-info-12", UNIT_INFO_PAYLOAD_BYTES),
     protocol.GET_POWER_STATE: ("legacy-power-state-2", POWER_STATE_PAYLOAD_BYTES),
+    protocol.GET_SERVO_POSITION: ("legacy-servo-position-4", SERVO_POSITION_PAYLOAD_BYTES),
 }
 
 
@@ -136,12 +139,21 @@ types/declarations raise instead of substituting defaults.
             "citation": "Reviewed legacy UnitInfo three-word layout; correlated12-byte1B reply on2026-09-14 matches GetConfig's reported prefix.",
             "meaning": "Reported firmware/communication/serial words only; not attested identities.",
         }
-    else:
+    elif packet.command == protocol.GET_POWER_STATE:
         fields["powerState"] = _word(packet.payload, 0, 2)
         result["source"] = {
             "path": _SOURCE_PATH, "sha256": _SOURCE_SHA256,
             "citation": "getPowerState_btn_Click937-940; correlated2-byte0E reply on2026-09-14.",
             "meaning": "Unlabeled reported 16-bit power-state mask only.",
+        }
+    else:
+        fields = {
+            "word0": _word(packet.payload, 0, 2),
+            "word1": _word(packet.payload, 2, 2),
+        }
+        result["source"] = {
+            "citation": "PCTestApp GetServoPosition aggregate two-word layout; correlated installed 4-byte reply.",
+            "meaning": "Two raw reported position words; not measured or calibrated joint angles.",
         }
     result.update(status="decoded", reason="exact_legacy_profile_match", profile=profile, fields=fields)
     return result

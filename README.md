@@ -29,6 +29,7 @@ the matching human-facing CLI. Both are offline by default:
 ```sh
 python -m marvin --help
 python -m marvin status
+python -m marvin sensors
 python -m marvin drive forward
 python -m marvin stop
 python -m marvin teleop
@@ -101,6 +102,17 @@ print(robot.stop())
 print(robot.camera_up(5))
 print(robot.camera_down(5))      # offline fixed plan; live remains blocked
 ```
+
+`Marvin().sensors()` (or `python -m marvin sensors`) returns the exact four
+request frames and response schema without opening hardware. Embedded live
+applications may construct `Marvin(run=True, sensor_transport=...,
+sensor_ownership_key=..., sensor_expected_identity=...)`; `sensors()` then
+uses one bounded, identity-pinned `LegacyClient` session for reported
+controller words, the raw power mask, raw telemetry, documented proximity
+mappings, unresolved cliff/bump fields, motor/encoder values, and two raw
+servo-position words. The CLI intentionally has no serial-device constructor
+or arbitrary command path. Dedicated `GetBatteryInfo` remains excluded because
+its installed eight-byte response has no proven legacy decoder.
 
 ## Confirmed findings and limits
 

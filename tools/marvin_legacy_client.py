@@ -432,7 +432,7 @@ Evidence properties are immutable snapshots, not a polling/recording service.
             if self._state != "active":
                 raise SessionError("lifecycle", "Requests require an active session; no automatic resume.")
             if not isinstance(query, str) or query not in protocol.GETTERS:
-                raise ValueError("Select one of the five reviewed legacy getters.")
+                raise ValueError("Select one of the six reviewed legacy getters.")
             timeout = _number("timeout", timeout, 0.001, 120)
             if type(allow_telemetry_state_change) is not bool:
                 raise ValueError("allow_telemetry_state_change must be an explicit boolean.")
