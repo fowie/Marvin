@@ -21,6 +21,8 @@ from tools import marvin_legacy_protocol
 from tools import marvin_legacy_projector_power as projector_power
 from tools import marvin_probe
 from tools import marvin_session
+from tools.marvin_legacy_client import SessionError
+import marvin_sensors
 
 
 DRIVE_DIRECTIONS = tuple(drive_step.DIRECTIONS)
@@ -78,13 +80,27 @@ class Marvin:
     """
 
     def __init__(self, *, run=False, expected_physical_port=None, output=None,
-                 safety_confirmed=False):
+                 safety_confirmed=False, sensor_transport=None,
+                 sensor_ownership_key=None, sensor_expected_identity=None):
         if type(run) is not bool or type(safety_confirmed) is not bool:
             raise ValueError("run and safety_confirmed must be literal booleans.")
         self.run = run
         self.expected_physical_port = expected_physical_port
         self.output = Path(output) if output is not None else None
         self.safety_confirmed = safety_confirmed
+        self.sensor_transport = sensor_transport
+        self.sensor_ownership_key = sensor_ownership_key
+        self.sensor_expected_identity = sensor_expected_identity
+
+    def sensors(self):
+        """Return the offline sensor plan or one injected persistent-session snapshot."""
+        if not self.run:
+            return marvin_sensors.plan()
+        return marvin_sensors.read_snapshot(
+            self.sensor_transport,
+            ownership_key=self.sensor_ownership_key,
+            expected_identity=self.sensor_expected_identity,
+        )
 
     def status(self):
         """Report offline capabilities or read-only live connection readiness."""
@@ -100,6 +116,7 @@ class Marvin:
                 },
             },
             "standalone_motor_stop": False,
+            "read_only_sensors": True,
         }
         if not self.run:
             return {
@@ -336,6 +353,7 @@ def _parser():
         description="Bounded controls for the original Microsoft Marvin robot.",
         epilog="""examples:
   python -m marvin status
+  python -m marvin sensors
   python -m marvin drive forward
   python -m marvin camera up 5
   python -m marvin camera center
@@ -352,6 +370,11 @@ observed 5-degree profile and always attempts baseline restore.""",
     actions = parser.add_subparsers(dest="command", required=True)
     status = actions.add_parser("status", help="show capabilities or live readiness")
     _live_arguments(status, safety=False)
+    sensors = actions.add_parser(
+        "sensors", help="show the exact read-only sensor plan and schema")
+    sensors.add_argument(
+        "--run", action="store_true",
+        help="execute only when main() is embedded with a validated transport")
     drive = actions.add_parser("drive", help="run one bounded drive step")
     drive.add_argument("direction", choices=DRIVE_DIRECTIONS)
     _live_arguments(drive)
@@ -365,17 +388,23 @@ observed 5-degree profile and always attempts baseline restore.""",
     return parser
 
 
-def main(argv=None):
+def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
+         sensor_expected_identity=None):
     args = _parser().parse_args(argv)
     marvin = Marvin(
         run=args.run,
-        expected_physical_port=args.expected_physical_port,
+        expected_physical_port=getattr(args, "expected_physical_port", None),
         output=getattr(args, "output", None),
         safety_confirmed=getattr(args, "confirm_safe_setup", False),
+        sensor_transport=sensor_transport,
+        sensor_ownership_key=sensor_ownership_key,
+        sensor_expected_identity=sensor_expected_identity,
     )
     try:
         if args.command == "status":
             result = marvin.status()
+        elif args.command == "sensors":
+            result = marvin.sensors()
         elif args.command == "drive":
             result = marvin.drive(args.direction)
         elif args.command == "stop":
@@ -396,7 +425,8 @@ def main(argv=None):
             result = marvin.projector_down(args.degrees)
         else:
             result = marvin.projector_center()
-    except (OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt) as error:
+    except (OSError, ValueError, SessionError,
+            subprocess.SubprocessError, KeyboardInterrupt) as error:
         details = {
             "status": "failed",
             "error": str(error) or type(error).__name__,

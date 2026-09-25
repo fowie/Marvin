@@ -6,8 +6,8 @@ The old PCTestApp/SerialPacket.cs describes this framing; the 2026-09-14
 GetConfig capture corroborates an empty command4 request and a status80,
 108-byte response. Protocol facts only, not copied recovered implementation.
 
-Twelve source-backed empty PCTestApp getter requests can be generated. Five
-remain admitted to the persistent client; the other seven remain fixed offline
+Twelve source-backed empty PCTestApp getter requests can be generated. Six
+remain admitted to the persistent client; the other six remain fixed offline
 diagnostic generators and do not broaden its live allowlist. Other valid command/status/size
 combinations decode without interpretation. Old00 is not successor ReadRawData3;
 command maps must not be mixed. Firmware/communication version
@@ -163,6 +163,7 @@ GETTERS = MappingProxyType({
     "get-unit-info": GetterSpec(GET_UNIT_INFO, 12, get_unit_info_request),
     "get-power-state": GetterSpec(GET_POWER_STATE, 2, get_power_state_request),
     "read-raw-data": GetterSpec(READ_RAW_DATA, 134, read_raw_data_request),
+    "get-servo-position": GetterSpec(GET_SERVO_POSITION, 4, get_servo_position_request),
 })
 
 
@@ -214,7 +215,7 @@ def decode_packet(data):
 def validate_getter_reply(packet, query, sequence=0):
     """Validate a reviewed getter's raw consistency, correlation and exact shape."""
     if not isinstance(query, str) or query not in GETTERS:
-        raise ValueError("Select one of the five reviewed legacy getter names.")
+        raise ValueError("Select one of the six reviewed legacy getter names.")
     spec = GETTERS[query]
     _sequence(sequence)
     if not isinstance(packet, LegacyPacket):

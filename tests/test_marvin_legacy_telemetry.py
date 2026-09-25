@@ -162,8 +162,14 @@ class LegacyTelemetryTests(unittest.TestCase):
                 result = self.decode(data)
                 self.assert_raw(result, "unknown_payload_size")
                 self.assertEqual(result["packet"]["raw_hex"], data.hex())
-        for command, size in ((1, 134), (3, 157), (3, 36), (29, 128), (250, 134)):
+        for command, size in ((1, 134), (3, 157), (3, 36), (250, 134)):
             self.assert_raw(self.decode(frame(bytes(size), command=command)), "unknown_command")
+        result = self.decode(frame(b"\xc4\x09\xaa\x0a", command=0x1D))
+        self.assertEqual(result["profile"], "legacy-servo-position-4")
+        self.assertEqual(
+            [result["fields"][name]["unsigned"] for name in ("word0", "word1")],
+            [2500, 2730],
+        )
         self.assert_raw(self.decode(OBSERVED_REPLY), "config_left_opaque")
 
     def test_integrity_checked_even_for_received_dataclass_instances(self):
