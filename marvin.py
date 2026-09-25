@@ -27,6 +27,7 @@ from tools import marvin_probe
 from tools import marvin_session
 from tools.marvin_legacy_client import SessionError
 import marvin_sensors
+from marvin_leds import LEDS, MarvinLEDs
 
 
 DRIVE_DIRECTIONS = tuple(drive_step.DIRECTIONS)
@@ -104,6 +105,12 @@ class Marvin:
         self.sensor_transport = sensor_transport
         self.sensor_ownership_key = sensor_ownership_key
         self.sensor_expected_identity = sensor_expected_identity
+        self.leds = MarvinLEDs(
+            run=run,
+            expected_physical_port=expected_physical_port,
+            output=output,
+            safety_confirmed=safety_confirmed,
+        )
 
     def sensors(self):
         """Return the offline sensor plan or one injected persistent-session snapshot."""
@@ -137,6 +144,7 @@ class Marvin:
             "read_only_sensors": True,
             "video_capture": marvin_camera.plan(),
             "microphone_capture": True,
+            "leds": self.leds.status(),
         }
         if not self.run:
             return {
@@ -433,7 +441,8 @@ def _live_arguments(parser, *, safety=True):
         parser.add_argument(
             "--confirm-safe-setup", action="store_true",
             help="confirm reviewed wiring, robot on blocks, external cutoff ready, "
-                 "encoders connected, required servo isolation, and ordinary-user usbmon")
+                 "encoders connected, required motor/servo isolation, and "
+                 "ordinary-user usbmon")
 
 
 def _servo_subcommands(parser, *, status=False, camera=False):
@@ -507,15 +516,19 @@ def _parser():
   marvin teleop
   marvin projector status
   marvin projector power on
+  marvin leds status
+  marvin leds plan left-position-0-red
+  marvin leds wheel-blink
   marvin drive rotate-left --run --expected-physical-port 1-3 \\
       --output evidence/left-001 --confirm-safe-setup
 
 Commands are offline plans unless --run is present. Proven live operations are
 the fixed 0.25-second drive steps, camera up 5, camera center, standalone stop,
-and teleop over those drive/stop primitives. Live projector power is disabled
-because its source map conflicts with the installed legacy command map. Camera
-down 5 is a fixed offline-only inverse hypothesis. Teleop creates one evidence
-subdirectory per action.""",
+teleop over those drive/stop primitives, and the fixed wheel-blink pilot.
+Live projector power is disabled because its source map conflicts with the
+installed legacy command map. Camera down 5 is a fixed offline-only inverse
+hypothesis. Named steady LEDs are offline-only plans. Teleop creates one
+evidence subdirectory per action.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     actions = parser.add_subparsers(dest="command", required=True)
@@ -544,6 +557,15 @@ subdirectory per action.""",
     projector = actions.add_parser(
         "projector", help="inspect the unverified projector-servo surface")
     _servo_subcommands(projector, status=True)
+    leds = actions.add_parser("leds", help="inspect or run bounded LED operations")
+    led_actions = leds.add_subparsers(dest="led_command", required=True)
+    led_actions.add_parser("status", help="show mapped LED evidence and boundaries")
+    led_plan = led_actions.add_parser(
+        "plan", help="print one exclusive full-intensity offline plan")
+    led_plan.add_argument("led", choices=tuple(LEDS))
+    led_blink = led_actions.add_parser(
+        "wheel-blink", help="plan the fixed three-second wheel blink pilot")
+    _live_arguments(led_blink)
     return parser
 
 
@@ -589,6 +611,12 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
             result = marvin.camera_down(args.degrees)
         elif args.command == "camera":
             result = marvin.camera_center()
+        elif args.command == "leds" and args.led_command == "status":
+            result = marvin.leds.status()
+        elif args.command == "leds" and args.led_command == "plan":
+            result = marvin.leds.full_intensity_plan(args.led)
+        elif args.command == "leds":
+            result = marvin.leds.wheel_blink()
         elif args.servo_command == "status":
             result = marvin.projector_status()
         elif args.servo_command == "power":

@@ -9,7 +9,10 @@ import unittest
 from unittest.mock import patch
 
 import marvin
+from marvin_leds import LEDS, MarvinLEDs
 from tools import marvin_legacy_projector_power as projector_power
+from tools import marvin_legacy_wheel_led_blink as wheel_blink
+from tools import marvin_motor_power_off_consent as consent
 
 
 class MarvinFacadeTests(unittest.TestCase):
@@ -289,11 +292,41 @@ class MarvinFacadeTests(unittest.TestCase):
             run(overrun)
         self.assertEqual(overrun.steps, ["on", "off"])
 
+    def test_led_plans_and_only_proved_live_action(self):
+        robot = marvin.Marvin()
+        status = robot.leds.status()
+        self.assertEqual(status["live_actions"], ["wheel-blink"])
+        self.assertEqual(set(status["named_full_intensity_plans"]), set(LEDS))
+        plan = robot.leds.full_intensity_plan("left-position-0-red")
+        self.assertEqual(
+            (plan["target"], plan["fixed_value"], plan["other_payload_indices"]),
+            (0, 255, "forced_to_zero"),
+        )
+        self.assertFalse(plan["live_execution_authorized"])
+        with self.assertRaisesRegex(ValueError, "LED must be one of"):
+            robot.leds.full_intensity_plan("rainbow")
+        with self.assertRaisesRegex(ValueError, "literal booleans"):
+            MarvinLEDs(run=1)
+
+        live = marvin.Marvin(
+            run=True, expected_physical_port="1-3",
+            output="new", safety_confirmed=True)
+        with self.assertRaisesRegex(ValueError, "does not own cleanup"):
+            live.leds.full_intensity_plan("wheels")
+        with patch.object(wheel_blink, "run_diagnostic",
+                          return_value={"status": "blink"}) as run:
+            self.assertEqual(live.leds.wheel_blink()["status"], "blink")
+        self.assertTrue(all(
+            run.call_args.kwargs[name] is True
+            for name in consent.WHEEL_LED_BLINK_FLAGS
+        ))
+
     def test_cli_help_plans_and_failure_surface(self):
         help_text = marvin._parser().format_help()
         self.assertIn("Live projector power is disabled", help_text)
-        self.assertIn("down 5 is a fixed offline-only inverse hypothesis", help_text)
+        self.assertIn("fixed offline-only inverse", help_text)
         self.assertIn("teleop", help_text)
+        self.assertIn("marvin leds wheel-blink", help_text)
 
         stdout = io.StringIO()
         with redirect_stdout(stdout):
@@ -330,6 +363,12 @@ class MarvinFacadeTests(unittest.TestCase):
         with redirect_stdout(stdout):
             self.assertEqual(marvin.main(["projector", "power", "on"]), 0)
         self.assertEqual(json.loads(stdout.getvalue())["command"], 0x27)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(
+                marvin.main(["leds", "plan", "right-position-2-blue"]), 0)
+        self.assertEqual(json.loads(stdout.getvalue())["target"], 11)
 
 
 if __name__ == "__main__":
