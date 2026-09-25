@@ -156,14 +156,14 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
 
-            def popen_with(payload, stderr=b""):
+            def popen_with(payload, stderr=b"", exit_code=0):
                 def start(_argv, **options):
                     script = (
                         "import os,signal,sys,time\n"
                         f"payload={payload!r}\n"
                         f"detail={stderr!r}\n"
                         "def done(*_):\n"
-                        " os.write(1,payload); os.write(2,detail); sys.exit(0)\n"
+                        f" os.write(1,payload); os.write(2,detail); sys.exit({exit_code})\n"
                         "signal.signal(signal.SIGINT,done)\n"
                         "time.sleep(30)\n"
                     )
@@ -195,7 +195,7 @@ class ManagerTests(unittest.TestCase):
             video = marvin_managers.CameraManager(
                 inventory=lambda _path: [candidate],
                 capture=lambda *args, **kwargs: {"status": "captured"},
-                popen=popen_with(b"\x1aE\xdf\xa3fixture-video"))
+                popen=popen_with(b"\x1aE\xdf\xa3fixture-video", exit_code=255))
             video.start()
             movie = root / "operator.mkv"
             video.action("start", {
@@ -206,6 +206,7 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual(movie.stat().st_mode & 0o777, 0o600)
             self.assertEqual(movie.read_bytes(), b"\x1aE\xdf\xa3fixture-video")
             self.assertIn("planned/unverified", video.status()["acceptance"])
+            self.assertEqual(marvin_managers.VIDEO_DURATION_SECONDS, 299)
 
             corrupt = marvin_managers.CameraManager(
                 inventory=lambda _path: [candidate],
@@ -280,6 +281,37 @@ class ManagerTests(unittest.TestCase):
                     recorder.action("stop", {})
                 self.assertFalse(output.exists())
                 self.assertEqual(list(root.glob(f".{outcome}.wav.*.tmp")), [])
+
+            candidate = {
+                "node": "/dev/video-test", "rejected": False,
+                "metadata_complete": True, "matches_topology": True,
+                "supports_capture": True,
+            }
+            video_failures = {
+                "nonzero": (
+                    "import os,sys\n"
+                    "os.write(1,b'\\x1aE\\xdf\\xa3complete-looking')\n"
+                    "sys.exit(7)\n"
+                ),
+                "kill": scripts["kill"],
+            }
+            for outcome, script in video_failures.items():
+                recorder = marvin_managers.CameraManager(
+                    inventory=lambda _path: [candidate], popen=process(script))
+                recorder.start()
+                output = root / f"video-{outcome}.mkv"
+                recorder.action("start", {
+                    "output": str(output), "usb_path": "1-2.3",
+                    "privacy_authorized": True})
+                time.sleep(0.1)
+                message = "required kill" if outcome == "kill" else "Invalid or incomplete"
+                with self.subTest(video_outcome=outcome), patch.object(
+                        marvin_managers, "PROCESS_STOP_SECONDS", 0.05), \
+                        self.assertRaisesRegex(OSError, message):
+                    recorder.action("stop", {})
+                self.assertFalse(output.exists())
+                self.assertEqual(
+                    list(root.glob(f".video-{outcome}.mkv.*.tmp")), [])
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from tools import marvin_paths
 
 DEADMAN_LEASE_SECONDS = 0.75
 MEDIA_LIMIT_SECONDS = 300
+VIDEO_DURATION_SECONDS = MEDIA_LIMIT_SECONDS - 1
 PROCESS_STOP_SECONDS = 2
 _CORRUPT_VIDEO = ("corrupt", "invalid data", "ioctl(v4l2", "input/output error")
 
@@ -460,7 +461,7 @@ class _RecorderManager:
                 raise OSError(
                     f"{self.kind} recorder required {stop_result}; "
                     "staged output cannot be finalized.")
-            self._validate_output(process.returncode)
+            self._validate_output(process.returncode, stop_result)
             os.replace(self._stage, self._destination)
             success = True
             self._state = "ready"
@@ -529,7 +530,7 @@ class MicrophoneManager(_RecorderManager):
         ]
         return self._spawn(destination, stage, fd, argv)
 
-    def _validate_output(self, returncode):
+    def _validate_output(self, returncode, _stop_result):
         size = self._stage.stat().st_size
         with self._stage.open("rb") as stream:
             header = stream.read(12)
@@ -578,17 +579,18 @@ class CameraManager(_RecorderManager):
             "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning",
             "-f", "v4l2", "-input_format", marvin_camera.FFMPEG_FORMAT,
             "-video_size", marvin_camera.FRAME_SIZE, "-i", device["node"],
-            "-t", str(MEDIA_LIMIT_SECONDS), "-an", "-c:v", "copy",
+            "-t", str(VIDEO_DURATION_SECONDS), "-an", "-c:v", "copy",
             "-f", "matroska", "pipe:1",
         ]
         return self._spawn(destination, stage, fd, argv)
 
-    def _validate_output(self, returncode):
+    def _validate_output(self, returncode, stop_result):
         detail = self._stderr.decode(errors="replace").lower()
         size = self._stage.stat().st_size
         with self._stage.open("rb") as stream:
             header = stream.read(4)
-        if (returncode or header != b"\x1aE\xdf\xa3"
+        expected_sigint = stop_result == "sigint" and returncode == 255
+        if ((returncode and not expected_sigint) or header != b"\x1aE\xdf\xa3"
                 or any(word in detail for word in _CORRUPT_VIDEO)):
             raise OSError(
                 f"Invalid or incomplete V4L2 recording (exit {returncode}, "

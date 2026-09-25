@@ -78,10 +78,13 @@ delegates to the existing hardened API.
 Each recorder owns at most one process, passes an argv list without a shell,
 hard-stops at five minutes, and reports only PID, elapsed time, output path,
 state, and errors. New private mode-`0600` staged output is atomically finalized
-only after a zero-exit graceful SIGINT or natural completion plus a successful
-structural/diagnostic check. Any terminate/kill escalation, nonzero exit,
-failure, or shutdown removes partial files. Direct-host video remains planned
-and unverified until Jetson acceptance.
+only after graceful SIGINT or natural completion plus a successful
+structural/diagnostic check. ffmpeg's documented SIGINT exit `255` is accepted
+only when the manager sent that SIGINT; other nonzero exits remain failures.
+Video's internal duration is 299 seconds so normal mux finalization can finish
+inside the manager's hard 300-second cap. Any terminate/kill escalation,
+unexpected nonzero exit, failure, or shutdown removes partial files. Direct-host
+video remains planned and unverified until Jetson acceptance.
 
 ## Layer 3 integration requirements
 
