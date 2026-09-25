@@ -42,7 +42,8 @@ x86 host onto Jetson.
 | Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
 | Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
-| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 AX-12+ (ID 2). A sealed installed-camera `2500 -> 2000 -> restore` run directly produced approximately 5° upward tilt and return. | Decreasing word0 -> camera upward is directly observed at the tested point. Increasing word0 -> downward is inverse inference, not directly exercised. Local scaling supports about 100 legacy units/degree, not precision, full-range linearity, or endpoints; projector and word1 remain unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
+| Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 AX-12+ (ID 2). A sealed installed-camera `2500 -> 2000 -> restore` run directly produced approximately 5° upward tilt and return. | Decreasing word0 -> camera upward is directly observed at the tested point. Increasing word0 -> downward is inverse inference, not directly exercised. Local scaling supports about 100 legacy units/degree, not precision, full-range linearity, or endpoints; projector tilt/word1 remains unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
+| Projector | One separately authorized fixed `0x27` power smoke sent ON for 10.000316396 s, then OFF. Both application writes and responses were correlated; the operator observed no visible illumination and then physically powered Marvin off. | **Negative/ambiguous:** power alone may require setup, synchronization, brightness, shutter, or warmup. Raw status and USB completion do not prove application acknowledgement or physical OFF. No retry occurred; projector control remains unestablished. See [projector smoke result](#projector-power-smoke-result). |
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
 | Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. | The working kernel change is host/kernel-specific and must be recreated or found upstream on Jetson. See [microphone host setup](#microphone-host-kernel-state) and [PR #33](https://github.com/fowie/Marvin/pull/33). |
 
@@ -349,7 +350,7 @@ range, endpoints, or full range. Increasing word0 -> downward remains an
 untested inverse inference. See [PR #34](https://github.com/fowie/Marvin/pull/34)
 for the evidence directory and detailed procedure.
 
-Projector/word1 remains unproved. PR
+Projector tilt/word1 remains unproved. PR
 [#34](https://github.com/fowie/Marvin/pull/34) contains the evidence directory
 `servo2-word0-50unit-20260924T1950`, hashes, and detailed procedure; do not
 duplicate private evidence here. Functioning bounded servo control no longer
@@ -358,6 +359,33 @@ would require a separately authorized larger or optically measured movement
 with an operator and independent cutoff. Directly exercising the installed
 camera in the inverse direction would also be a separate authorization. This
 handoff update performs and authorizes no live action.
+
+## Projector power smoke result
+
+One separately authorized fixed projector power smoke sent exact `0x27` ON at
+sequence 3600 for **10.000316396 seconds**, then exact `0x27` OFF at sequence
+3601. Host evidence retained 22 accepted and zero uncertain TX bytes. The ON
+response was one correlated empty raw-`82`; the OFF response was one correlated
+empty raw-`81`. Identity was revalidated before OFF. Both USB OUT transfers
+completed successfully for all 22 bytes.
+
+The recorder nevertheless marked the run failed because final usbmon accounting
+reported queued 8, dropped 0. Therefore this is not a clean recorder result,
+despite the two completed OUT transfers and correlated responses. Raw `0x82`
+and `0x81` are preserved observations, not decoded acknowledgements; they do
+not establish command execution or prove the projector was physically OFF.
+
+The operator directly observed **no illumination, fan, LED, click, or other
+power sign** during the dedicated ten-second transcript, then physically
+powered Marvin off. Separately, the operator reports that the projector
+visibly illuminates for approximately 0.5 seconds on every Marvin power-up
+before shutting off. That startup observation establishes that the installed
+illumination path works, while the dedicated run provides direct negative
+observable-effect evidence only for the tested `0x27` transcript and setup.
+It does not diagnose why: power alone may require setup, signal
+synchronization, brightness, shutter, or warmup. There was no retry. No public
+operator-branch document currently provides a sealed evidence path or manifest
+hash, so none is invented here.
 
 ## Last reported physical state
 
