@@ -390,33 +390,33 @@ class Marvin:
                 safety_confirmed=True,
             )
             if command == "stop":
-                stopped = True
                 result = robot.stop()
+                stopped = True
             else:
                 result = robot.drive(command)
                 stopped = False
             print(f"{run_number:04d} {command}: {result['status']}",
                   file=output_stream, flush=True)
 
-        try:
-            while True:
-                try:
-                    key = input_fn("> ").strip().lower()
-                except EOFError:
-                    key = "q"
-                if key == "q":
-                    if not stopped:
-                        action("stop")
-                    break
-                if key == "x":
+        while True:
+            try:
+                key = input_fn("> ").strip().lower()
+            except EOFError:
+                key = "q"
+            except KeyboardInterrupt:
+                if not stopped:
                     action("stop")
-                elif key in TELEOP_CONTROLS:
-                    action(TELEOP_CONTROLS[key])
-                elif key:
-                    print("Use w/s/a/d, x, or q.", file=output_stream, flush=True)
-        except KeyboardInterrupt:
-            if not stopped:
+                break
+            if key == "q":
+                if not stopped:
+                    action("stop")
+                break
+            if key == "x":
                 action("stop")
+            elif key in TELEOP_CONTROLS:
+                action(TELEOP_CONTROLS[key])
+            elif key:
+                print("Use w/s/a/d, x, or q.", file=output_stream, flush=True)
         return {**plan, "status": "completed", "actions": run_number}
 
     def _require_live_action(self):
