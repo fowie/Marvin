@@ -2,9 +2,10 @@
 
 import os
 import re
+import secrets
+import signal
 from pathlib import Path
 import subprocess
-import tempfile
 
 from tools.marvin_paths import new_output_path
 
@@ -114,18 +115,18 @@ def capture(output, *, run=False, expected_usb_path=None,
     destination = new_output_path(output)
     if destination.suffix.lower() not in (".jpg", ".jpeg"):
         raise ValueError("Camera output must be a new .jpg or .jpeg file.")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    reservation = os.open(destination, flags, 0o600)
-    try:
-        os.close(reservation)
-    except BaseException:
-        destination.unlink(missing_ok=True)
-        raise
-    stage = None
+    owned = {
+        "destination_fd": None,
+        "destination_path": None,
+        "stage_fd": None,
+        "stage_path": None,
+    }
     finalized = False
     try:
+        _create_private(destination, owned, "destination")
+        destination_fd = owned["destination_fd"]
+        owned["destination_fd"] = None
+        os.close(destination_fd)
         devices = inventory(
             expected_usb_path,
             sys_usb_root=sys_usb_root,
@@ -162,21 +163,26 @@ def capture(output, *, run=False, expected_usb_path=None,
         if len(frame) > MAX_CAPTURE_BYTES:
             raise OSError(
                 f"ffmpeg returned {len(frame)} bytes; limit is {MAX_CAPTURE_BYTES}.")
-        stage_fd, stage_name = tempfile.mkstemp(
-            prefix=f".{destination.name}.", suffix=".tmp",
-            dir=destination.parent)
-        stage = Path(stage_name)
-        with os.fdopen(stage_fd, "wb") as stream:
+        stage = destination.with_name(
+            f".{destination.name}.{secrets.token_hex(16)}.tmp")
+        _create_private(stage, owned, "stage")
+        stage_fd = owned["stage_fd"]
+        owned["stage_fd"] = None
+        stream = os.fdopen(stage_fd, "wb")
+        with stream:
             stream.write(frame)
         os.replace(stage, destination)
-        stage = None
+        owned["stage_path"] = None
         finalized = True
         size = len(frame)
     finally:
-        if stage is not None:
-            stage.unlink(missing_ok=True)
-        if not finalized:
-            destination.unlink(missing_ok=True)
+        for key in ("destination_fd", "stage_fd"):
+            if owned[key] is not None:
+                os.close(owned[key])
+        if owned["stage_path"] is not None:
+            owned["stage_path"].unlink(missing_ok=True)
+        if owned["destination_path"] is not None and not finalized:
+            owned["destination_path"].unlink(missing_ok=True)
     return {
         "status": "captured",
         "output": str(destination),
@@ -197,6 +203,22 @@ def _validated_usb_path(value):
             "Live camera access requires an exact physical USB path such as "
             "1-1.2.3; device nodes and descriptive labels are not accepted.")
     return value
+
+
+def _create_private(path, owned, name):
+    """Register a private file with outer cleanup before restoring SIGINT."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    old_mask = None
+    try:
+        if hasattr(signal, "pthread_sigmask"):
+            old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        owned[f"{name}_fd"] = os.open(path, flags, 0o600)
+        owned[f"{name}_path"] = Path(path)
+    finally:
+        if old_mask is not None:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
 
 
 def _read(path):

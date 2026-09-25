@@ -223,6 +223,57 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
         self.assertFalse((self.root / "interrupted.jpg").exists())
         self.assertEqual(list(self.root.glob(".*.tmp")), [])
 
+    def test_creation_boundaries_cannot_leak_on_keyboard_interrupt(self):
+        self.calls = []
+
+        def capture(name):
+            output = self.root / name
+            with self.assertRaises(KeyboardInterrupt):
+                marvin_camera.capture(
+                    output, run=True, expected_usb_path="1-2.3",
+                    privacy_confirmed=True, **self.options())
+            self.assertFalse(output.exists())
+            self.assertEqual(list(self.root.glob(f".{name}.*.tmp")), [])
+
+        mask_calls = 0
+
+        def interrupt_after_destination_create(how, mask):
+            nonlocal mask_calls
+            mask_calls += 1
+            if mask_calls == 2:
+                raise KeyboardInterrupt
+            return set()
+
+        with patch.object(
+                marvin_camera.signal, "pthread_sigmask",
+                side_effect=interrupt_after_destination_create):
+            capture("destination-boundary.jpg")
+
+        real_open = marvin_camera.os.open
+        def interrupt_during_stage_create(path, flags, mode):
+            if str(path).endswith(".tmp"):
+                raise KeyboardInterrupt
+            return real_open(path, flags, mode)
+
+        with patch.object(
+                marvin_camera.os, "open",
+                side_effect=interrupt_during_stage_create):
+            capture("stage-during.jpg")
+
+        mask_calls = 0
+
+        def interrupt_after_stage_create(how, mask):
+            nonlocal mask_calls
+            mask_calls += 1
+            if mask_calls == 4:
+                raise KeyboardInterrupt
+            return set()
+
+        with patch.object(
+                marvin_camera.signal, "pthread_sigmask",
+                side_effect=interrupt_after_stage_create):
+            capture("stage-after.jpg")
+
 
 if __name__ == "__main__":
     unittest.main()
