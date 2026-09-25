@@ -30,6 +30,8 @@ the matching human-facing CLI. Both are offline by default:
 python -m marvin --help
 python -m marvin status
 python -m marvin sensors
+python -m marvin camera status
+python -m marvin camera capture private/frame.jpg
 python -m marvin drive forward
 python -m marvin stop
 python -m marvin teleop
@@ -113,6 +115,39 @@ mappings, unresolved cliff/bump fields, motor/encoder values, and two raw
 servo-position words. The CLI intentionally has no serial-device constructor
 or arbitrary command path. Dedicated `GetBatteryInfo` remains excluded because
 its installed eight-byte response has no proven legacy decoder.
+
+### LifeCam capture
+
+`marvin_camera` and `python -m marvin camera` expose only the standard V4L2
+host interface proven for the Microsoft LifeCam NX-3000 (`045e:0721`). Offline
+status and capture calls return plans without reading sysfs, opening a device or
+launching a process. Live status is read-only. Live capture is fixed to one
+`MJPG` `352x288` frame written to a new `.jpg`/`.jpeg` path:
+
+```sh
+CAMERA_USB_PATH=1-2.3  # example only; replace with the currently observed path
+python -m marvin camera status \
+  --run --expected-camera-usb-path "$CAMERA_USB_PATH"
+
+python -m marvin camera capture private/frame.jpg \
+  --run --expected-camera-usb-path "$CAMERA_USB_PATH" \
+  --confirm-privacy
+```
+
+Before live use, the operator must obtain the current physical USB path and
+confirm it is the LifeCam connected through Marvin's SPARE connector and TI
+hub. The implementation then requires that exact sysfs device to be
+`045e:0721`, correlates each candidate V4L2 node by sysfs ancestry and
+`bus_info`, requires complete V4L2 driver/card/bus metadata and the fixed frame
+format, and refuses ambiguity, Intel IPU3, REAR/DEPTH cameras, existing output,
+timeout or subprocess failure. It does not hard-code unpreserved V4L2 metadata,
+accept arbitrary ffmpeg options, or send a Marvin controller, camera-power or
+DepthCamPower command.
+
+The host proof captured one valid frame, but did not preserve a stable sysfs
+path, `/dev/videoN`, V4L2 driver/card string or `bus_info`; those are runtime
+facts, not constants. Jetson enumeration and capture remain untested, so its
+exact path and V4L2 metadata are the remaining live integration gap.
 
 ## Confirmed findings and limits
 

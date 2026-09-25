@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+import marvin_camera
 from tools import marvin_campaign
 from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_front_servo_baseline_restore as servo_center
@@ -133,6 +134,7 @@ class Marvin:
             "standalone_motor_stop": True,
             "teleop": dict(TELEOP_CONTROLS),
             "read_only_sensors": True,
+            "video_capture": marvin_camera.plan(),
         }
         if not self.run:
             return {
@@ -186,6 +188,21 @@ class Marvin:
     def camera_center(self):
         """Write the locally proved camera baseline while retaining word 1."""
         return self._servo_center(CAMERA_AXIS)
+
+    def camera_video_status(self, expected_usb_path=None):
+        """Report the fixed LifeCam plan or read-only exact-device readiness."""
+        return marvin_camera.status(
+            run=self.run, expected_usb_path=expected_usb_path)
+
+    def camera_capture(self, output, *, expected_usb_path=None,
+                       privacy_confirmed=False):
+        """Capture one MJPEG frame through the standard V4L2 interface."""
+        return marvin_camera.capture(
+            output,
+            run=self.run,
+            expected_usb_path=expected_usb_path,
+            privacy_confirmed=privacy_confirmed,
+        )
 
     def projector_status(self):
         """Report historical projector mapping without authorizing a write."""
@@ -442,6 +459,34 @@ def _servo_subcommands(parser, *, status=False, camera=False):
     _live_arguments(center)
 
 
+def _camera_subcommands(parser):
+    actions = parser.add_subparsers(dest="servo_command", required=True)
+    state = actions.add_parser(
+        "status", help="show the offline LifeCam plan or read-only live readiness")
+    state.add_argument("--run", action="store_true",
+                       help="inspect the exact LifeCam V4L2 interface")
+    state.add_argument("--expected-camera-usb-path", metavar="PORT",
+                       help="exact physical USB path through the SPARE/TI hub")
+    capture = actions.add_parser(
+        "capture", help="capture one fixed 352x288 MJPEG frame")
+    capture.add_argument("output", type=Path, metavar="NEW.jpg")
+    capture.add_argument("--run", action="store_true",
+                         help="open the exact LifeCam V4L2 node once")
+    capture.add_argument("--expected-camera-usb-path", metavar="PORT",
+                         help="exact physical USB path through the SPARE/TI hub")
+    capture.add_argument(
+        "--confirm-privacy", action="store_true",
+        help="confirm no bystanders or unintended private material are in view")
+    up = actions.add_parser("up", help="tilt up by a supported angle")
+    up.add_argument("degrees", type=int)
+    _live_arguments(up)
+    down = actions.add_parser("down", help="tilt down by a supported angle")
+    down.add_argument("degrees", type=int)
+    _live_arguments(down)
+    center = actions.add_parser("center", help="center this axis")
+    _live_arguments(center)
+
+
 def _parser():
     parser = argparse.ArgumentParser(
         prog="marvin",
@@ -449,6 +494,8 @@ def _parser():
         epilog="""examples:
   marvin status
   marvin sensors
+  marvin camera status
+  marvin camera capture private/frame.jpg
   marvin drive forward
   marvin camera up 5
   marvin camera center
@@ -483,8 +530,9 @@ subdirectory per action.""",
     teleop = actions.add_parser(
         "teleop", help="line-oriented bounded drive/stop controls")
     _live_arguments(teleop)
-    camera = actions.add_parser("camera", help="control front-camera tilt")
-    _servo_subcommands(camera, camera=True)
+    camera = actions.add_parser(
+        "camera", help="inspect/capture LifeCam video or control its tilt")
+    _camera_subcommands(camera)
     projector = actions.add_parser(
         "projector", help="inspect the unverified projector-servo surface")
     _servo_subcommands(projector, status=True)
@@ -514,6 +562,14 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
             result = marvin.stop()
         elif args.command == "teleop":
             result = marvin.teleop()
+        elif args.command == "camera" and args.servo_command == "status":
+            result = marvin.camera_video_status(args.expected_camera_usb_path)
+        elif args.command == "camera" and args.servo_command == "capture":
+            result = marvin.camera_capture(
+                args.output,
+                expected_usb_path=args.expected_camera_usb_path,
+                privacy_confirmed=args.confirm_privacy,
+            )
         elif args.command == "camera" and args.servo_command == "up":
             result = marvin.camera_up(args.degrees)
         elif args.command == "camera" and args.servo_command == "down":
