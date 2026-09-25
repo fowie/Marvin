@@ -104,10 +104,20 @@ button:hover:not(:disabled),button:focus-visible,select:focus-visible{border-col
 .stale{color:var(--bad);font-weight:700}.ok{color:#7ee787}kbd{font:inherit;font-size:.8em}@media(max-width:760px){main,.media-grid{grid-template-columns:1fr}.wide{grid-column:auto}header{position:static}}
 """
 
-JS = r"""
+DEADMAN_CORE = r"""
+async function acquireHeld(direction,token,acquireLease,releaseLease,sendPulse){
+  const candidate=await acquireLease();
+  if(token.cancelled){await releaseLease(candidate);return null}
+  await sendPulse(direction,candidate);
+  if(token.cancelled){await releaseLease(candidate);return null}
+  return candidate
+}
+"""
+
+JS = DEADMAN_CORE + r"""
 "use strict";
 const $=id=>document.getElementById(id), directions={w:"forward",s:"backward",a:"rotate-left",d:"rotate-right"};
-let config={}, status={}, lease=null, held=null, heartbeat=null, busy=false, sensorStamp=null,driveResult="none";
+let config={}, status={}, lease=null, held=null, holdToken=null, heartbeat=null, busy=false, sensorStamp=null,driveResult="none";
 const controls=[...document.querySelectorAll("[data-drive]")];
 function text(value){return value===null||value===undefined?"unknown":String(value)}
 function scalar(item){const value=item&&item.value!==undefined?item.value:item;return value&&typeof value==="object"?(value.signed??value.unsigned??value.raw_hex??"raw"):value}
@@ -145,12 +155,12 @@ function renderSensor(message){
 }
 function refreshFreshness(){const fresh=status.freshness?.fresh&&sensorStamp;$("freshness").className=fresh?"ok":"stale";$("freshness").textContent=fresh?`Connected; latest ${sensorStamp}`:`STALE / unavailable; ${status.error||"no current sensor snapshot"}`}
 function renderLeds(manager){const root=$("leds");if(root.children.length===0){Object.keys(manager?.channels||{}).forEach(name=>{const label=document.createElement("label"),input=document.createElement("input");input.type="checkbox";input.dataset.led=name;input.addEventListener("change",()=>led(name,input.checked));label.append(input,document.createTextNode(" "+name));root.append(label)})}document.querySelectorAll("[data-led]").forEach(input=>{const value=manager?.channels?.[input.dataset.led]?.value;input.checked=value===255;input.title=value===undefined||value===null?"unknown":`current ${value}`});$("led-status").textContent=manager?`Active: ${manager.active_channel||"none"}; baseline ${manager.baseline_hex?"captured":"unknown"}; restore uses captured baseline.`:"LEDs disabled: baseline getter/setter not configured."}
-async function acquire(){if(!lease)lease=(await safe("/api/drive/acquire")).drive.lease}
-async function pulse(direction){await safe(`/api/drive/heartbeat/${direction}`,{lease});driveResult=`${direction} pulse accepted`}
-async function hold(direction){if(held||busy)return;held=direction;busy=true;setDisabled();try{await acquire();await pulse(direction);heartbeat=setInterval(()=>{if(held)pulse(direction).catch(()=>{})},400)}finally{busy=false;setDisabled()}}
-async function release(reason){held=null;clearInterval(heartbeat);heartbeat=null;if(!lease)return;const owned=lease;lease=null;try{await api("/api/drive/release",{lease:owned})}catch(e){error(`${reason}: ${e.message}`)}}
+async function pulse(direction,owned=lease){await safe(`/api/drive/heartbeat/${direction}`,{lease:owned});driveResult=`${direction} pulse accepted`}
+async function releaseLease(owned){await api("/api/drive/release",{lease:owned})}
+async function hold(direction){if(held||busy)return;held=direction;const token={cancelled:false};holdToken=token;busy=true;setDisabled();try{const owned=await acquireHeld(direction,token,async()=>(await safe("/api/drive/acquire")).drive.lease,releaseLease,pulse);if(!owned)return;lease=owned;heartbeat=setInterval(()=>{if(held&&holdToken===token)pulse(direction).catch(()=>{})},400)}finally{busy=false;setDisabled()}}
+async function release(reason){held=null;if(holdToken)holdToken.cancelled=true;holdToken=null;clearInterval(heartbeat);heartbeat=null;if(!lease)return;const owned=lease;lease=null;try{await releaseLease(owned)}catch(e){error(`${reason}: ${e.message}`)}}
 async function activate(direction){if($("drive-mode").value==="fixed"){if(busy)return;busy=true;setDisabled();try{await safe(`/api/drive/fixed/${direction}`);driveResult=`${direction}: four pulses completed`}finally{busy=false;setDisabled()}}else await hold(direction)}
-async function priorityStop(){held=null;clearInterval(heartbeat);heartbeat=null;lease=null;try{await safe("/api/drive/stop");driveResult="explicit stop requested"}catch(_){}}
+async function priorityStop(){held=null;if(holdToken)holdToken.cancelled=true;holdToken=null;clearInterval(heartbeat);heartbeat=null;lease=null;try{await safe("/api/drive/stop");driveResult="explicit stop requested"}catch(_){}}
 controls.forEach(button=>{const direction=button.dataset.drive;button.addEventListener("pointerdown",event=>{event.preventDefault();button.setPointerCapture(event.pointerId);activate(direction)});for(const event of ["pointerup","pointercancel","lostpointercapture"])button.addEventListener(event,()=>release(event.type));button.addEventListener("click",event=>{if(event.detail===0)activate(direction)})});
 addEventListener("keydown",event=>{if(event.code==="Space"){event.preventDefault();priorityStop();return}const direction=directions[event.key.toLowerCase()];if(direction&&!event.repeat){event.preventDefault();activate(direction)}});
 addEventListener("keyup",event=>{if(directions[event.key.toLowerCase()])release("keyup")});addEventListener("blur",()=>release("window blur"));addEventListener("pagehide",()=>release("pagehide"));document.addEventListener("visibilitychange",()=>{if(document.hidden)release("visibility hidden")});

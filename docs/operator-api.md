@@ -28,10 +28,12 @@ Offline launch is hardware-free and leaves every live control disabled:
 marvin operator serve --port 8765
 ```
 
-An embedding application starts live mode by injecting one validated owner as
-`operator_source`. That same object must implement `drive_step`, `stop`,
-`read_led_state`, and `write_led_state`; `managers_for_owner()` binds those
-callbacks without opening a second controller path. Live configuration is:
+The installed CLI starts live mode through the existing validated
+preflight/ordinary-user-usbmon/private-evidence coordinator. It creates one
+`ProductionControllerOwner` that provides sensor polling plus `drive_step`,
+`stop`, `read_led_state`, and `write_led_state`; `managers_for_owner()` binds
+those callbacks without opening a second controller path. Dependency injection
+of that same interface remains available for tests. Live configuration is:
 
 ```text
 --run
@@ -39,6 +41,15 @@ callbacks without opening a second controller path. Live configuration is:
 --evidence-root PRIVATE_DIR
 --actuators-isolated
 --unprivileged-usbmon
+--authorize-unvalidated-drive-step
+--physical-left-motor-connected-to-robot-right-motor-l-connector
+--physical-right-motor-connected-to-robot-left-motor-r-connector
+--motor-left-connected
+--motor-right-connected
+--servos-isolated
+--both-encoder-feedback-connected
+--robot-secured-on-blocks
+--operator-at-external-cutoff
 --media-directory PRIVATE_DIR
 --microphone-usb-path CURRENT_EXACT_PATH
 --lifecam-usb-path CURRENT_EXACT_PATH
@@ -47,7 +58,8 @@ callbacks without opening a second controller path. Live configuration is:
 The evidence root and media directory must already exist, be owned by the
 operator, and have no group/other permissions. Missing controller callbacks
 prevent live startup. Missing media paths omit those managers, so their controls
-remain visibly disabled. The CLI does not silently open a weaker serial path.
+remain visibly disabled. The CLI opens no device until all required live
+configuration is present and does not fall back to a weaker serial path.
 
 ## JSON and SSE routes
 
@@ -147,7 +159,7 @@ presenting video recording as verified.
 2. Review the exact controller, microphone, and LifeCam topology paths. Create
    separate mode-`0700` evidence and media directories.
 3. Secure Marvin on blocks, isolate the declared actuator power/signals, arrange
-   an operator at the external cutoff, and start the embedding application once
+   an operator at the external cutoff, and start the installed CLI once
    with all live flags above. Do not retry after an identity, write, cleanup, or
    evidence failure.
 4. Verify sensor freshness and start/stop one JSONL recording. Inspect only its

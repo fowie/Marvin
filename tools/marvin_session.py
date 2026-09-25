@@ -254,6 +254,7 @@ def run_session(
     _front_servo_getter=False,
     _front_servo_baseline_restore=False,
     _sensor_snapshot=False,
+    _operator_console=False,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -358,14 +359,16 @@ def run_session(
             _front_servo_word0_plus_500_unit_mapper,
             _front_servo_word1_projector_500_unit_mapper,
             _front_servo_baseline_restore,
-            _sensor_snapshot)):
+            _sensor_snapshot, _operator_console)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     front_servo_profile = (
         _front_servo_mapper or _front_servo_getter or _front_servo_baseline_restore)
-    if _sensor_snapshot and any((
+    if (_sensor_snapshot or _operator_console) and any((
             _isolated_zero_velocity, _motor_power_off_preparation,
             front_servo_profile)):
-        raise ValueError("Sensor snapshot cannot be combined with another diagnostic profile.")
+        raise ValueError("Continuous operator modes cannot be combined with another diagnostic profile.")
+    if _sensor_snapshot and _operator_console:
+        raise ValueError("Select one continuous operator mode.")
     if sum(map(bool, (
             _front_servo_mapper, _front_servo_getter,
             _front_servo_baseline_restore))) > 1:
@@ -757,7 +760,7 @@ def run_session(
             and not (
                 _isolated_zero_velocity or _motor_power_off_preparation
                 or powered_trial or front_servo_profile
-                or _sensor_snapshot)):
+                or _sensor_snapshot or _operator_console)):
         raise ValueError("Named coordinator probes require the modern profile.")
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
@@ -833,6 +836,7 @@ def run_session(
             sum(map(len, TRANSCRIPT))
             if _motor_power_off_preparation or powered_trial or front_servo_profile else
             sum(map(len, SENSOR_TRANSCRIPT)) if _sensor_snapshot else
+            0 if _operator_console else
             len(ZERO_TRANSCRIPT[0]) if _isolated_zero_velocity else
             sum(len(item.data) for item in probe_schedule) if probe_schedule is not None
             else len(probe) if probe is not None else 0
@@ -841,6 +845,7 @@ def run_session(
                                 probe.hex() if probe is not None else None),
         "probe_name": (
             "ReadOnlySensorSnapshot" if _sensor_snapshot else
+            "ContinuousOperatorConsole" if _operator_console else
             "IsolatedZeroVelocityCharacterization" if _isolated_zero_velocity else
             probe_name),
         "probe_profile": probe_profile,
@@ -890,6 +895,15 @@ def run_session(
         )
         metadata["limitations"][2] = (
             "Kernel-open line transitions remain possible; snapshot uses an unflushed raw tty.")
+    if _operator_console:
+        metadata.update(
+            dynamic_allowlisted_operator_transcript=True,
+            application_acknowledgment="not_established",
+            physical_stop="not_established",
+        )
+        metadata["limitations"][2] = (
+            "Kernel-open line transitions remain possible; the operator owner "
+            "uses an unflushed raw tty and exact allowlisted transactions.")
     if _motor_power_off_preparation:
         metadata.update(
             **motor_consent.history(declarations),

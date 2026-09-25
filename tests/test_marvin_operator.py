@@ -7,11 +7,13 @@ import tempfile
 from threading import Thread
 import time
 import unittest
-from urllib.error import HTTPError
+from unittest.mock import patch
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+import subprocess
 
 import marvin
+import marvin_dashboard
 import marvin_operator
 
 
@@ -78,6 +80,45 @@ class SlowSource(Source):
 
 
 class OperatorTests(unittest.TestCase):
+    def test_installed_cli_bootstraps_production_owner(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                marvin_operator, "serve_live") as live:
+            os.chmod(directory, 0o700)
+            arguments = [
+                "operator", "serve", "--run", "--port", "0",
+                "--expected-physical-port", "1-3",
+                "--evidence-root", directory,
+                "--actuators-isolated", "--unprivileged-usbmon",
+                "--authorize-unvalidated-drive-step",
+                *("--" + name.replace("_", "-")
+                  for name in marvin_operator.drive_step.COMMON_FLAGS
+                  if name != "unprivileged_usbmon"),
+            ]
+            self.assertEqual(marvin.main(arguments), 0)
+            live.assert_called_once()
+            options = live.call_args.kwargs
+            self.assertEqual(options["expected_physical_port"], "1-3")
+            self.assertTrue(all(options["drive_declarations"].values()))
+
+    def test_deadman_cancels_pending_acquire_without_motion(self):
+        script = marvin_dashboard.DEADMAN_CORE + """
+const token={cancelled:false}, calls=[];
+let resolve;
+const pending=new Promise(done=>resolve=done);
+const result=acquireHeld("forward",token,()=>pending,
+  lease=>calls.push(["release",lease]),
+  (direction,lease)=>calls.push(["pulse",direction,lease]));
+token.cancelled=true;
+resolve("lease-1");
+result.then(value=>{
+  if(value!==null||JSON.stringify(calls)!=='[["release","lease-1"]]')
+    process.exit(1);
+});
+"""
+        subprocess.run(
+            ["node", "-e", script], check=True, timeout=5,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
     def test_real_http_events_recording_and_cleanup(self):
         source = Source()
         runtime = marvin_operator.OperatorRuntime(

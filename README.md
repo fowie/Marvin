@@ -214,12 +214,14 @@ because its installed eight-byte response has no proven legacy decoder.
 `marvin operator serve` runs a long-lived stdlib HTTP service bound only to
 `127.0.0.1` (default port `8765`) and serves the dependency-free browser
 dashboard at `http://127.0.0.1:8765/`. Without `--run` it is status-only, opens
-no hardware. Live polling requires an application-injected, already validated
-`marvin_operator.SensorSource`; the CLI deliberately rejects `--run` without
-that boundary rather than falling back to a weaker serial path. The built-in
-`PersistentSensorSource` owns one identity-pinned `LegacyClient`, serializes all
-controller access, sends only the exact four sensor getters, and never retries,
-reconnects, wraps sequences, or exposes arbitrary opcodes.
+no hardware. With `--run` and every reviewed declaration, the installed CLI
+uses the existing identity/preflight, ordinary-user usbmon, and private evidence
+coordinator to create one `ProductionControllerOwner`. That owner serializes the
+exact four sensor getters, accepted bounded drive/stop profiles, and 18-byte LED
+getter/setter transactions on one pinned transport. It never retries,
+reconnects, wraps sequences, or exposes arbitrary opcodes. Tests and embedding
+applications may still inject the same typed owner boundary without weakening
+the installed path.
 `OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.
@@ -241,7 +243,7 @@ The browser uses the same HTTP/SSE listener and owner-thread command queue. It
 shows raw sensor confidence/boundaries, JSONL recording state, dead-man and
 fixed-pulse drive controls, evidence-mapped individual LEDs, and private media
 controls. No device value is inserted as HTML, and no media is previewed,
-played, uploaded, or transcribed. Live embedding configuration pins the
+played, uploaded, or transcribed. Live configuration pins the
 controller port, private evidence/media roots, isolation declarations, and the
 current exact direct-host microphone and LifeCam USB paths; missing
 configuration leaves the corresponding controls disabled with a reason. See

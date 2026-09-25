@@ -7,6 +7,7 @@ import itertools
 import os
 from pathlib import Path
 import queue
+from types import SimpleNamespace
 import signal
 import stat
 from threading import Condition, Event, Lock, RLock, Thread, current_thread, main_thread
@@ -17,6 +18,12 @@ import marvin_sensors
 import marvin_dashboard
 import marvin_managers
 from tools.marvin_legacy_client import LegacyClient, Limits
+from tools import marvin_legacy_protocol as protocol
+from tools import marvin_legacy_drive_step as drive_step
+from tools import marvin_legacy_raw_pwm_pilot as pilot
+from tools import marvin_legacy_zero as zero
+from tools.marvin_legacy_led_mapper import _frame
+from tools.marvin_legacy_live import LiveTransport
 
 
 DEFAULT_POLL_SECONDS = 2.0
@@ -28,6 +35,7 @@ MAX_CHUNK_SECONDS = 3600
 MAX_BODY_BYTES = 4096
 MAX_REQUESTS = 65536
 STARTUP_SECONDS = 30.0
+OPERATOR_SESSION_SECONDS = 90
 
 
 def _utc_now():
@@ -68,6 +76,235 @@ def managers_for_owner(owner, *, microphone=False, camera=False):
     if camera:
         managers["camera"] = marvin_managers.CameraManager()
     return managers
+
+
+class _OperatorTransport(LiveTransport):
+    """One live owner with an exact getter/drive/LED transaction allowlist."""
+
+    def submit(self, raw, *, deadline):
+        packet = protocol.decode_packet(raw)
+        getter_commands = {spec.command for spec in protocol.GETTERS.values()}
+        drive_payloads = {
+            pilot.ZERO_PWM, pilot.DUAL_FORWARD_2000, pilot.DUAL_REVERSE_2000,
+            pilot.LEFT_REVERSE_RIGHT_FORWARD_2000,
+            pilot.LEFT_FORWARD_RIGHT_BACKWARD_2000,
+        }
+        allowed = (
+            packet.response_field == 0
+            and (
+                (packet.command in getter_commands and not packet.payload)
+                or (packet.command == 0x0B and packet.payload in drive_payloads)
+                or (packet.command == 0x18 and len(packet.payload) == 18)
+            )
+        )
+        if not allowed:
+            raise OSError("Operator transaction is outside the exact getter/drive/LED allowlist.")
+        return self._submit_once(raw, deadline=deadline)
+
+
+class ProductionControllerOwner:
+    """Sensor source and accepted actuator callbacks over one validated transport."""
+
+    _DRIVE_PAYLOADS = {
+        "forward": pilot.DUAL_FORWARD_2000,
+        "backward": pilot.DUAL_REVERSE_2000,
+        "rotate-left": pilot.LEFT_REVERSE_RIGHT_FORWARD_2000,
+        "rotate-right": pilot.LEFT_FORWARD_RIGHT_BACKWARD_2000,
+    }
+
+    def __init__(self, transport, report, *, first_sequence=4096):
+        self.transport = transport
+        self.report = report
+        self.expected_identity = transport.token
+        self.first_sequence = first_sequence
+        self.sequence = first_sequence
+        self.requests = []
+        self.started = False
+
+    def start(self):
+        if self.started:
+            raise RuntimeError("Controller owner is already active.")
+        self.transport.owner = (os.getpid(), current_thread())
+        deadline = time.monotonic() + 15
+        if self.transport.revalidate(deadline=deadline) != self.expected_identity:
+            raise OSError("Fresh controller identity differs from the pinned preflight.")
+        self.started = True
+
+    def _next_sequence(self):
+        if self.sequence > 65535:
+            raise OSError("Operator sequence budget exhausted; no wrap or reconnect.")
+        value = self.sequence
+        self.sequence += 1
+        return value
+
+    def _exchange(self, command, payload=b"", *, expected_payload=None,
+                  accepted=(0x80,), timeout=1):
+        if not self.started:
+            raise RuntimeError("Controller owner is not active.")
+        sequence = self._next_sequence()
+        raw = _frame(sequence, command, payload)
+        deadline = time.monotonic() + timeout
+        self.report["uncertain_tx_bytes"] += len(raw)
+        count = self.transport.submit(raw, deadline=deadline)
+        if type(count) is not int or count != len(raw):
+            raise OSError("Operator transaction was not fully accepted; no retry.")
+        self.report["accepted_tx_bytes"] += count
+        self.report["uncertain_tx_bytes"] -= count
+        evidence = zero._ResponseEvidence(
+            self.transport.event, sequence=sequence, command=command,
+            accepted_response_fields=accepted,
+            validate_packet=(
+                None if expected_payload is None else
+                lambda packet: (
+                    [] if len(packet.payload) == expected_payload
+                    else ["unexpected_operator_payload"])),
+        )
+        evidence.submitted_at = time.monotonic()
+        evidence.deadline = deadline
+        zero._observe_response(
+            self.transport, evidence, deadline=deadline, clock=time.monotonic)
+        packet = protocol.decode_packet(
+            bytes.fromhex(evidence.events[0]["stream"]["raw_hex"]))
+        self.report["responses"] += 1
+        return packet, evidence.events[0]
+
+    def request(self, query, *, timeout, allow_telemetry_state_change=False):
+        if query not in protocol.GETTERS:
+            raise ValueError("Select one reviewed legacy getter.")
+        if query == "get-unit-info" and allow_telemetry_state_change is not True:
+            raise ValueError("GetUnitInfo requires explicit telemetry-state consent.")
+        spec = protocol.GETTERS[query]
+        packet, row = self._exchange(
+            spec.command, expected_payload=spec.payload_bytes, timeout=timeout)
+        request = SimpleNamespace(
+            query=query, sequence=packet.sequence,
+            raw=protocol.GETTERS[query].encode(packet.sequence),
+            status="matched")
+        self.requests.append(request)
+        return SimpleNamespace(
+            stream=SimpleNamespace(packet=packet),
+            evidence_kind="recorded",
+            labels=tuple(row["labels"]),
+            confidence="integrity_and_shape_match_not_authenticated",
+        )
+
+    def read(self):
+        return marvin_sensors.read_session_snapshot(
+            self, expected_identity=self.expected_identity)
+
+    def _setter(self, payload):
+        packet, _row = self._exchange(0x0B, payload, expected_payload=0)
+        if packet.response_field != 0x80:
+            raise OSError("Raw-PWM setter did not return the accepted empty raw-80 shape.")
+
+    def stop(self):
+        self._setter(pilot.ZERO_PWM)
+
+    def drive_step(self, direction):
+        try:
+            payload = self._DRIVE_PAYLOADS[direction]
+        except KeyError:
+            raise ValueError("Unsupported proved drive direction.") from None
+        may_have_applied = False
+        try:
+            self._setter(pilot.ZERO_PWM)
+            may_have_applied = True
+            self._setter(payload)
+            self.transport.wait(drive_step.DURATION_SECONDS)
+        finally:
+            if may_have_applied:
+                self.stop()
+
+    def read_led_state(self):
+        packet, _row = self._exchange(0x17, expected_payload=18)
+        return packet.payload
+
+    def write_led_state(self, payload):
+        if type(payload) is not bytes or len(payload) != 18:
+            raise ValueError("LED state must be exactly 18 immutable bytes.")
+        self._exchange(0x18, payload, accepted=(0x80, 0x82))
+
+    def close(self):
+        if self.started:
+            self.started = False
+            self.transport.close(deadline=time.monotonic() + 5)
+        self.report["serial_rx_bytes"] = self.transport.serial_bytes
+
+
+def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
+               evidence_root, configuration, drive_declarations,
+               ready=None):
+    """Run one evidence-bounded production console with a single controller owner."""
+    root = Path(evidence_root)
+    info = root.stat()
+    if not stat.S_ISDIR(info.st_mode) or root.is_symlink() or info.st_uid != os.geteuid():
+        raise ValueError("Evidence root must be an owned existing directory.")
+    if info.st_mode & 0o077:
+        raise ValueError("Evidence root must be private (mode 0700).")
+    required_drive = {
+        "authorize_unvalidated_drive_step", *drive_step.COMMON_FLAGS}
+    if (set(drive_declarations) != required_drive
+            or any(value is not True for value in drive_declarations.values())):
+        raise ValueError("Live operator drive requires every reviewed on-blocks declaration.")
+    media_directory = configuration.get("media_directory")
+    if media_directory is not None:
+        media_info = Path(media_directory).stat()
+        if (not stat.S_ISDIR(media_info.st_mode)
+                or Path(media_directory).is_symlink()
+                or media_info.st_uid != os.geteuid()
+                or media_info.st_mode & 0o077):
+            raise ValueError("Media directory must be an owned private existing directory.")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    output = root / f"operator-{stamp}"
+    review = {
+        "status": "live_operator_authorized",
+        "profile": "marvin-legacy-se",
+        "single_controller_owner": True,
+        "allowed": [
+            "exact four sensor getters", "proved 250ms drive profiles",
+            "accepted all-zero stop", "18-byte LED getter/setter",
+        ],
+        "automatic_retries": False,
+        "automatic_reconnect": False,
+        "application_acknowledgment": "not_established",
+        "physical_stop": "not_established",
+    }
+    def observe(transport, shared_report):
+        owner = ProductionControllerOwner(transport, shared_report)
+        runtime = OperatorRuntime(
+            owner, poll_seconds=poll_seconds, chunk_seconds=chunk_seconds,
+            managers=managers_for_owner(
+                owner,
+                microphone=bool(
+                    media_directory and configuration.get("microphone_usb_path")),
+                camera=bool(
+                    media_directory and configuration.get("camera_usb_path"))),
+            configuration=configuration)
+        shared_report["status"] = "serving"
+        serve(runtime, port=port, ready=ready)
+        shared_report["status"] = "operator_shutdown_complete"
+
+    return zero._run_diagnostic(
+        output, expected_physical_port=expected_physical_port, review=review,
+        transport_type=_OperatorTransport, observe=observe,
+        limits=zero._Limits(
+            first_sequence=4096, max_requests=MAX_REQUESTS, interval=0,
+            max_rx_bytes=16 * 1024 * 1024, read_size=512),
+        session_options={
+            "actuators_isolated": True, "_operator_console": True,
+        },
+        declarations={
+            "actuator_power_and_signal_isolation_acknowledged": True,
+            "ordinary_user_usb_recording_acknowledged": True,
+            "secured_on_blocks_and_external_cutoff_acknowledged": True,
+            **drive_declarations,
+        },
+        expected_tx=lambda value: value["accepted_tx_bytes"],
+        success_status="operator_shutdown_complete",
+        report_key="operator",
+        authorizations={"bounded_operator_console_authorized": True},
+        serial_seconds=OPERATOR_SESSION_SECONDS,
+    )
 
 
 class PersistentSensorSource:

@@ -594,6 +594,11 @@ and physical stop remain unproved and require operator observation/cutoff.""",
                        help="current exact direct-host 045e:fff0 USB path")
     serve.add_argument("--lifecam-usb-path", metavar="PATH",
                        help="current exact direct-host 045e:0721 USB path")
+    serve.add_argument("--authorize-unvalidated-drive-step", action="store_true",
+                       help="authorize only the accepted bounded on-blocks drive profiles")
+    for name in drive_step.COMMON_FLAGS:
+        if name != "unprivileged_usbmon":
+            serve.add_argument("--" + name.replace("_", "-"), action="store_true")
     microphone = actions.add_parser(
         "microphone", add_help=False,
         help="delegate to bounded microphone status/list/capture")
@@ -649,10 +654,6 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
         if args.command == "operator":
             if operator_source is not None and args.run is not True:
                 raise ValueError("Injected operator sensors require --run.")
-            if args.run and operator_source is None:
-                raise ValueError(
-                    "Live operator service requires an injected validated transport; "
-                    "no device was opened.")
             configuration = {
                 "expected_physical_port": args.expected_physical_port,
                 "evidence_root": (
@@ -674,6 +675,23 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
                 raise ValueError(
                     "Live operator sensors require expected controller port, "
                     "private evidence root, actuator isolation, and ordinary-user usbmon.")
+            drive_declarations = {
+                "authorize_unvalidated_drive_step":
+                    args.authorize_unvalidated_drive_step,
+                **{name: getattr(args, name) for name in drive_step.COMMON_FLAGS},
+            }
+            if args.run and operator_source is None:
+                marvin_operator.serve_live(
+                    port=args.port,
+                    poll_seconds=args.poll_seconds,
+                    chunk_seconds=args.chunk_seconds,
+                    expected_physical_port=args.expected_physical_port,
+                    evidence_root=args.evidence_root,
+                    configuration=configuration,
+                    drive_declarations=drive_declarations,
+                    ready=operator_ready,
+                )
+                return 0
             if args.run and operator_managers is None:
                 operator_managers = marvin_operator.managers_for_owner(
                     operator_source,
