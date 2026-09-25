@@ -249,6 +249,7 @@ def run_session(
     _front_servo_word0_direction_mapper=False,
     _front_servo_word0_100_unit_mapper=False,
     _front_servo_word0_500_unit_mapper=False,
+    _front_servo_word0_plus_500_unit_mapper=False,
     _front_servo_getter=False,
     _front_servo_baseline_restore=False,
     _projector_power_smoke=False,
@@ -349,6 +350,7 @@ def run_session(
             _front_servo_word0_direction_mapper,
             _front_servo_word0_100_unit_mapper,
             _front_servo_word0_500_unit_mapper, _front_servo_getter,
+            _front_servo_word0_plus_500_unit_mapper,
             _front_servo_baseline_restore, _projector_power_smoke)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     front_servo_profile = (
@@ -369,11 +371,14 @@ def run_session(
         raise ValueError("Word0 100-unit mode requires the front-servo mapper.")
     if _front_servo_word0_500_unit_mapper and not _front_servo_mapper:
         raise ValueError("Word0 500-unit mode requires the front-servo mapper.")
+    if _front_servo_word0_plus_500_unit_mapper and not _front_servo_mapper:
+        raise ValueError("Word0 +500-unit mode requires the front-servo mapper.")
     if sum((_front_servo_word1_mapper, _front_servo_word0_five_degree_mapper,
             _front_servo_word1_five_degree_mapper,
             _front_servo_word0_direction_mapper,
             _front_servo_word0_100_unit_mapper,
-            _front_servo_word0_500_unit_mapper)) > 1:
+            _front_servo_word0_500_unit_mapper,
+            _front_servo_word0_plus_500_unit_mapper)) > 1:
         raise ValueError("Front-servo fixed modes are mutually exclusive.")
     declarations = dict(
         powered_left_command_right_connected=powered_left_command_right_connected,
@@ -606,10 +611,13 @@ def run_session(
             from tools.marvin_legacy_front_servo_mapper import (
                 TRANSCRIPT as WORD0_TRANSCRIPT, WORD1_TRANSCRIPT,
                 WORD0_100_UNIT_TRANSCRIPT, WORD0_500_UNIT_TRANSCRIPT,
+                WORD0_PLUS_500_UNIT_TRANSCRIPT,
                 WORD0_FIVE_DEGREE_TRANSCRIPT,
                 WORD1_FIVE_DEGREE_TRANSCRIPT)
             TRANSCRIPT = (
-                WORD0_500_UNIT_TRANSCRIPT
+                WORD0_PLUS_500_UNIT_TRANSCRIPT
+                if _front_servo_word0_plus_500_unit_mapper
+                else WORD0_500_UNIT_TRANSCRIPT
                 if _front_servo_word0_500_unit_mapper
                 else WORD0_100_UNIT_TRANSCRIPT
                 if _front_servo_word0_100_unit_mapper
@@ -858,6 +866,8 @@ def run_session(
             metadata["probe_name"] = "LegacyFrontCameraServoWord0100Unit"
         if _front_servo_word0_500_unit_mapper:
             metadata["probe_name"] = "LegacyFrontCameraServoWord0500Unit"
+        if _front_servo_word0_plus_500_unit_mapper:
+            metadata["probe_name"] = "LegacyFrontCameraServoWord0Plus500Unit"
         metadata["limitations"][2] = (
             "Kernel-open line transitions remain possible; mapping uses an unflushed raw tty.")
     if _front_servo_getter:

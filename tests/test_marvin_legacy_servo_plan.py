@@ -447,6 +447,42 @@ class LegacyServoPlanTests(unittest.TestCase):
             "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
         ])
         self.assertTrue(mapper._Word0500UnitTransport.direction_hold)
+        with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(
+                mapper.main([
+                    "--word0-plus-500-unit-installed-camera-diagnostic"]), 0)
+        inverse = json.loads(stdout.getvalue())
+        self.assertEqual(
+            (inverse["fixed_mode"], inverse["target_words_uint16"],
+             inverse["expected_ax_goal_position"],
+             inverse["expected_ax_goal_delta_from_baseline_833"],
+             inverse["operator_camera_displacement_hypothesis_degrees"]),
+            ("word0-plus-500-unit-installed-camera-characterization",
+             [3000, 2730], 1000, 167, 5.0))
+        inverse_frames = [
+            protocol.decode_packet(bytes.fromhex(raw))
+            for raw in inverse["immutable_application_transcript_hex"]]
+        self.assertEqual(
+            [(packet.sequence, packet.command, packet.payload)
+             for packet in inverse_frames],
+            [(3526, 0x1D, b""),
+             (3527, 0x1E, bytes.fromhex("b80baa0a")),
+             (3528, 0x1E, bytes.fromhex("c409aa0a")),
+             (3529, 0x1D, b"")])
+        self.assertEqual(inverse["expected_ax_goal_range"], [0, 1023])
+        self.assertTrue(inverse["expected_ax_goal_within_range"])
+        self.assertTrue(inverse["sibling_word1_preserved"])
+        self.assertEqual(
+            inverse["operator_observed_direction_calibration"][
+                "camera_tilt_direction"],
+            "downward_hypothesis_from_directly_proven_inverse_relation")
+        self.assertEqual(inverse["required"], [
+            "--run", "--expected-physical-port", "--output NEW-SESSION-DIR",
+            "--word0-plus-500-unit-installed-camera-diagnostic",
+            "--authorize-unchanged-setup-session-after-fresh-safety-confirmation",
+        ])
+        self.assertTrue(mapper._Word0Plus500UnitTransport.direction_hold)
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
             root = Path(directory) / "session"
             with patch.object(
