@@ -224,7 +224,7 @@ class PreparationTests(unittest.TestCase):
         transport._check.side_effect = check
         transport.identity = Mock(side_effect=lambda **kw: check(kw["deadline"]) or transport.token)
         transport._read_serial = Mock(return_value=None)
-        transport.read = Mock(side_effect=read)
+        transport.read_response = Mock(side_effect=read)
         report = {}
         with patch.object(live.LiveTransport, "revalidate", opened), \
                 patch.object(time, "monotonic", clock), \

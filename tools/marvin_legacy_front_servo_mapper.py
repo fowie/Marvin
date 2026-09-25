@@ -35,7 +35,6 @@ WORD1_FIVE_DEGREE_TARGET_PAYLOAD = b"".join(
 FIRST_SEQUENCE = 3500
 DWELL_SECONDS = 0.250
 RESPONSE_SECONDS = 0.500
-IDENTITY_CHECK_RESERVE_SECONDS = 0.100
 OVERALL_SECONDS = 8
 CLEANUP_RESERVE_SECONDS = 2
 SUCCESS = "front_camera_servo_mapping_complete_protocol_only"
@@ -518,9 +517,6 @@ def _set_restore_responses(transport, report, *, deadline, clock=time.monotonic)
     for _ in range(4096):
         if clock() >= deadline:
             break
-        remaining = deadline - clock()
-        if remaining > IDENTITY_CHECK_RESERVE_SECONDS:
-            transport.identity(deadline=deadline)
         transport.ingress.pump()
         remaining = deadline - clock()
         if remaining <= 0:
@@ -528,7 +524,8 @@ def _set_restore_responses(transport, report, *, deadline, clock=time.monotonic)
         readable, _, _ = select.select(
             [transport.fd], [], [], min(0.005, remaining))
         if readable:
-            evidence.feed(transport.read(512, deadline=deadline), clock())
+            evidence.feed(
+                transport.read_response(512, deadline=deadline), clock())
     else:
         raise OSError("Set/restore response observation iteration budget exhausted.")
     evidence.finish(clock())

@@ -136,7 +136,7 @@ class ZeroTests(unittest.TestCase):
             clock.now += .01
             transport.serial_bytes += len(raw)
             return Received(raw, clock.now - .001, clock.now)
-        transport.read.side_effect = read
+        transport.read_response.side_effect = read
         def select(*args):
             clock.now += args[3]
             return ([999] if waiting else [], [], [])

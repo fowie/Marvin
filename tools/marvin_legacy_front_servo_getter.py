@@ -102,8 +102,7 @@ def _response_evidence(record):
 
 
 def _observe_fixed(transport, report, *, request, sequence, response, success,
-                   result_fields, noun, identity_reserve_seconds=0,
-                   clock=time.monotonic):
+                   result_fields, noun, clock=time.monotonic):
     deadline = clock() + OVERALL_SECONDS
     active_deadline = deadline - CLEANUP_SECONDS
     primary = None
@@ -140,8 +139,7 @@ def _observe_fixed(transport, report, *, request, sequence, response, success,
             response_deadline=response.deadline,
         )
         zero._observe_response(
-            transport, response, deadline=response.deadline, clock=clock,
-            identity_reserve_seconds=identity_reserve_seconds)
+            transport, response, deadline=response.deadline, clock=clock)
         packet = decode_packet(bytes.fromhex(response.events[0]["stream"]["raw_hex"]))
         report.update(
             status=success,

@@ -205,7 +205,7 @@ class DisconnectedOrderTests(unittest.TestCase):
         transport = Mock()
         transport.fd = 99
         transport.ingress = Mock()
-        transport.read.return_value = Mock(data=packets, started_at=1.0, ended_at=1.1)
+        transport.read_response.return_value = Mock(data=packets, started_at=1.0, ended_at=1.1)
         report = {}
         ticks = iter((0.0, 0.0, 0.0, 0.6))
         with patch.object(order.select, "select", return_value=([99], [], [])):

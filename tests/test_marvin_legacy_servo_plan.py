@@ -90,30 +90,22 @@ class LegacyServoPlanTests(unittest.TestCase):
 
         tail_response = Mock(deadline=.5, candidates=1)
         tail_transport = Mock(fd=99, ingress=Mock())
+        tail_transport.identity.side_effect = OSError(
+            "identity validation exceeded response deadline")
         tail_clock = Mock(side_effect=(
-            .34, .34, .41, .41, .41, .41, .45, .45, .50, .50))
+            .34, .41, .41, .41, .45, .45, .50, .50))
         with patch.object(baseline_restore.zero.select, "select",
                           return_value=([99], [], [])), \
                 patch.object(
-                    tail_transport, "read", return_value=b"tail") as tail_read:
+                    tail_transport, "read_response",
+                    return_value=b"tail") as tail_read:
             baseline_restore.zero._observe_response(
-                tail_transport, tail_response, deadline=.5, clock=tail_clock,
-                identity_reserve_seconds=.1)
-        tail_transport.identity.assert_called_once_with(deadline=.5)
+                tail_transport, tail_response, deadline=.5, clock=tail_clock)
+        tail_transport.identity.assert_not_called()
         self.assertEqual(tail_transport.ingress.pump.call_count, 2)
         self.assertEqual(tail_read.call_count, 2)
         tail_response.feed.assert_called_with(b"tail", .45)
         tail_response.finish.assert_called_once_with(.5)
-
-        default_response = Mock(deadline=.5, candidates=1)
-        default_transport = Mock(fd=99, ingress=Mock())
-        default_clock = Mock(side_effect=(.49, .5, .5, .5))
-        with patch.object(baseline_restore.zero.select, "select",
-                          return_value=([], [], [])):
-            baseline_restore.zero._observe_response(
-                default_transport, default_response, deadline=.5,
-                clock=default_clock)
-        default_transport.identity.assert_called_once_with(deadline=.5)
 
     def test_single_getter_is_fixed_read_only_and_preserves_response(self):
         with patch.object(os, "open", side_effect=AssertionError("no hardware")), \
@@ -464,6 +456,24 @@ class LegacyServoPlanTests(unittest.TestCase):
         def interrupted_response(transport, report, step, **kwargs):
             return response(transport, report, step, **kwargs)
 
+        identity_changed = Transport()
+        submit = identity_changed.submit
+
+        def fail_setter_identity(step, *, deadline):
+            if step == "set":
+                raise OSError("identity changed before setter")
+            return submit(step, deadline=deadline)
+
+        identity_changed.submit = fail_setter_identity
+        with patch.object(mapper, "_response", side_effect=response), \
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "identity changed before setter"):
+            mapper._observe(identity_changed, {}, clock=lambda: 0)
+        self.assertEqual(identity_changed.attempts, ["baseline"])
+        self.assertEqual(identity_changed.writes, 1)
+        self.assertFalse(identity_changed.nonzero_may_have_applied)
+        self.assertFalse(identity_changed.restore_attempted)
+
         transport = Transport()
         with patch.object(mapper, "_response", side_effect=interrupted_response), \
                 patch.object(
@@ -573,7 +583,7 @@ class LegacyServoPlanTests(unittest.TestCase):
 
         tail_transport = Mock(
             fd=99, ingress=Mock(), serial_bytes=0, steps=mapper.STEPS)
-        tail_transport.read.return_value = None
+        tail_transport.read_response.return_value = None
         tail_clock = Mock(side_effect=(.34, .34, .41, .41, .50, .50, .50))
         with patch.object(mapper.select, "select", return_value=([], [], [])):
             self.assertEqual(
@@ -586,7 +596,7 @@ class LegacyServoPlanTests(unittest.TestCase):
                     deadline=.5, clock=tail_clock),
                 {"set": 0, "restore": 0},
             )
-        tail_transport.identity.assert_called_once_with(deadline=.5)
+        tail_transport.identity.assert_not_called()
 
         for reached_prewrite in (False, True):
             setter = mapper._Transport.__new__(mapper._Transport)

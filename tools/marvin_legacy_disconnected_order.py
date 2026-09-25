@@ -177,12 +177,11 @@ def _collect_setter_responses(transport, report, *, deadline, clock=time.monoton
     for _ in range(4096):
         if clock() >= response_deadline:
             break
-        transport.identity(deadline=deadline)
         transport.ingress.pump()
         remaining = response_deadline - clock()
         if remaining <= 0 or not select.select([transport.fd], [], [], min(.005, remaining))[0]:
             continue
-        received = transport.read(512, deadline=response_deadline)
+        received = transport.read_response(512, deadline=response_deadline)
         for event in decoder.feed(received.data):
             if event.kind != "frame":
                 raise OSError(f"Unclean setter response stream: {event.kind}.")
@@ -219,13 +218,13 @@ def _observe(transport, report, *, clock=time.monotonic):
         transport.run_order(deadline=deadline)
         report.update(cleanup_zero_attempted=True, cleanup_zero_fully_accepted=True)
         _collect_setter_responses(transport, report, deadline=deadline, clock=clock)
-        transport.submit_getter(deadline=deadline)
-        report["final_getter_attempted"] = True
         response = zero._ResponseEvidence(
             transport.event, sequence=3075, command=0,
             validate_packet=lambda packet: (
                 [] if len(packet.payload) == 134 else ["unknown_getter_response_shape"]))
         response.submitted_at = clock()
+        transport.submit_getter(deadline=deadline)
+        report["final_getter_attempted"] = True
         response.deadline = min(deadline, response.submitted_at + GETTER_RESPONSE_SECONDS)
         zero._observe_response(transport, response, deadline=deadline, clock=clock)
         packet = decode_packet(bytes.fromhex(response.events[0]["stream"]["raw_hex"]))

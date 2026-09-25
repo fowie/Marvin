@@ -278,10 +278,12 @@ The independently verified preserved scope SHA-256 values are:
 - PNG:
   `61b28bbeb63fc0d3394fdc8404163c5ebe9b942762448995bd30eb08770e8253`.
 
-The offline fix applies the same response-tail policy as the mapper: the full
-0.5-second observation remains, but its final 100 ms cannot start another
-potentially over-deadline identity validation. No write, retry, reconnect,
-response uniqueness or cleanup rule changes. No live rerun is authorized.
+The later shared offline fix keeps expensive host identity validation outside
+fixed response windows. It still checks the owned fd generation, safety guard
+and ingress clock while capturing and correlating for the full 0.5 seconds.
+Every subsequent application write retains the existing full pre-write
+identity checks. No write, retry, reconnect, response uniqueness or cleanup
+rule changes. No live rerun is authorized.
 
 ## Fixed front-camera live mapper
 
@@ -364,10 +366,12 @@ is incomplete and unattributed; no AX-12+ status packet was decoded, so
 actuator acceptance and execution remain unproved.
 
 Final restore correlation failed only when a repeated identity check began
-too close to the response-window deadline and completed after it. The
-offline fix retains the full response window but reserves its final 100 ms
-from starting another potentially over-deadline identity check; it changes no
-write, retry, reconnect, correlation or uniqueness rule. The CRC-valid
+too close to the response-window deadline and completed after it. The shared
+offline fix keeps expensive host identity validation outside fixed response
+windows while retaining lightweight owned-fd, safety-guard and ingress-clock
+checks throughout capture. Full identity checks remain mandatory before each
+application write; no write, retry, reconnect, correlation or uniqueness rule
+changes. The CRC-valid
 restore response remains preserved, but the run therefore sent no verification
 getter and physical restoration remains unproved. The operator
 reported no visible movement, immediately powered Marvin off, and removed the
@@ -463,6 +467,24 @@ acknowledgment or physical restoration. The operator separately reported no
 visible movement, hearing the servo engage, then immediately powering Marvin
 off and disconnecting host USB. That physical observation remains separate
 from protocol evidence and does not prove channel mapping or restoration.
+
+### Later 50-unit attempt stopped before the setter
+
+A later authorized fixed word-0 50-unit attempt failed while processing the
+baseline getter response, before any setter. The sealed evidence records one
+10-byte accepted application submission, zero uncertain bytes, one submission,
+14 serial RX bytes, no retained protocol candidate, and
+`Identity validation exceeded deadline`. It also records
+`nonzero_may_have_applied=false`, `restore_attempted=false`, and
+`restoration=not_required_before_setter`. Therefore only the baseline getter
+was submitted; the setter and restore were not submitted. The operator
+confirmed Marvin OFF and no visible movement.
+
+The scope probe was disconnected and false-triggered, so that capture is
+invalid and supplies no waveform evidence. The evidence manifest verified;
+its SHA-256 is
+`60428ca1a3a183209d5da477b7ed140f52191f2e637a1ff8dc0ec26a9f8066cb`.
+This failed attempt is not authorization to retry.
 
 ## Fixed word-1 five-degree diagnostic
 

@@ -407,6 +407,18 @@ class LiveTransport:
         if time.monotonic() >= deadline:
             raise OSError("Identity validation exceeded deadline.")
 
+    def _check_serial_state(self):
+        if self.fd is not None and hasattr(self, "settings"):
+            actual = _host_call(termios.tcgetattr, self.fd)
+            if actual != self.settings:
+                self.event("termios_changed", expected=_termios_evidence(self.settings),
+                           returned=_termios_evidence(actual))
+                raise OSError("Serial settings changed during session.")
+            lines = struct.unpack(
+                "I", fcntl.ioctl(self.fd, termios.TIOCMGET, bytes(4)))[0]
+            if lines & (termios.TIOCM_DTR | termios.TIOCM_RTS):
+                raise OSError("Driver-reported DTR/RTS are not low.")
+
     def revalidate(self, *, deadline):
         self._owner()
         if self.opened or self.closed:
@@ -453,15 +465,7 @@ class LiveTransport:
 
     def identity(self, *, deadline):
         self._check(deadline)
-        if self.fd is not None and hasattr(self, "settings"):
-            actual = _host_call(termios.tcgetattr, self.fd)
-            if actual != self.settings:
-                self.event("termios_changed", expected=_termios_evidence(self.settings),
-                           returned=_termios_evidence(actual))
-                raise OSError("Serial settings changed during session.")
-            lines = struct.unpack("I", fcntl.ioctl(self.fd, termios.TIOCMGET, bytes(4)))[0]
-            if lines & (termios.TIOCM_DTR | termios.TIOCM_RTS):
-                raise OSError("Driver-reported DTR/RTS are not low.")
+        self._check_serial_state()
         return self.token
 
     def _read_serial(self, size):
@@ -476,6 +480,19 @@ class LiveTransport:
         if self.serial_bytes > self.plan.max_rx_bytes:
             raise OSError("Serial input budget exhausted; bounded last read retained.")
         return data
+
+    def _check_response_window(self, deadline):
+        self._owner()
+        if self.closed or self.fd is None or time.monotonic() >= deadline:
+            raise OSError("Closed transport or response deadline; no resume.")
+        self.guard()
+        self.ingress.clock.check()
+        info = os.fstat(self.fd)
+        node = Path(self.baseline["tty"]).stat()
+        if (info.st_dev, info.st_ino, info.st_rdev) != self.node_stat or (
+                node.st_dev, node.st_ino, node.st_rdev) != self.node_stat:
+            raise OSError("Pinned tty generation changed.")
+        self._check_serial_state()
 
     def write(self, data, *, deadline):
         self._check(deadline)
@@ -511,19 +528,19 @@ class LiveTransport:
         self.event("write_returned", accepted_bytes=count)
         return count
 
-    def read(self, max_bytes, *, deadline):
-        self._check(deadline)
+    def _read(self, max_bytes, *, deadline, check):
+        check(deadline)
         if type(max_bytes) is not int or not 1 <= max_bytes <= self.plan.read_size:
             raise OSError("Read size exceeds approved adapter budget.")
         self.ingress.pump()
         data = self._read_serial(max_bytes)
         while data is None:
-            self._check(deadline)
+            check(deadline)
             select.select([self.fd], [], [], min(0.005, max(0, deadline - time.monotonic())))
             self.ingress.pump()
             data = self._read_serial(max_bytes)
         while True:
-            self._check(deadline)
+            check(deadline)
             self.ingress.pump()
             received = self.ingress.match(data)
             if received is not None:
@@ -531,6 +548,13 @@ class LiveTransport:
                            ended_at=received.ended_at)
                 return received
             time.sleep(min(0.001, max(0, deadline - time.monotonic())))
+
+    def read(self, max_bytes, *, deadline):
+        return self._read(max_bytes, deadline=deadline, check=self._check)
+
+    def read_response(self, max_bytes, *, deadline):
+        return self._read(
+            max_bytes, deadline=deadline, check=self._check_response_window)
 
     def wait(self, seconds):
         deadline = time.monotonic() + seconds

@@ -148,6 +148,18 @@ class LiveTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 transport.write(request, deadline=1e12)
             writing.assert_called_once()
+        correlated = Mock()
+        transport._check.reset_mock()
+        transport._check.side_effect = OSError(
+            "slow host identity must not run in response window")
+        transport._check_response_window = Mock()
+        transport._read_serial = Mock(return_value=b"response")
+        transport.ingress.match = Mock(return_value=correlated)
+        transport.event = Mock()
+        self.assertIs(
+            transport.read_response(512, deadline=1e12), correlated)
+        transport._check.assert_not_called()
+        self.assertEqual(transport._check_response_window.call_count, 2)
         transport.owner = (-1, live.current_thread())
         with patch.object(live.os, "close") as closing:
             with self.assertRaisesRegex(OSError, "constructing"):
@@ -264,7 +276,7 @@ class LiveTests(unittest.TestCase):
             with patch.object(live.time, "monotonic", clock), \
                     patch.object(live.time, "sleep", side_effect=lambda seconds: setattr(clock, "now", clock.now + seconds)), \
                     patch.object(marvin_session, "preflight", return_value=baseline), \
-                    patch.object(marvin_session, "check_identity"), \
+                    patch.object(marvin_session, "check_identity") as identity, \
                     patch.object(live.os, "open", side_effect=lambda path, *a: 999 if path == str(node) else real_open(path, *a)), \
                     patch.object(live.os, "fstat", side_effect=lambda fd: node.stat() if fd == 999 else real_fstat(fd)), \
                     patch.object(live.fcntl, "flock") as flock, \
@@ -281,6 +293,9 @@ class LiveTests(unittest.TestCase):
                             transport.revalidate(deadline=200)
                     else:
                         self.assertEqual(transport.revalidate(deadline=200), transport.token)
+                        identity.reset_mock()
+                        transport._check_response_window(200)
+                        identity.assert_not_called()
                         self.assertEqual(attrs[:6], [0, 0, live.termios.CS8 | live.termios.CREAD |
                                                     live.termios.CLOCAL, 0, live.termios.B57600,
                                                     live.termios.B57600])

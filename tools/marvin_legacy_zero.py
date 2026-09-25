@@ -8,7 +8,6 @@ import argparse
 from collections import deque
 from dataclasses import dataclass
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -149,28 +148,20 @@ def prepare():
     }
 
 
-def _observe_response(
-        transport, response, *, deadline, clock=time.monotonic,
-        identity_reserve_seconds=0):
+def _observe_response(transport, response, *, deadline, clock=time.monotonic):
     """Observe a complete bounded window without owning open, write or close."""
-    if (not isinstance(identity_reserve_seconds, (int, float))
-            or isinstance(identity_reserve_seconds, bool)
-            or not math.isfinite(identity_reserve_seconds)
-            or identity_reserve_seconds < 0):
-        raise ValueError("Identity reserve must be finite and nonnegative.")
+    if response.deadline > deadline:
+        raise OSError("Response window exceeds its operation deadline.")
     for _ in range(4096):
         if clock() >= response.deadline:
             break
-        if (identity_reserve_seconds == 0
-                or response.deadline - clock() > identity_reserve_seconds):
-            transport.identity(deadline=deadline)
         transport.ingress.pump()
         remaining = response.deadline - clock()
         if remaining <= 0:
             break
         readable, _, _ = select.select([transport.fd], [], [], min(0.005, remaining))
         if readable:
-            received = transport.read(512, deadline=response.deadline)
+            received = transport.read_response(512, deadline=response.deadline)
             response.feed(received, clock())
     else:
         raise OSError("Response observation iteration budget exhausted.")
