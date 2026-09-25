@@ -2034,6 +2034,31 @@ identity, write, sequence, command, CRC, and usbmon gates. Physical stop
 remains `not_established` and requires operator observation and the external
 cutoff.
 
+#### Installed teleop acceptance
+
+At installed head
+`81a139b1c931efbf5378b48348556914730e9e7f`, teleop-008 completed `w`, `s`,
+then `q`. The operator observed forward motion and stop, then reverse motion
+and stop. Forward and reverse each recorded three correlated command-`0B`
+responses with 54 accepted TX bytes, zero uncertain TX bytes, and completed
+zero cleanup. Quit recorded the standalone all-zero request with 18 accepted
+TX bytes and zero uncertain TX bytes. All root and nested capture manifests
+verified.
+
+| Evidence | Result | SHA-256 of root `SHA256SUMS` |
+|---|---|---|
+| teleop-008/run-0001 | forward zero/set/zero transaction completed; operator observed forward then stop | `bba07a15174b933a20aaf44025a2214779e60e8f6d8102c024cd17fdb0c240f1` |
+| teleop-008/run-0002 | reverse zero/set/zero transaction completed; operator observed reverse then stop | `a1968ab2e8b0bc80f987086b378597939706d0b3b024aeb3a20a720086c2b067` |
+| teleop-008/run-0003 | standalone all-zero transaction completed | `6b67666f1ad93790a5e065865966e8a0c17168d15f7f2325f65fec67ab8115f0` |
+| teleop-006/run-0001 | earlier forward transaction completed under the prior getter-first profile | `eb29b963379f7e71d33775d5f12f3f28815d34a68f974e772d44baa3e70dcbc3` |
+| teleop-006/run-0002 | earlier standalone all-zero transaction completed | `fa9642eea9cb61fbd31e69438c202b6247869da3b9c631bcadce3b9355d6d937` |
+
+These records establish bounded transaction completion and the stated operator
+observations only. Empty raw-`80`/`82` responses are not application ACKs, and
+visible stop does not establish braking, de-energization, cleanup causation, or
+protocol-proved physical stop. Private raw artifacts remain outside the
+repository.
+
 ## Proven fixed legacy getter survey
 
 A separately authorized read-only survey used the same disconnected-load

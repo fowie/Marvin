@@ -522,6 +522,21 @@
         "nonzero_final_getter": "fault and restoration lock; no second cleanup",
         "protocol": "both runs: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
         "current_product_profile": "sequences 3387..3389; all-zero cmd0B, bounded nonzero cmd0B, mandatory all-zero cmd0B; 3 writes / 54 TX / 30 expected RX; no cmd0A getter; success means the bounded transactions completed, while application acknowledgment and physical stop remain unproved",
+        "installed_product_acceptance": {
+          "head": "81a139b1c931efbf5378b48348556914730e9e7f",
+          "teleop_008": {
+            "inputs": ["w", "s", "q"],
+            "operator_observation": "forward motion then visible stop; reverse motion then visible stop",
+            "transaction_results": "forward and reverse each 54 accepted TX / 0 uncertain with zero cleanup completed; quit stop 18 accepted TX / 0 uncertain",
+            "root_manifest_sha256": ["bba07a15174b933a20aaf44025a2214779e60e8f6d8102c024cd17fdb0c240f1", "a1968ab2e8b0bc80f987086b378597939706d0b3b024aeb3a20a720086c2b067", "6b67666f1ad93790a5e065865966e8a0c17168d15f7f2325f65fec67ab8115f0"]
+          },
+          "teleop_006": {
+            "inputs": ["w", "q"],
+            "transaction_results": "earlier getter-first forward and standalone stop transactions completed",
+            "root_manifest_sha256": ["eb29b963379f7e71d33775d5f12f3f28815d34a68f974e772d44baa3e70dcbc3", "fa9642eea9cb61fbd31e69438c202b6247869da3b9c631bcadce3b9355d6d937"]
+          },
+          "limitations": "transaction completion and operator observation only; no application ACK, braking, de-energization, cleanup causation, or protocol-proved physical stop"
+        },
         "runs": [
           {
             "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",
