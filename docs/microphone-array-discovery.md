@@ -82,7 +82,11 @@ registry metadata provide the complete non-recording interface inventory.
 Software that opens PCM would cross the consent boundary without adding
 offline protocol knowledge.
 
-## Consent-gated capture plan
+## Historical consent-gated capture
+
+This section records the original direct-PC acceptance only. Its
+`1-1.1.2.4` path is historical and must not be reused as a current expected
+path; use the hub-bound reconnect runbook below for future captures.
 
 Actual audio capture requires fresh user presence and explicit consent. Before
 opening PCM, confirm that no bystander or unintended private source is audible,
@@ -99,7 +103,7 @@ downmixing or assigning capsule positions. Playback, transcription, upload,
 publication, or a second capture each require separate user approval. Record a
 hash and tool metadata without committing the audio.
 
-After those checks and explicit consent, the reviewed command is:
+The command used for that historical acceptance was:
 
 ```sh
 test -d "$PRIVATE_CAPTURE_DIR" &&

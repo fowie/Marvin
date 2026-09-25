@@ -509,6 +509,8 @@ def _parser():
   marvin status
   marvin sensors
   marvin microphone status
+  marvin microphone list --run --hub-path CURRENT_HUB_PATH \\
+      --device hw:CARD=Array,DEV=0
   marvin camera status
   marvin camera capture private/frame.jpg
   marvin drive forward

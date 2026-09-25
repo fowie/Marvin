@@ -31,6 +31,8 @@ python -m marvin --help
 python -m marvin status
 python -m marvin sensors
 marvin microphone status
+marvin microphone list --run --hub-path CURRENT_HUB_PATH \
+  --device hw:CARD=Array,DEV=0
 python -m marvin camera status
 python -m marvin camera capture private/frame.jpg
 python -m marvin drive forward
@@ -153,7 +155,9 @@ another capture implementation. `status` is offline, `list` verifies only
 8-channel `S16_LE` audio with exact byte bounds, explicit privacy authorization,
 and a new mode-`0600` raw/WAV output. Before `arecord`, the selected ALSA card
 and capture PCM node must both resolve through `/sys/class/sound` beneath the
-reviewed `045e:fff0` USB device; ambiguity or ancestry mismatch is rejected.
+one `045e:fff0` descendant of the operator-selected `--hub-path`; that hub must
+be exactly `2109:2817`. The discovery path `1-1.1.2.4` is historical only.
+Missing, duplicate, or mismatched ancestry is rejected.
 The output is registered with cleanup while SIGINT is blocked, so creation or
 write interruption removes the private reservation rather than leaving a
 partial file.
