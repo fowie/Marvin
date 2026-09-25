@@ -13,7 +13,8 @@ from tools import marvin_paths
 
 
 USB_ID = "045e:fff0"
-USB_PATH = "1-1.1.2.4"
+HUB_USB_ID = "2109:2817"
+DISCOVERY_USB_PATH = "1-1.1.2.4"
 ALSA_DEVICE = "hw:CARD=Array,DEV=0"
 RATE = 16000
 CHANNELS = 8
@@ -43,7 +44,8 @@ def offline_status(*, kernel_release=None, path_exists=None):
         "hardware_accessed": False,
         "device_readiness": "not_checked",
         "supported_usb_id": USB_ID,
-        "supported_usb_path": USB_PATH,
+        "required_hub_usb_id": HUB_USB_ID,
+        "discovery_usb_path_not_stable": DISCOVERY_USB_PATH,
         "supported_alsa_device": ALSA_DEVICE,
         "native_profile": {
             "format": FORMAT,
@@ -74,15 +76,43 @@ def _read(path, read_text):
         raise MicrophoneError(f"Cannot read {path}: {error}") from error
 
 
-def _resolve(path, resolve_path):
+def _identity(root, read_text):
+    return f"{_read(root / 'idVendor', read_text)}:{_read(root / 'idProduct', read_text)}".lower()
+
+
+def _find_microphone(usb_root, hub_path, read_text, list_entries):
+    if not hub_path or "/" in hub_path or hub_path in (".", ".."):
+        raise ValueError("hub_path must be one sysfs USB device name.")
+    hub = usb_root / hub_path
+    identity = _identity(hub, read_text)
+    if identity != HUB_USB_ID:
+        raise MicrophoneError(f"Expected hub {HUB_USB_ID} at {hub_path}; found {identity}.")
+    candidates = []
     try:
-        return (resolve_path or (lambda value: value.resolve(strict=True)))(Path(path))
+        entries = list_entries(usb_root)
     except OSError as error:
-        raise MicrophoneError(f"Cannot resolve {path}: {error}") from error
+        raise MicrophoneError(f"Cannot enumerate {usb_root}: {error}") from error
+    prefix = hub_path + "."
+    for entry in entries:
+        entry = Path(entry)
+        if not entry.name.startswith(prefix) or ":" in entry.name:
+            continue
+        try:
+            if _identity(entry, read_text) == USB_ID:
+                candidates.append(entry)
+        except MicrophoneError as error:
+            if not isinstance(error.__cause__, FileNotFoundError):
+                raise
+    if len(candidates) != 1:
+        raise MicrophoneError(
+            f"Expected exactly one {USB_ID} descendant of {hub_path}; found {len(candidates)}.")
+    return hub, candidates[0]
 
 
-def list_device(*, device, run=False, read_text=None, runner=None,
-                kernel_release=None, path_exists=None, resolve_path=None):
+def list_device(*, device, hub_path, run=False, read_text=None, runner=None,
+                kernel_release=None, path_exists=None, list_entries=None,
+                resolve_path=None, usb_root=Path("/sys/bus/usb/devices"),
+                sound_root=Path("/sys/class/sound")):
     """Verify and return the one supported live device without opening PCM."""
     if run is not True:
         raise ValueError("Literal run=True is required for live device enumeration.")
@@ -95,24 +125,9 @@ def list_device(*, device, run=False, read_text=None, runner=None,
             f"Required kernel override is missing: {module['override_module']}")
     read_text = read_text or (lambda path: path.read_text())
     runner = runner or subprocess.run
-    root = Path("/sys/bus/usb/devices") / USB_PATH
-    identity = f"{_read(root / 'idVendor', read_text)}:{_read(root / 'idProduct', read_text)}"
-    if identity.lower() != USB_ID:
-        raise MicrophoneError(f"Expected {USB_ID} at {USB_PATH}; found {identity}.")
-    cards = _read("/proc/asound/cards", read_text)
-    card_indices = re.findall(r"(?m)^\s*(\d+)\s+\[Array\s*\]:", cards)
-    if len(card_indices) != 1:
-        raise MicrophoneError(
-            f"Expected exactly one ALSA card named Array; found {len(card_indices)}.")
-    card_index = int(card_indices[0])
-    resolved_usb = _resolve(root, resolve_path)
-    for sound_path in (
-            Path("/sys/class/sound") / f"card{card_index}",
-            Path("/sys/class/sound") / f"pcmC{card_index}D0c"):
-        resolved_sound = _resolve(sound_path, resolve_path)
-        if resolved_sound != resolved_usb and resolved_usb not in resolved_sound.parents:
-            raise MicrophoneError(
-                f"ALSA {sound_path.name} is not below reviewed USB path {USB_PATH}.")
+    list_entries = list_entries or Path.iterdir
+    resolve_path = resolve_path or Path.resolve
+    hub, microphone = _find_microphone(Path(usb_root), hub_path, read_text, list_entries)
     stream = _read("/proc/asound/Array/stream0", read_text)
     required = (
         "Format: S16_LE",
@@ -130,21 +145,32 @@ def list_device(*, device, run=False, read_text=None, runner=None,
         raise MicrophoneError(f"Cannot enumerate ALSA capture devices: {error}") from error
     if result.returncode:
         raise MicrophoneError(result.stderr.strip() or f"arecord -l exited {result.returncode}")
-    listing = re.findall(
-        rf"(?m)^card\s+{card_index}:\s+Array\s+\[Microphone Array\],\s+"
-        r"device\s+0:\s+",
-        result.stdout,
-    )
-    if len(listing) != 1:
-        raise MicrophoneError(
-            "ALSA did not uniquely enumerate device 0 of the USB-bound "
-            "Microsoft Microphone Array card.")
+    cards = re.findall(
+        r"^card (\d+): Array \[Microphone Array\], device 0: USB Audio \[USB Audio\]$",
+        result.stdout, re.MULTILINE)
+    if len(cards) != 1:
+        raise MicrophoneError("ALSA did not enumerate the Microsoft Microphone Array.")
+    card = Path(sound_root) / f"card{cards[0]}" / "device"
+    pcm = Path(sound_root) / f"pcmC{cards[0]}D0c" / "device"
+    try:
+        microphone_node = resolve_path(microphone)
+        card_node = resolve_path(card)
+        pcm_node = resolve_path(pcm)
+    except OSError as error:
+        raise MicrophoneError(f"Cannot resolve ALSA/USB ancestry: {error}") from error
+    for label, path, node in (("card", card, card_node), ("PCM", pcm, pcm_node)):
+        if microphone_node != node and microphone_node not in node.parents:
+            raise MicrophoneError(
+                f"ALSA {label} {path} does not descend from USB microphone node {microphone.name}.")
     return {
         "status": "ready",
-        "usb_id": identity.lower(),
-        "usb_path": USB_PATH,
+        "hub_usb_id": HUB_USB_ID,
+        "hub_path": hub.name,
+        "usb_id": USB_ID,
+        "usb_path": microphone.name,
         "alsa_device": device,
-        "alsa_card_index": card_index,
+        "alsa_card_node": card.parent.name,
+        "alsa_pcm_node": pcm.parent.name,
         "format": FORMAT,
         "rate_hz": RATE,
         "channels": CHANNELS,
@@ -161,9 +187,11 @@ def expected_bytes(duration_seconds, file_type):
     return payload + (44 if file_type == "wav" else 0)
 
 
-def capture(output, *, device, duration_seconds, max_bytes, file_type,
+def capture(output, *, device, hub_path, duration_seconds, max_bytes, file_type,
             run=False, authorize_audio_capture=False, read_text=None, runner=None,
-            kernel_release=None, path_exists=None, resolve_path=None):
+            kernel_release=None, path_exists=None, list_entries=None,
+            resolve_path=None, usb_root=Path("/sys/bus/usb/devices"),
+            sound_root=Path("/sys/class/sound")):
     """Capture one bounded native-profile file after exact live verification."""
     if run is not True or authorize_audio_capture is not True:
         raise ValueError("Literal run=True and authorize_audio_capture=True are required.")
@@ -172,9 +200,9 @@ def capture(output, *, device, duration_seconds, max_bytes, file_type,
         raise ValueError(f"max_bytes must equal the exact bound {limit}.")
     destination = marvin_paths.new_output_path(output)
     device_info = list_device(
-        device=device, run=True, read_text=read_text, runner=runner,
-        kernel_release=kernel_release, path_exists=path_exists,
-        resolve_path=resolve_path)
+        device=device, hub_path=hub_path, run=True, read_text=read_text, runner=runner,
+        kernel_release=kernel_release, path_exists=path_exists, list_entries=list_entries,
+        resolve_path=resolve_path, usb_root=usb_root, sound_root=sound_root)
     runner = runner or subprocess.run
     command = [
         "arecord", "--quiet", f"--device={device}", f"--file-type={file_type}",
@@ -224,10 +252,12 @@ def main(argv=None):
     list_parser = subparsers.add_parser("list", help="verify the exact live device without opening PCM")
     list_parser.add_argument("--run", action="store_true")
     list_parser.add_argument("--device", required=True)
+    list_parser.add_argument("--hub-path", required=True)
     capture_parser = subparsers.add_parser("capture", help="capture one bounded native-profile file")
     capture_parser.add_argument("--run", action="store_true")
     capture_parser.add_argument("--authorize-audio-capture", action="store_true")
     capture_parser.add_argument("--device", required=True)
+    capture_parser.add_argument("--hub-path", required=True)
     capture_parser.add_argument("--duration", type=int, required=True)
     capture_parser.add_argument("--max-bytes", type=int, required=True)
     capture_parser.add_argument("--type", choices=("raw", "wav"), required=True)
@@ -237,10 +267,11 @@ def main(argv=None):
         if args.command in (None, "status"):
             result = offline_status()
         elif args.command == "list":
-            result = list_device(device=args.device, run=args.run)
+            result = list_device(device=args.device, hub_path=args.hub_path, run=args.run)
         else:
             result = capture(
-                args.output, device=args.device, duration_seconds=args.duration,
+                args.output, device=args.device, hub_path=args.hub_path,
+                duration_seconds=args.duration,
                 max_bytes=args.max_bytes, file_type=args.type, run=args.run,
                 authorize_audio_capture=args.authorize_audio_capture)
     except (ValueError, MicrophoneError, FileExistsError, FileNotFoundError) as error:

@@ -32,20 +32,32 @@ class MicrophoneTests(unittest.TestCase):
     @staticmethod
     def read_text(path):
         values = {
+            "/usb/1-1.1.2/idVendor": "2109\n",
+            "/usb/1-1.1.2/idProduct": "2817\n",
             "/sys/bus/usb/devices/1-1.1.2.4/idVendor": "045e\n",
             "/sys/bus/usb/devices/1-1.1.2.4/idProduct": "fff0\n",
-            "/proc/asound/cards": (
-                " 1 [Array          ]: USB-Audio - Microsoft Microphone Array\n"),
             "/proc/asound/Array/stream0": STREAM,
         }
         return values[str(path)]
 
-    @staticmethod
-    def resolve_path(path):
-        usb = Path("/sys/devices/pci/usb1/1-1/1-1.1/1-1.1.2/1-1.1.2.4")
-        if str(path).startswith("/sys/class/sound/"):
-            return usb / "1-1.1.2.4:1.2" / "sound" / path.name
-        return usb
+    def live_options(self):
+        usb = Path("/usb")
+        microphone_node = Path("/devices/usb/1-1.1.2.4")
+        return {
+            "hub_path": "1-1.1.2",
+            "read_text": self.read_text,
+            "path_exists": lambda path: True,
+            "usb_root": usb,
+            "sound_root": Path("/sound"),
+            "list_entries": lambda root: [
+                usb / "1-1.1.2", Path("/sys/bus/usb/devices/1-1.1.2.4")],
+            "resolve_path": lambda path: (
+                microphone_node / "1-1.1.2.4:1.2/sound/card1/pcmC1D0c"
+                if path == Path("/sound/pcmC1D0c/device")
+                else microphone_node / "1-1.1.2.4:1.1"
+                if path == Path("/sound/card1/device")
+                else microphone_node),
+        }
 
     def test_import_and_default_status_are_offline(self):
         with patch.object(subprocess, "run", side_effect=AssertionError("no subprocess")), \
@@ -64,42 +76,56 @@ class MicrophoneTests(unittest.TestCase):
             [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
         runner = Mock(return_value=listing)
         with self.assertRaises(ValueError):
-            microphone.list_device(device=microphone.ALSA_DEVICE, read_text=self.read_text, runner=runner)
+            microphone.list_device(device=microphone.ALSA_DEVICE, runner=runner, **self.live_options())
         with self.assertRaises(ValueError):
-            microphone.list_device(device="default", run=True, read_text=self.read_text, runner=runner)
+            microphone.list_device(device="default", run=True, runner=runner, **self.live_options())
         with self.assertRaisesRegex(microphone.MicrophoneError, "override is missing"):
             microphone.list_device(
-                device=microphone.ALSA_DEVICE, run=True, read_text=self.read_text,
-                runner=runner, path_exists=lambda path: False)
+                device=microphone.ALSA_DEVICE, run=True, runner=runner,
+                **(self.live_options() | {"path_exists": lambda path: False}))
         result = microphone.list_device(
-            device=microphone.ALSA_DEVICE, run=True, read_text=self.read_text, runner=runner,
-            path_exists=lambda path: True, resolve_path=self.resolve_path)
+            device=microphone.ALSA_DEVICE, run=True, runner=runner, **self.live_options())
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["usb_id"], microphone.USB_ID)
-        self.assertEqual(result["alsa_card_index"], 1)
+        self.assertEqual(result["hub_usb_id"], microphone.HUB_USB_ID)
+        self.assertEqual(result["usb_path"], "1-1.1.2.4")
+        self.assertEqual(result["alsa_card_node"], "card1")
+        self.assertEqual(result["alsa_pcm_node"], "pcmC1D0c")
         runner.assert_called_once_with(
             ["arecord", "-l"], capture_output=True, text=True, timeout=3, check=False)
 
-        def mismatched(path):
-            if str(path).startswith("/sys/class/sound/"):
-                return Path("/sys/devices/unrelated/sound") / path.name
-            return self.resolve_path(path)
-
-        with self.assertRaisesRegex(microphone.MicrophoneError, "not below reviewed USB"):
+    def test_live_list_stops_on_topology_ambiguity_or_ancestry_mismatch(self):
+        listing = subprocess.CompletedProcess(
+            [], 0, "card 1: Array [Microphone Array], device 0: USB Audio [USB Audio]\n", "")
+        options = self.live_options()
+        duplicate = Path("/sys/bus/usb/devices/1-1.1.2.5")
+        values = {
+            "/usb/1-1.1.2/idVendor": "2109\n",
+            "/usb/1-1.1.2/idProduct": "2817\n",
+            "/sys/bus/usb/devices/1-1.1.2.4/idVendor": "045e\n",
+            "/sys/bus/usb/devices/1-1.1.2.4/idProduct": "fff0\n",
+            str(duplicate / "idVendor"): "045e\n",
+            str(duplicate / "idProduct"): "fff0\n",
+            "/proc/asound/Array/stream0": STREAM,
+        }
+        with self.assertRaisesRegex(microphone.MicrophoneError, "found 2"):
             microphone.list_device(
-                device=microphone.ALSA_DEVICE, run=True, read_text=self.read_text,
-                runner=Mock(), path_exists=lambda path: True,
-                resolve_path=mismatched)
-        with self.assertRaisesRegex(microphone.MicrophoneError, "exactly one ALSA card"):
+                device=microphone.ALSA_DEVICE, run=True, runner=Mock(return_value=listing),
+                **(options | {
+                    "read_text": lambda path: values[str(path)],
+                    "list_entries": lambda root: options["list_entries"](root) + [duplicate],
+                }))
+        with self.assertRaisesRegex(microphone.MicrophoneError, "does not descend"):
             microphone.list_device(
-                device=microphone.ALSA_DEVICE, run=True,
-                read_text=lambda path: (
-                    self.read_text(path)
-                    + " 2 [Array          ]: USB-Audio - Other Array\n"
-                    if str(path) == "/proc/asound/cards"
-                    else self.read_text(path)),
-                runner=Mock(), path_exists=lambda path: True,
-                resolve_path=self.resolve_path)
+                device=microphone.ALSA_DEVICE, run=True, runner=Mock(return_value=listing),
+                **(options | {
+                    "resolve_path": lambda path: (
+                        Path("/devices/other/pcmC1D0c")
+                        if path == Path("/sound/pcmC1D0c/device")
+                        else Path("/devices/usb/1-1.1.2.4/1-1.1.2.4:1.1")
+                        if path == Path("/sound/card1/device")
+                        else Path("/devices/usb/1-1.1.2.4")),
+                }))
 
     def test_capture_is_bounded_exclusive_and_surfaces_failures(self):
         duration, file_type = 1, "raw"
@@ -112,8 +138,7 @@ class MicrophoneTests(unittest.TestCase):
         result = microphone.capture(
             output, device=microphone.ALSA_DEVICE, duration_seconds=duration,
             max_bytes=limit, file_type=file_type, run=True,
-            authorize_audio_capture=True, read_text=self.read_text, runner=runner,
-            path_exists=lambda path: True, resolve_path=self.resolve_path)
+            authorize_audio_capture=True, runner=runner, **self.live_options())
         self.assertEqual((result["bytes"], output.stat().st_size), (limit, limit))
         self.assertEqual(output.stat().st_mode & 0o777, 0o600)
         command = runner.call_args_list[1].args[0]
@@ -125,16 +150,14 @@ class MicrophoneTests(unittest.TestCase):
             microphone.capture(
                 output, device=microphone.ALSA_DEVICE, duration_seconds=duration,
                 max_bytes=limit, file_type=file_type, run=True,
-                authorize_audio_capture=True, read_text=self.read_text, runner=Mock(),
-                path_exists=lambda path: True, resolve_path=self.resolve_path)
+                authorize_audio_capture=True, runner=Mock(), **self.live_options())
         failed = Mock(side_effect=[
             listing, subprocess.CompletedProcess([], 1, b"", b"pcm_read: Input/output error")])
         with self.assertRaisesRegex(microphone.MicrophoneError, "pcm_read"):
             microphone.capture(
                 self.root / "failed.pcm", device=microphone.ALSA_DEVICE,
                 duration_seconds=duration, max_bytes=limit, file_type=file_type,
-                run=True, authorize_audio_capture=True, read_text=self.read_text, runner=failed,
-                path_exists=lambda path: True, resolve_path=self.resolve_path)
+                run=True, authorize_audio_capture=True, runner=failed, **self.live_options())
         self.assertFalse((self.root / "failed.pcm").exists())
 
     def test_capture_creation_and_write_interrupts_leave_no_output(self):
@@ -150,10 +173,8 @@ class MicrophoneTests(unittest.TestCase):
                     output, device=microphone.ALSA_DEVICE,
                     duration_seconds=1, max_bytes=limit, file_type="raw",
                     run=True, authorize_audio_capture=True,
-                    read_text=self.read_text,
                     runner=Mock(side_effect=[listing, captured]),
-                    path_exists=lambda path: True,
-                    resolve_path=self.resolve_path)
+                    **self.live_options())
             self.assertFalse(output.exists())
 
         mask_calls = 0
@@ -197,12 +218,14 @@ class MicrophoneTests(unittest.TestCase):
 
     def test_cli_rejects_unbounded_or_unconsented_capture(self):
         for args in (
-            ["capture", "--device", microphone.ALSA_DEVICE, "--duration", "5",
+            ["capture", "--device", microphone.ALSA_DEVICE, "--hub-path", "1-1.1.2", "--duration", "5",
              "--max-bytes", "1280000", "--type", "raw", "--output", str(self.root / "a")],
             ["capture", "--run", "--authorize-audio-capture", "--device", microphone.ALSA_DEVICE,
+             "--hub-path", "1-1.1.2",
              "--duration", "6", "--max-bytes", "1536000", "--type", "raw",
              "--output", str(self.root / "b")],
             ["capture", "--run", "--authorize-audio-capture", "--device", microphone.ALSA_DEVICE,
+             "--hub-path", "1-1.1.2",
              "--duration", "5", "--max-bytes", "9999999", "--type", "raw",
              "--output", str(self.root / "c")],
         ):
