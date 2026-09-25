@@ -4,6 +4,9 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -210,6 +213,75 @@ class MarvinFacadeTests(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "missed its fixed"):
             run(overrun)
         self.assertEqual(overrun.steps, ["on", "off"])
+
+    def test_live_cli_combined_confirmation_passes_coordinator_gate_in_subprocess(self):
+        root = Path(marvin.__file__).parent
+        with tempfile.TemporaryDirectory() as directory:
+            confirmed = Path(directory) / "confirmed"
+            omitted = Path(directory) / "omitted"
+            script = f"""
+import contextlib
+import io
+from unittest.mock import patch
+import marvin
+from tools import marvin_legacy_zero as zero
+from tools import marvin_session
+
+baseline = {{
+    "usb": {{
+        "usb_path": "/fake/1-1.1.3.3",
+        "physical_port": "1-1.1.3.3",
+        "idVendor": "045e",
+        "idProduct": "4444",
+        "busnum": 1,
+        "devnum": 2,
+        "sysfs_device": 3,
+        "sysfs_inode": 4,
+        "descriptors_sha256": marvin.marvin_campaign.DESCRIPTOR_HASH,
+        "descriptors_bytes": 71,
+    }},
+    "tty": "/dev/fake-marvin",
+    "tty_rdev": 5,
+}}
+
+def arm(clock):
+    clock.offset = (0, 0)
+
+stderr = io.StringIO()
+with patch.object(marvin_session, "preflight", side_effect=[
+        baseline, OSError("POST_GATE_IDENTITY_DEVICE_BOUNDARY"),
+    ]), patch.object(zero.IngressClock, "start", arm), \\
+        patch.object(zero.IngressClock, "close"), \\
+        patch.object(marvin_session.os, "geteuid", return_value=1000), \\
+        contextlib.redirect_stderr(stderr):
+    result = marvin.main([
+        "projector", "power", "on", "--run",
+        "--expected-physical-port", "1-1.1.3.3",
+        "--output", {str(confirmed)!r}, "--confirm-safe-setup",
+    ])
+assert result == 1, result
+assert "POST_GATE_IDENTITY_DEVICE_BOUNDARY" in stderr.getvalue(), stderr.getvalue()
+assert "actuators-isolated" not in stderr.getvalue(), stderr.getvalue()
+
+stderr = io.StringIO()
+with patch.object(marvin_session, "preflight",
+                  side_effect=AssertionError("DEVICE_BOUNDARY_REACHED")), \\
+        contextlib.redirect_stderr(stderr):
+    result = marvin.main([
+        "projector", "power", "on", "--run",
+        "--expected-physical-port", "1-1.1.3.3",
+        "--output", {str(omitted)!r},
+    ])
+assert result == 1, result
+assert "safety_confirmed=True" in stderr.getvalue(), stderr.getvalue()
+"""
+            completed = subprocess.run(
+                [sys.executable, "-B", "-c", script],
+                cwd=root, capture_output=True, text=True)
+            self.assertEqual(
+                completed.returncode, 0,
+                completed.stdout + completed.stderr)
+            self.assertFalse(omitted.exists())
 
     def test_cli_help_plans_and_failure_surface(self):
         stdout = io.StringIO()

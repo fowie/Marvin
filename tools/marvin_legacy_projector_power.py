@@ -240,7 +240,10 @@ def run_smoke(output, *, expected_physical_port, run=False, **acknowledgments):
         observe=_observe,
         limits=zero._Limits(
             first_sequence=FIRST_SEQUENCE, max_requests=2, interval=0),
-        session_options={},
+        session_options={
+            "actuators_isolated": True,
+            "_projector_power_smoke": True,
+        },
         declarations={"operator_declarations": dict(acknowledgments)},
         expected_tx=lambda report: report["accepted_tx_bytes"],
         success_status="projector_power_smoke_complete_protocol_only",
