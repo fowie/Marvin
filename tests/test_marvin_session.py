@@ -119,6 +119,36 @@ class SessionTests(unittest.TestCase):
         command = self.popen.call_args.args[0]
         self.assertEqual(command[command.index("--binary-payload-limit") + 1], "4096")
 
+    def test_read_only_sensor_snapshot_has_one_fixed_legacy_session(self):
+        from marvin_sensors import TRANSCRIPT
+
+        runner = Mock(side_effect=self.capture)
+        options = dict(
+            seconds=15, actuators_isolated=True, baudrate=57600,
+            allow_unknown_command=True, allow_telemetry_state_change=True,
+            probe_profile="legacy", capture_runner=runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, _sensor_snapshot=True,
+        )
+        for invalid in (
+                {"_sensor_snapshot": 1}, {"actuators_isolated": False},
+                {"allow_telemetry_state_change": False}, {"baudrate": 115200},
+                {"probe_get_unit_info": True}, {"seconds": 14}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.run_capture(**(options | invalid))
+        self.preflight.assert_not_called()
+
+        result = self.run_capture(**options)
+        self.assertEqual(result["probe_name"], "ReadOnlySensorSnapshot")
+        self.assertEqual(result["requested_application_bytes"], 40)
+        self.assertEqual(
+            result["immutable_application_transcript_hex"],
+            [raw.hex() for raw in TRANSCRIPT],
+        )
+        command = self.popen.call_args.args[0]
+        self.assertIn("--actuators-isolated", command)
+        runner.assert_called_once()
+
     def test_isolated_zero_mode_has_fixed_guards_and_separate_transcript_metadata(self):
         from tools.marvin_legacy_zero import ZERO_TRANSCRIPT
         options = dict(seconds=15, actuators_isolated=True, baudrate=57600,

@@ -259,7 +259,8 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
     ingress = UsbIngress(output / "capture" / "usb" / "binary-events.bin", baseline["usb"], clock)
     report = {"status": "not_started", "accepted_tx_bytes": 0, "uncertain_tx_bytes": 0,
               "write_status": "not_attempted"}
-    metadata = {"status": "incomplete", "evidence_kind": "recorded", "review": review, "baseline": baseline,
+    metadata = {"status": "incomplete", "evidence_kind": "recorded",
+                "output_directory": str(output), "review": review, "baseline": baseline,
                 **declarations,
                 **({"unvalidated_zero_velocity_authorized": True} if authorizations is None else authorizations),
                 "application_acknowledgment": "not_established",

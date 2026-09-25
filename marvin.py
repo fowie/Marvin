@@ -112,10 +112,25 @@ class Marvin:
             safety_confirmed=safety_confirmed,
         )
 
-    def sensors(self):
+    def sensors(self, *, actuators_isolated=False, unprivileged_usbmon=False):
         """Return the offline sensor plan or one injected persistent-session snapshot."""
         if not self.run:
             return marvin_sensors.plan()
+        if self.sensor_transport is None:
+            if not self.expected_physical_port or self.output is None:
+                raise ValueError(
+                    "Live sensors require expected_physical_port and a new output directory.")
+            return marvin_sensors.run_live_snapshot(
+                self.output,
+                expected_physical_port=self.expected_physical_port,
+                run=True,
+                actuators_isolated=actuators_isolated,
+                unprivileged_usbmon=unprivileged_usbmon,
+            )
+        if self.output is not None or actuators_isolated or unprivileged_usbmon:
+            raise ValueError(
+                "Injected sensor transports cannot accept CLI evidence options; "
+                "use the installed live runner to seal evidence.")
         return marvin_sensors.read_snapshot(
             self.sensor_transport,
             ownership_key=self.sensor_ownership_key,
@@ -543,9 +558,15 @@ and physical stop remain unproved and require operator observation/cutoff.""",
     _live_arguments(status, safety=False)
     sensors = actions.add_parser(
         "sensors", help="show the exact read-only sensor plan and schema")
+    _live_arguments(sensors, safety=False)
+    sensors.add_argument("--output", type=Path, metavar="NEWDIR",
+                         help="new sealed evidence directory")
     sensors.add_argument(
-        "--run", action="store_true",
-        help="execute only when main() is embedded with a validated transport")
+        "--actuators-isolated", action="store_true",
+        help="confirm actuator power and signals are isolated")
+    sensors.add_argument(
+        "--unprivileged-usbmon", action="store_true",
+        help="confirm ordinary-user target-scoped USB recording")
     microphone = actions.add_parser(
         "microphone", add_help=False,
         help="delegate to bounded microphone status/list/capture")
@@ -600,7 +621,10 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
         if args.command == "status":
             result = marvin.status()
         elif args.command == "sensors":
-            result = marvin.sensors()
+            result = marvin.sensors(
+                actuators_isolated=args.actuators_isolated,
+                unprivileged_usbmon=args.unprivileged_usbmon,
+            )
         elif args.command == "drive":
             result = marvin.drive(args.direction)
         elif args.command == "stop":
