@@ -1,11 +1,14 @@
 """One real-HTTP lifecycle check for the local continuous operator runtime."""
 
 import json
+import io
 import os
 from pathlib import Path
+import struct
 import tempfile
 from threading import Thread
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from urllib.request import Request, urlopen
@@ -100,7 +103,7 @@ class OperatorTests(unittest.TestCase):
             self.assertEqual(options["expected_physical_port"], "1-3")
             self.assertTrue(all(options["drive_declarations"].values()))
 
-    def test_production_bootstrap_uses_24_hour_session_and_cleanup_reserve(self):
+    def test_production_bootstrap_uses_sustainable_session_and_reserves(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(
                 marvin_operator.zero, "_run_diagnostic",
                 return_value={"status": "planned"}) as run:
@@ -126,6 +129,21 @@ class OperatorTests(unittest.TestCase):
             self.assertEqual(
                 options["usb_max_records"],
                 marvin_operator.OPERATOR_USB_MAX_RECORDS)
+            limits = options["limits"]
+            self.assertEqual(limits.max_requests, marvin_operator.MAX_REQUESTS)
+            self.assertEqual(
+                limits.max_journal_bytes,
+                marvin_operator.OPERATOR_JOURNAL_MAX_BYTES)
+            self.assertEqual(
+                limits.journal_reserve_records,
+                marvin_operator.OPERATOR_JOURNAL_RESERVE_RECORDS)
+            review = options["review"]
+            self.assertEqual(
+                review["cleanup_request_reserve"],
+                marvin_operator.OPERATOR_CLEANUP_REQUESTS)
+            self.assertEqual(
+                review["max_adapter_journal_records"],
+                marvin_operator.OPERATOR_JOURNAL_MAX_RECORDS)
             session = options["session_options"]
             self.assertFalse(session["actuators_isolated"])
             self.assertTrue(session["operator_drive_authorized"])
@@ -135,6 +153,241 @@ class OperatorTests(unittest.TestCase):
             self.assertTrue(all(
                 session[name]
                 for name in marvin_operator.drive_step.COMMON_FLAGS))
+        self.assertLessEqual(
+            marvin_operator.OPERATOR_SESSION_SECONDS
+            * (len(marvin_operator.marvin_sensors.QUERIES)
+               / marvin_operator.OPERATOR_MIN_LIVE_POLL_SECONDS),
+            marvin_operator.MAX_REQUESTS
+            - marvin_operator.OPERATOR_CLEANUP_REQUESTS)
+        with tempfile.TemporaryDirectory() as directory:
+            os.chmod(directory, 0o700)
+            with self.assertRaisesRegex(ValueError, "at least 2 seconds"):
+                marvin_operator.serve_live(
+                    port=0, poll_seconds=0.5, chunk_seconds=300,
+                    expected_physical_port="1-3", evidence_root=directory,
+                    configuration={}, drive_declarations=declarations)
+
+    def test_live_observer_refuses_success_after_runtime_failure(self):
+        declarations = {
+            "authorize_unvalidated_drive_step": True,
+            **dict.fromkeys(marvin_operator.drive_step.COMMON_FLAGS, True),
+        }
+        report = {
+            "status": "not_started", "uncertain_tx_bytes": 0,
+            "accepted_tx_bytes": 0, "responses": 0,
+        }
+
+        def diagnostic(*_args, **options):
+            options["observe"](SimpleNamespace(token=b"identity"), report)
+
+        def fail_runtime(runtime, **_options):
+            runtime._state = "failed"
+            runtime._last_error = "mandatory stop failed"
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                marvin_operator.zero, "_run_diagnostic",
+                side_effect=diagnostic), patch.object(
+                    marvin_operator, "serve", side_effect=fail_runtime):
+            os.chmod(directory, 0o700)
+            with self.assertRaisesRegex(
+                    OSError, "failed: mandatory stop failed"):
+                marvin_operator.serve_live(
+                    port=0, poll_seconds=2, chunk_seconds=300,
+                    expected_physical_port="1-3", evidence_root=directory,
+                    configuration={}, drive_declarations=declarations)
+        self.assertNotEqual(report["status"], "operator_shutdown_complete")
+
+    def test_operator_journal_and_application_reserve_mandatory_cleanup(self):
+        limits = marvin_operator.zero._Limits(
+            max_journal_bytes=4096, max_journal_records=3,
+            journal_reserve_bytes=512, journal_reserve_records=1)
+        transport = marvin_operator._OperatorTransport(
+            "unused", {}, ".", None, guard=lambda: None, plan=limits)
+        transport.journal = io.BytesIO()
+        transport.event("normal_one")
+        transport.event("normal_two")
+        with self.assertRaisesRegex(OSError, "journal budget exhausted"):
+            transport.event("normal_three")
+        transport.begin_cleanup_reserve()
+        transport.event("mandatory_zero")
+        transport.end_cleanup_reserve()
+        self.assertEqual(transport.journal_records, 3)
+
+        class BudgetTransport:
+            submit = marvin_operator._OperatorTransport.submit
+            application_bytes = marvin_operator.OPERATOR_NORMAL_APPLICATION_BYTES
+            submitted = []
+
+            def _submit_once(self, raw, *, deadline):
+                self.submitted.append((raw, deadline))
+                return len(raw)
+
+        budget = BudgetTransport()
+        zero = marvin_operator._frame(
+            65535, marvin_operator.RAW_PWM_COMMAND,
+            marvin_operator.pilot.ZERO_PWM)
+        with self.assertRaisesRegex(OSError, "byte budget exhausted"):
+            budget.submit(zero, deadline=1)
+        self.assertEqual(
+            budget.submit(zero, deadline=2, mandatory=True), len(zero))
+        self.assertEqual(budget.submitted, [(zero, 2)])
+        owner = marvin_operator.ProductionControllerOwner(
+            SimpleNamespace(token=b"identity"), {})
+        owner.sequence = 65536 - marvin_operator.OPERATOR_CLEANUP_REQUESTS
+        with self.assertRaisesRegex(OSError, "sequence budget exhausted"):
+            owner._next_sequence()
+        self.assertEqual(
+            owner._next_sequence(mandatory=True),
+            65536 - marvin_operator.OPERATOR_CLEANUP_REQUESTS)
+
+    def test_drive_uses_accepted_response_window_hold_and_cleanup_bound(self):
+        class Transport:
+            token = b"identity"
+            last_write_started = None
+
+            def __init__(self):
+                self.fd, self.writer = os.pipe()
+                self.submissions = []
+                self.cleanup_reserve = False
+                self.ingress = SimpleNamespace(pump=lambda: None)
+
+            def submit(self, raw, *, deadline, mandatory=False):
+                request = marvin_operator.protocol.decode_packet(raw)
+                self.last_write_started = time.monotonic()
+                self.last_write_sequence = request.sequence
+                self.submissions.append(
+                    (request.payload, self.last_write_started, mandatory))
+                body = b"S" + struct.pack(
+                    "<HBBH", request.sequence, request.command, 0x80, 0)
+                os.write(
+                    self.writer,
+                    body
+                    + struct.pack(
+                        "<H", marvin_operator.protocol.crc16(body))
+                    + b"E")
+                return len(raw)
+
+            def read_response(self, _size, *, deadline):
+                started = time.monotonic()
+                data = os.read(self.fd, 512)
+                return SimpleNamespace(
+                    data=data, started_at=started,
+                    ended_at=time.monotonic())
+
+            def event(self, _name, **_fields):
+                return None
+
+            def wait(self, seconds):
+                time.sleep(seconds)
+
+            def begin_cleanup_reserve(self):
+                self.cleanup_reserve = True
+
+            def end_cleanup_reserve(self):
+                self.cleanup_reserve = False
+
+            def close(self):
+                os.close(self.fd)
+                os.close(self.writer)
+
+        transport = Transport()
+        owner = marvin_operator.ProductionControllerOwner(
+            transport,
+            {"uncertain_tx_bytes": 0, "accepted_tx_bytes": 0,
+             "responses": 0},
+            operation_deadline=time.monotonic() + 10)
+        owner.started = True
+        try:
+            owner.drive_step("forward")
+        finally:
+            transport.close()
+        self.assertEqual(len(transport.submissions), 3)
+        prezero, nonzero, cleanup = transport.submissions
+        self.assertEqual(prezero[0], marvin_operator.pilot.ZERO_PWM)
+        self.assertNotEqual(nonzero[0], marvin_operator.pilot.ZERO_PWM)
+        self.assertEqual(cleanup[0], marvin_operator.pilot.ZERO_PWM)
+        self.assertFalse(prezero[2])
+        self.assertFalse(nonzero[2])
+        self.assertTrue(cleanup[2])
+        hold_before_cleanup = cleanup[1] - nonzero[1]
+        self.assertGreaterEqual(
+            hold_before_cleanup,
+            marvin_operator.pilot.RESPONSE_SECONDS
+            + marvin_operator.drive_step.DURATION_SECONDS)
+        self.assertLessEqual(
+            hold_before_cleanup,
+            marvin_operator.pilot.QUARTER_SECOND_CLEANUP_BOUND_SECONDS)
+
+    def test_operator_getter_completes_on_first_correlated_response(self):
+        class Transport:
+            token = b"identity"
+            last_write_started = None
+            reads = 0
+
+            def submit(self, raw, *, deadline):
+                request = marvin_operator.protocol.decode_packet(raw)
+                payload = bytes(
+                    marvin_operator.protocol.GETTERS["read-raw-data"].payload_bytes)
+                body = (
+                    b"S"
+                    + struct.pack(
+                        "<HBBH", request.sequence, request.command, 0x80,
+                        len(payload))
+                    + payload)
+                self.response = (
+                    body
+                    + struct.pack(
+                        "<H", marvin_operator.protocol.crc16(body))
+                    + b"E")
+                self.last_write_started = time.monotonic()
+                return len(raw)
+
+            def read_response(self, _size, *, deadline):
+                self.reads += 1
+                now = time.monotonic()
+                return SimpleNamespace(
+                    data=self.response, started_at=now, ended_at=now)
+
+            def event(self, _name, **_fields):
+                return None
+
+        transport = Transport()
+        owner = marvin_operator.ProductionControllerOwner(
+            transport,
+            {"uncertain_tx_bytes": 0, "accepted_tx_bytes": 0,
+             "responses": 0})
+        owner.started = True
+        started = time.monotonic()
+        owner._exchange(
+            marvin_operator.protocol.GETTERS["read-raw-data"].command,
+            expected_payload=(
+                marvin_operator.protocol.GETTERS["read-raw-data"].payload_bytes),
+            timeout=1)
+        self.assertEqual(transport.reads, 1)
+        self.assertLess(time.monotonic() - started, 0.1)
+
+    def test_sensor_polling_pauses_during_deadman_lease(self):
+        source = Source()
+        drive = marvin_operator.marvin_managers.DriveManager(
+            lambda _direction: None, lambda: None)
+        runtime = marvin_operator.OperatorRuntime(
+            source, poll_seconds=0.5, managers={"drive": drive})
+        runtime.start()
+        try:
+            deadline = time.monotonic() + 2
+            while source.reads == 0 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            lease = runtime.manager_action("drive", "acquire", {})["lease"]
+            reads = source.reads
+            time.sleep(0.6)
+            self.assertEqual(source.reads, reads)
+            runtime.manager_action("drive", "release", {"lease": lease})
+            deadline = time.monotonic() + 2
+            while source.reads == reads and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertGreater(source.reads, reads)
+        finally:
+            runtime.close()
 
     def test_deadman_cancels_pending_acquire_without_motion(self):
         script = marvin_dashboard.DEADMAN_CORE + """
@@ -226,7 +479,7 @@ runHeartbeatLoop(token,t=>!t.cancelled,
         owner.started = True
         submitted = []
 
-        def setter(payload):
+        def setter(payload, **_options):
             submitted.append(payload)
             if payload != marvin_operator.pilot.ZERO_PWM:
                 raise OSError("nonzero submission uncertain")
@@ -234,7 +487,7 @@ runHeartbeatLoop(token,t=>!t.cancelled,
         owner._setter = setter
         with patch.object(
                 marvin_operator.motor_consent,
-                "notify_powered_trial_fault") as notify, \
+                "notify_powered_trial_fault_once") as notify, \
                 self.assertRaisesRegex(OSError, "nonzero submission uncertain"):
             owner.drive_step("forward")
         self.assertEqual(submitted[-1], marvin_operator.pilot.ZERO_PWM)
@@ -249,13 +502,18 @@ runHeartbeatLoop(token,t=>!t.cancelled,
 
         class Transport:
             token = b"identity"
-            def wait(self, _seconds): now[0] = 7.0
+            last_write_started = 5.0
+            def wait(self, seconds): now[0] += seconds
 
         owner = marvin_operator.ProductionControllerOwner(
             Transport(), {}, clock=lambda: now[0], operation_deadline=6.0)
         owner.started = True
         submitted = []
-        owner._setter = submitted.append
+        def setter(payload, **_options):
+            submitted.append(payload)
+            owner.transport.last_write_started = now[0]
+
+        owner._setter = setter
         owner.drive_step("forward")
         self.assertEqual(submitted[0], marvin_operator.pilot.ZERO_PWM)
         self.assertNotEqual(submitted[1], marvin_operator.pilot.ZERO_PWM)

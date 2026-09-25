@@ -1020,7 +1020,7 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
         raise UsbmonError("An extended payload budget requires the binary backend.")
     binary_options = ({} if binary_payload_limit == binary.PAYLOAD_LIMIT
                       else {"payload_limit": binary_payload_limit})
-    maximum_seconds = 86440 if operator_console else 120
+    maximum_seconds = 8 * 60 * 60 + 40 if operator_console else 120
     if (not isinstance(seconds, (int, float)) or isinstance(seconds, bool)
             or (isinstance(seconds, float) and not math.isfinite(seconds))
             or not 0 < seconds <= maximum_seconds):
@@ -1028,14 +1028,14 @@ def capture(usb_path, output, *, seconds, actuators_isolated=False,
             "seconds must be finite, greater than zero and at most "
             f"{maximum_seconds}.")
     if operator_console and (
-            seconds != 86440
+            seconds != 8 * 60 * 60 + 40
             or os.geteuid() == 0 or backend != "binary"
             or binary_payload_limit != 4096 or coordinator_stop is not True
             or max_bytes != 64 * DEFAULT_MAX_BYTES
             or max_records != 1_000_000 or max_line_bytes != 16384
             or max_pending != DEFAULT_MAX_PENDING):
         raise UsbmonError(
-            "Operator console recorder requires the fixed 24-hour private "
+            "Operator console recorder requires the fixed eight-hour private "
             "binary evidence profile.")
     if actuators_isolated is not True and not (
             preparation or observation or front_servo_profile):

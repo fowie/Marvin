@@ -217,9 +217,10 @@ class DriveManager:
 class LedManager:
     """One captured baseline and one evidence-mapped LED at a time."""
 
-    def __init__(self, read_state, write_state):
+    def __init__(self, read_state, write_state, restore_state=None):
         self._read = read_state
         self._write = write_state
+        self._restore_write = write_state if restore_state is None else restore_state
         self._state = "new"
         self._baseline = None
         self._payload = None
@@ -239,7 +240,7 @@ class LedManager:
         if values:
             raise ValueError("LED actions accept no fields.")
         if name == "reset":
-            self._restore()
+            self._restore(mandatory=False)
             return self.status()
         prefix, enabled = (
             ("on_", True) if name.startswith("on_") else
@@ -265,7 +266,7 @@ class LedManager:
         except BaseException as error:
             primary = f"{type(error).__name__}: {error}"[:1024]
             try:
-                self._restore()
+                self._restore(mandatory=True)
             except BaseException as cleanup:
                 error.add_note(f"Baseline restore also failed: {cleanup}")
                 self._state = "failed"
@@ -280,10 +281,11 @@ class LedManager:
     def tick(self, _now):
         return False
 
-    def _restore(self):
+    def _restore(self, *, mandatory):
         try:
             if self._baseline is not None:
-                self._write(self._baseline)
+                (self._restore_write if mandatory else self._write)(
+                    self._baseline)
                 self._payload = self._baseline
         except BaseException as error:
             self._state = "failed"
@@ -315,7 +317,7 @@ class LedManager:
     def close(self):
         try:
             if self._state != "new":
-                self._restore()
+                self._restore(mandatory=True)
         finally:
             self._state = "stopped"
 
@@ -631,11 +633,12 @@ class CameraManager(_RecorderManager):
 
 
 def build_managers(*, drive_action, stop_action, read_led_state, write_led_state,
-                   microphone=None, camera=None):
+                   restore_led_state=None, microphone=None, camera=None):
     """Build the four named managers around production owner-bound callbacks."""
     return {
         "drive": DriveManager(drive_action, stop_action),
-        "leds": LedManager(read_led_state, write_led_state),
+        "leds": LedManager(
+            read_led_state, write_led_state, restore_led_state),
         "microphone": MicrophoneManager() if microphone is None else microphone,
         "camera": CameraManager() if camera is None else camera,
     }

@@ -60,14 +60,22 @@ prevent live startup. Missing media paths omit those managers, so their controls
 remain visibly disabled. The CLI opens no device until all required live
 configuration is present and does not fall back to a weaker serial path.
 
-The production coordinator admits live controls for a 24-hour operator session
-inside a 24-hour-plus-30-second serial evidence envelope. Its private binary
+The production coordinator admits live controls for an eight-hour operator
+session inside an eight-hour-plus-30-second serial evidence envelope. Live
+polling is never faster than two seconds. This ceiling keeps four-getter
+snapshots and accepted controller actions within the non-wrapping sequence
+space while reserving 64 final transactions for mandatory stop and LED
+baseline restore. The bounded adapter journal permits 256 MiB/500,000 records
+and separately reserves 1 MiB/2,048 records for that cleanup. Its private binary
 usbmon recorder has a further ten-second coordinated tail/close allowance. At
 the session limit it shuts down the HTTP server and runtime, leaving 30 seconds
 for priority stop, LED baseline restore, transport close, and evidence
-finalization. Motion admission expiry never applies to the mandatory all-zero
-stop path. Any runtime/cleanup failure closes the listener and seals a failed
-result rather than leaving a success-like dashboard running.
+finalization. Motion admission expiry and normal journal/application budgets
+never apply to the reserved mandatory all-zero stop path. Any runtime/cleanup
+failure closes the listener and seals a failed result rather than leaving a
+success-like dashboard running. Recorder, session-guard, transport, and
+post-nonzero failures also print `CUT_POWER_REQUIRED` directly on the parent
+operator terminal; the private usbmon stderr artifact is not the only warning.
 
 ## JSON and SSE routes
 
@@ -106,13 +114,18 @@ sensor snapshot is also sent as a `sensor` event.
 
 ## Drive boundary
 
-A dead-man heartbeat admits at most one fresh proved 250 ms action. Its lease is
-0.75 seconds and one owner is allowed. Release, expiry, observable response
+A dead-man heartbeat admits at most one fresh proved 250 ms action. Sensor
+polling pauses for the lifetime of its lease, and a matched getter completes
+without consuming its full one-second failure timeout. Its lease is 0.75
+seconds and one owner is allowed. Release, expiry, observable response
 disconnect, shutdown, cancellation, or action error requests the accepted
-all-zero stop primitive. Fixed-key mode composes exactly four sequential proved
-250 ms actions and stops after the first failure. It is four pulses, not
-calibrated distance and not uninterrupted exact one-second motion. Each injected
-drive callback must retain the accepted primitive's mandatory cleanup.
+all-zero stop primitive. Each setter retains the accepted 500 ms response
+evidence window, then the nonzero setter receives the proved 250 ms hold before
+cleanup submission within the accepted absolute bound. Fixed-key mode composes
+exactly four sequential proved 250 ms actions and stops after the first failure.
+It is four pulses, not calibrated distance and not uninterrupted exact
+one-second motion. Each injected drive callback must retain the accepted
+primitive's mandatory cleanup.
 
 ## LED boundary
 

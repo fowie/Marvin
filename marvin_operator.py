@@ -36,17 +36,25 @@ DEFAULT_CHUNK_SECONDS = 300
 MIN_CHUNK_SECONDS = 10
 MAX_CHUNK_SECONDS = 3600
 MAX_BODY_BYTES = 4096
-MAX_REQUESTS = 65536
 STARTUP_SECONDS = 30.0
-OPERATOR_SESSION_SECONDS = 24 * 60 * 60
+OPERATOR_SESSION_SECONDS = 8 * 60 * 60
 OPERATOR_CLEANUP_RESERVE_SECONDS = 30
 OPERATOR_EVIDENCE_SECONDS = (
     OPERATOR_SESSION_SECONDS + OPERATOR_CLEANUP_RESERVE_SECONDS)
 OPERATOR_USB_MAX_BYTES = 64 * 1024 * 1024
 OPERATOR_USB_MAX_RECORDS = 1_000_000
 OPERATOR_FIRST_SEQUENCE = 4096
+MAX_REQUESTS = 65536 - OPERATOR_FIRST_SEQUENCE
+OPERATOR_CLEANUP_REQUESTS = 64
+OPERATOR_MIN_LIVE_POLL_SECONDS = 2.0
+OPERATOR_JOURNAL_MAX_BYTES = 256 * 1024 * 1024
+OPERATOR_JOURNAL_MAX_RECORDS = 500_000
+OPERATOR_JOURNAL_RESERVE_BYTES = 1024 * 1024
+OPERATOR_JOURNAL_RESERVE_RECORDS = 2048
 OPERATOR_MAX_APPLICATION_BYTES = (
-    (65536 - OPERATOR_FIRST_SEQUENCE) * (10 + 18))
+    MAX_REQUESTS * (10 + 18))
+OPERATOR_NORMAL_APPLICATION_BYTES = (
+    OPERATOR_MAX_APPLICATION_BYTES - OPERATOR_CLEANUP_REQUESTS * (10 + 18))
 RAW_PWM_COMMAND = protocol.decode_packet(
     pilot.STEPS_DUAL_FORWARD_2000_CONNECTED["set"]).command
 LED_SET_COMMAND = protocol.decode_packet(
@@ -86,6 +94,8 @@ def managers_for_owner(owner, *, microphone=False, camera=False):
         stop_action=owner.stop,
         read_led_state=owner.read_led_state,
         write_led_state=owner.write_led_state,
+        restore_led_state=getattr(
+            owner, "restore_led_state", owner.write_led_state),
     )
     if not microphone:
         managers.pop("microphone")
@@ -101,7 +111,7 @@ class _OperatorTransport(LiveTransport):
         super().__init__(*args, **kwargs)
         self.application_bytes = 0
 
-    def submit(self, raw, *, deadline):
+    def submit(self, raw, *, deadline, mandatory=False):
         packet = protocol.decode_packet(raw)
         getter_commands = {spec.command for spec in protocol.GETTERS.values()}
         drive_payloads = {
@@ -123,7 +133,10 @@ class _OperatorTransport(LiveTransport):
         )
         if not allowed:
             raise OSError("Operator transaction is outside the exact getter/drive/LED allowlist.")
-        if self.application_bytes + len(raw) > OPERATOR_MAX_APPLICATION_BYTES:
+        limit = (
+            OPERATOR_MAX_APPLICATION_BYTES if mandatory
+            else OPERATOR_NORMAL_APPLICATION_BYTES)
+        if self.application_bytes + len(raw) > limit:
             raise OSError("Operator application-byte budget exhausted.")
         count = self._submit_once(raw, deadline=deadline)
         if count == len(raw):
@@ -163,43 +176,70 @@ class ProductionControllerOwner:
             raise OSError("Fresh controller identity differs from the pinned preflight.")
         self.started = True
 
-    def _next_sequence(self):
-        if self.sequence > 65535:
+    def _next_sequence(self, *, mandatory=False):
+        last = 65535 if mandatory else 65535 - OPERATOR_CLEANUP_REQUESTS
+        if self.sequence > last:
             raise OSError("Operator sequence budget exhausted; no wrap or reconnect.")
         value = self.sequence
         self.sequence += 1
         return value
 
     def _exchange(self, command, payload=b"", *, expected_payload=None,
-                  accepted=(0x80,), timeout=1):
+                  accepted=(0x80,), timeout=1, full_window=False,
+                  mandatory=False, submit_deadline=None):
         if not self.started:
             raise RuntimeError("Controller owner is not active.")
-        sequence = self._next_sequence()
+        sequence = self._next_sequence(mandatory=mandatory)
         raw = _frame(sequence, command, payload)
-        deadline = time.monotonic() + timeout
-        self.report["uncertain_tx_bytes"] += len(raw)
-        count = self.transport.submit(raw, deadline=deadline)
-        if type(count) is not int or count != len(raw):
-            raise OSError("Operator transaction was not fully accepted; no retry.")
-        self.report["accepted_tx_bytes"] += count
-        self.report["uncertain_tx_bytes"] -= count
-        evidence = zero._ResponseEvidence(
-            self.transport.event, sequence=sequence, command=command,
-            accepted_response_fields=accepted,
-            validate_packet=(
-                None if expected_payload is None else
-                lambda packet: (
-                    [] if len(packet.payload) == expected_payload
-                    else ["unexpected_operator_payload"])),
-        )
-        evidence.submitted_at = time.monotonic()
-        evidence.deadline = deadline
-        zero._observe_response(
-            self.transport, evidence, deadline=deadline, clock=time.monotonic)
-        packet = protocol.decode_packet(
-            bytes.fromhex(evidence.events[0]["stream"]["raw_hex"]))
-        self.report["responses"] += 1
-        return packet, evidence.events[0]
+        submission_deadline = self.clock() + timeout
+        if mandatory:
+            self.transport.begin_cleanup_reserve()
+        try:
+            self.report["uncertain_tx_bytes"] += len(raw)
+            submit_options = {
+                "deadline": (
+                    submission_deadline if submit_deadline is None
+                    else min(submission_deadline, submit_deadline)),
+            }
+            if mandatory:
+                submit_options["mandatory"] = True
+            count = self.transport.submit(raw, **submit_options)
+            if type(count) is not int or count != len(raw):
+                raise OSError("Operator transaction was not fully accepted; no retry.")
+            self.report["accepted_tx_bytes"] += count
+            self.report["uncertain_tx_bytes"] -= count
+            deadline = self.transport.last_write_started + timeout
+            evidence = zero._ResponseEvidence(
+                self.transport.event, sequence=sequence, command=command,
+                accepted_response_fields=accepted,
+                validate_packet=(
+                    None if expected_payload is None else
+                    lambda packet: (
+                        [] if len(packet.payload) == expected_payload
+                        else ["unexpected_operator_payload"])),
+            )
+            evidence.submitted_at = self.transport.last_write_started
+            evidence.deadline = deadline
+            if full_window:
+                zero._observe_response(
+                    self.transport, evidence, deadline=deadline,
+                    clock=self.clock)
+            else:
+                while evidence.candidates != 1:
+                    evidence.feed(
+                        self.transport.read_response(512, deadline=deadline),
+                        self.clock())
+                evidence.finish(self.clock())
+            if evidence.candidates != 1:
+                raise OSError(
+                    "response_not_observed: no single clean correlation candidate.")
+            packet = protocol.decode_packet(
+                bytes.fromhex(evidence.events[0]["stream"]["raw_hex"]))
+            self.report["responses"] += 1
+            return packet, evidence.events[0]
+        finally:
+            if mandatory:
+                self.transport.end_cleanup_reserve()
 
     def request(self, query, *, timeout, allow_telemetry_state_change=False):
         if query not in protocol.GETTERS:
@@ -225,18 +265,22 @@ class ProductionControllerOwner:
         return marvin_sensors.read_session_snapshot(
             self, expected_identity=self.expected_identity)
 
-    def _setter(self, payload):
+    def _setter(self, payload, *, mandatory=False, submit_deadline=None):
         packet, _row = self._exchange(
-            RAW_PWM_COMMAND, payload, expected_payload=0)
+            RAW_PWM_COMMAND, payload, expected_payload=0,
+            timeout=pilot.RESPONSE_SECONDS, full_window=True,
+            mandatory=mandatory, submit_deadline=submit_deadline)
         if packet.response_field != 0x80:
             raise OSError("Raw-PWM setter did not return the accepted empty raw-80 shape.")
 
-    def stop(self):
+    def stop(self, *, submit_deadline=None):
         try:
-            self._setter(pilot.ZERO_PWM)
+            self._setter(
+                pilot.ZERO_PWM, mandatory=True,
+                submit_deadline=submit_deadline)
         except BaseException as error:
             if self.nonzero_may_have_applied:
-                motor_consent.notify_powered_trial_fault(error)
+                motor_consent.notify_powered_trial_fault_once(error)
             raise
         self.nonzero_may_have_applied = False
 
@@ -250,10 +294,21 @@ class ProductionControllerOwner:
             raise OSError(
                 "Operator motion admission window ended; no nonzero request was submitted.")
         primary = None
+        cleanup_deadline = None
         try:
             self._setter(pilot.ZERO_PWM)
             self.nonzero_may_have_applied = True
-            self._setter(payload)
+            previous_sequence = getattr(
+                self.transport, "last_write_sequence", None)
+            try:
+                self._setter(payload)
+            finally:
+                if getattr(
+                        self.transport, "last_write_sequence",
+                        previous_sequence) != previous_sequence:
+                    cleanup_deadline = (
+                        self.transport.last_write_started
+                        + pilot.QUARTER_SECOND_CLEANUP_BOUND_SECONDS)
             self.transport.wait(drive_step.DURATION_SECONDS)
         except BaseException as error:
             primary = error
@@ -261,7 +316,7 @@ class ProductionControllerOwner:
         finally:
             if self.nonzero_may_have_applied:
                 try:
-                    self.stop()
+                    self.stop(submit_deadline=cleanup_deadline)
                 except BaseException as cleanup:
                     if primary is not None:
                         primary.add_note(
@@ -270,7 +325,7 @@ class ProductionControllerOwner:
                         raise
                 finally:
                     if primary is not None:
-                        motor_consent.notify_powered_trial_fault(primary)
+                        motor_consent.notify_powered_trial_fault_once(primary)
 
     def read_led_state(self):
         packet, _row = self._exchange(
@@ -280,7 +335,17 @@ class ProductionControllerOwner:
     def write_led_state(self, payload):
         if type(payload) is not bytes or len(payload) != 18:
             raise ValueError("LED state must be exactly 18 immutable bytes.")
-        self._exchange(LED_SET_COMMAND, payload, accepted=(0x80, 0x82))
+        self._exchange(
+            LED_SET_COMMAND, payload, accepted=(0x80, 0x82),
+            timeout=pilot.RESPONSE_SECONDS, full_window=True)
+
+    def restore_led_state(self, payload):
+        if type(payload) is not bytes or len(payload) != 18:
+            raise ValueError("LED state must be exactly 18 immutable bytes.")
+        self._exchange(
+            LED_SET_COMMAND, payload, accepted=(0x80, 0x82),
+            timeout=pilot.RESPONSE_SECONDS, full_window=True,
+            mandatory=True)
 
     def close(self):
         if self.started:
@@ -293,6 +358,11 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
                evidence_root, configuration, drive_declarations,
                ready=None):
     """Run one evidence-bounded production console with a single controller owner."""
+    if (type(poll_seconds) not in (int, float)
+            or poll_seconds < OPERATOR_MIN_LIVE_POLL_SECONDS):
+        raise ValueError(
+            f"Live operator polling must be at least "
+            f"{OPERATOR_MIN_LIVE_POLL_SECONDS:g} seconds.")
     root = Path(evidence_root)
     info = root.stat()
     if not stat.S_ISDIR(info.st_mode) or root.is_symlink() or info.st_uid != os.geteuid():
@@ -327,6 +397,13 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         "application_acknowledgment": "not_established",
         "physical_stop": "not_established",
         "maximum_application_bytes": OPERATOR_MAX_APPLICATION_BYTES,
+        "maximum_requests": MAX_REQUESTS,
+        "cleanup_request_reserve": OPERATOR_CLEANUP_REQUESTS,
+        "session_seconds": OPERATOR_SESSION_SECONDS,
+        "max_adapter_journal_bytes": OPERATOR_JOURNAL_MAX_BYTES,
+        "max_adapter_journal_records": OPERATOR_JOURNAL_MAX_RECORDS,
+        "adapter_cleanup_reserve_bytes": OPERATOR_JOURNAL_RESERVE_BYTES,
+        "adapter_cleanup_reserve_records": OPERATOR_JOURNAL_RESERVE_RECORDS,
         "dynamic_allowlist": {
             "empty_getter_commands": sorted({
                 *(spec.command for spec in protocol.GETTERS.values()),
@@ -361,6 +438,11 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         serve(
             runtime, port=port, ready=ready,
             maximum_seconds=OPERATOR_SESSION_SECONDS)
+        terminal = runtime.status()
+        if terminal["state"] != "stopped":
+            raise OSError(
+                "Operator runtime did not stop cleanly: "
+                f"{terminal['state']}: {terminal.get('error')}")
         shared_report["status"] = "operator_shutdown_complete"
 
     return zero._run_diagnostic(
@@ -368,7 +450,11 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         transport_type=_OperatorTransport, observe=observe,
         limits=zero._Limits(
             first_sequence=4096, max_requests=MAX_REQUESTS, interval=0,
-            max_rx_bytes=16 * 1024 * 1024, read_size=512),
+            max_rx_bytes=16 * 1024 * 1024, read_size=512,
+            max_journal_bytes=OPERATOR_JOURNAL_MAX_BYTES,
+            max_journal_records=OPERATOR_JOURNAL_MAX_RECORDS,
+            journal_reserve_bytes=OPERATOR_JOURNAL_RESERVE_BYTES,
+            journal_reserve_records=OPERATOR_JOURNAL_RESERVE_RECORDS),
         session_options={
             "actuators_isolated": False, "_operator_console": True,
             "allow_telemetry_state_change": True,
@@ -613,7 +699,11 @@ class OperatorRuntime:
                 if changed:
                     with self._changed:
                         self._publish()
-                if self.source is not None and now >= deadline:
+                drive = self.managers.get("drive")
+                drive_leased = (
+                    drive is not None
+                    and drive.status().get("owner_active") is True)
+                if self.source is not None and now >= deadline and not drive_leased:
                     try:
                         snapshot = self.source.read()
                     except Exception as error:
@@ -633,8 +723,9 @@ class OperatorRuntime:
                         self._publish()
                     self._record(snapshot, completed)
                     deadline = now + self.poll_seconds
-                delay = 0.1 if self.source is None else max(
-                    0.0, deadline - time.monotonic())
+                delay = (
+                    0.1 if self.source is None or drive_leased else
+                    max(0.0, deadline - time.monotonic()))
                 self._stop.wait(min(0.1, delay))
         except Exception as error:
             with self._changed:

@@ -75,8 +75,9 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(stops[-1], "failure-stop")
 
         baseline = bytes.fromhex("000000000000000000000000000000ff0000")
-        writes = []
-        leds = marvin_managers.LedManager(lambda: baseline, writes.append)
+        writes, restores = [], []
+        leds = marvin_managers.LedManager(
+            lambda: baseline, writes.append, restores.append)
         leds.start()
         leds.action("on_left_position_0_red", {})
         self.assertEqual(writes[-1][0], 255)
@@ -90,7 +91,7 @@ class ManagerTests(unittest.TestCase):
         leds.action("off_left_position_0_red", {})
         leds.action("on_right_position_0_blue", {})
         leds.close()
-        self.assertEqual(writes[-1], baseline)
+        self.assertEqual(restores, [baseline])
 
     def test_real_localhost_manager_routes_and_events(self):
         pulses, stops = [], []

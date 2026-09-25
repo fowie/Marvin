@@ -737,6 +737,15 @@ def notify_powered_trial_fault(error):
             error.add_note(f"External-cutoff diagnostic delivery failed: {delivery_error}")
 
 
+def notify_powered_trial_fault_once(error):
+    if (isinstance(error, BaseException)
+            and getattr(error, "_marvin_cut_power_notified", False)):
+        return
+    notify_powered_trial_fault(error)
+    if isinstance(error, BaseException):
+        error._marvin_cut_power_notified = True
+
+
 def notify_collection_ended(error):
     print("COLLECTION_ENDED: no movement window remains; if startup failed, no movement window "
           f"opened. Stop manual movement. {str(error)[:256]}. Preliminary evidence only; "
@@ -750,8 +759,11 @@ def powered_faults(operation):
         try:
             return operation(*args, **kwargs)
         except BaseException as error:
-            if any(kwargs.get(scope) is True for scope in POWERED_TRIAL_SCOPES):
-                notify_powered_trial_fault(error)
+            if (kwargs.get("_operator_console") is True
+                    or any(
+                        kwargs.get(scope) is True
+                        for scope in POWERED_TRIAL_SCOPES)):
+                notify_powered_trial_fault_once(error)
             if kwargs.get("left_motor_powered_observation") is True:
                 notify_cut_power(error)
             if kwargs.get("encoder_feedback_observation") is True:

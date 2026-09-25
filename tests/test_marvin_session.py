@@ -9,7 +9,11 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from tools import marvin_boot_capture, marvin_campaign, marvin_legacy_protocol, marvin_session, marvin_trials
+from tools import (
+    marvin_boot_capture, marvin_campaign, marvin_legacy_drive_step,
+    marvin_legacy_protocol, marvin_motor_power_off_consent, marvin_session,
+    marvin_trials,
+)
 
 
 BASELINE = {
@@ -109,6 +113,62 @@ class SessionTests(unittest.TestCase):
         defaults = {"seconds": 0.5, "actuators_isolated": True}
         defaults.update(kwargs)
         return marvin_session.run_session("/dev/test-marvin", self.output, **defaults)
+
+    def run_operator(self, **kwargs):
+        defaults = {
+            "seconds": 8 * 60 * 60 + 30,
+            "actuators_isolated": False,
+            "baudrate": 57600,
+            "allow_unknown_command": True,
+            "unprivileged_usbmon": True,
+            "probe_profile": "legacy",
+            "capture_runner": self.capture,
+            "binary_payload_limit": 4096,
+            "usb_tail_seconds": 5,
+            "usb_close_grace_seconds": 5,
+            "_operator_console": True,
+            "operator_drive_authorized": True,
+            "operator_application_byte_budget": 1000,
+            "operator_usb_max_bytes": 64 * 1024 * 1024,
+            "operator_usb_max_records": 1_000_000,
+            **dict.fromkeys(
+                marvin_legacy_drive_step.COMMON_FLAGS, True),
+        }
+        defaults.update(kwargs)
+        return marvin_session.run_session(
+            "/dev/test-marvin", self.output, **defaults)
+
+    def test_operator_recorder_fault_prints_parent_cut_power_notice(self):
+        self.start_error = OSError("recorder failed")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), self.assertRaisesRegex(
+                OSError, "recorder failed"):
+            self.run_operator()
+        self.assertEqual(stderr.getvalue().count("CUT_POWER_REQUIRED:"), 1)
+
+    def test_operator_guard_fault_prints_parent_cut_power_notice(self):
+        def fail_during_capture(*args, **kwargs):
+            self.finished = True
+            kwargs["guard"]()
+
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), self.assertRaisesRegex(
+                OSError, "USB recorder stopped"):
+            self.run_operator(capture_runner=fail_during_capture)
+        self.assertEqual(stderr.getvalue().count("CUT_POWER_REQUIRED:"), 1)
+
+    def test_operator_preserves_immediate_post_nonzero_notice_without_duplicate(self):
+        def fail_after_notice(*_args, **_kwargs):
+            error = OSError("post-nonzero fault")
+            marvin_motor_power_off_consent.notify_powered_trial_fault_once(
+                error)
+            raise error
+
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), self.assertRaisesRegex(
+                OSError, "post-nonzero fault"):
+            self.run_operator(capture_runner=fail_after_notice)
+        self.assertEqual(stderr.getvalue().count("CUT_POWER_REQUIRED:"), 1)
 
     def test_internal_capture_boundary_and_full_binary_budget_are_opt_in(self):
         runner = Mock(side_effect=self.capture)

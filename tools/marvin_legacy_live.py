@@ -372,6 +372,7 @@ class LiveTransport:
         self.closed = self.opened = False
         self.journal_bytes = self.journal_records = self.serial_bytes = 0
         self.journal_broken = False
+        self.journal_cleanup = False
         self.writes = 0
         self.last_write = None
         self.last_write_started = None
@@ -387,7 +388,18 @@ class LiveTransport:
         if self.journal is None or self.journal_broken:
             raise OSError("Adapter evidence journal is not open or has an uncertain write.")
         row = (json.dumps({"event": name, "monotonic": time.monotonic(), **fields}) + "\n").encode()
-        if self.journal_bytes + len(row) > 262144 or self.journal_records >= 8192:
+        max_bytes = getattr(self.plan, "max_journal_bytes", 262144)
+        max_records = getattr(self.plan, "max_journal_records", 8192)
+        byte_reserve = (
+            0 if self.journal_cleanup else
+            getattr(self.plan, "journal_reserve_bytes", 0))
+        record_reserve = (
+            0 if self.journal_cleanup else
+            getattr(self.plan, "journal_reserve_records", 0))
+        if (self.journal_bytes + len(row) >
+                max_bytes - byte_reserve
+                or self.journal_records >=
+                max_records - record_reserve):
             raise OSError("Adapter journal budget exhausted.")
         self.journal_bytes += len(row)
         self.journal_records += 1
@@ -395,6 +407,18 @@ class LiveTransport:
         if self.journal.write(row) != len(row):
             raise OSError("Uncertain adapter evidence write.")
         self.journal_broken = False
+
+    def begin_cleanup_reserve(self):
+        self._owner()
+        if self.journal_cleanup:
+            raise OSError("Adapter cleanup reserve is already active.")
+        self.journal_cleanup = True
+
+    def end_cleanup_reserve(self):
+        self._owner()
+        if not self.journal_cleanup:
+            raise OSError("Adapter cleanup reserve is not active.")
+        self.journal_cleanup = False
 
     def _check(self, deadline):
         self._owner()

@@ -768,13 +768,13 @@ def run_session(
     if (dtr or rts) and line_state_authorized is not True:
         raise ValueError("Asserting DTR or RTS requires separate line-state authorization.")
     if _operator_console:
-        if (seconds != 86430
+        if (seconds != 8 * 60 * 60 + 30
                 or type(operator_application_byte_budget) is not int
                 or operator_application_byte_budget <= 0
                 or operator_usb_max_bytes != 64 * 1024 * 1024
                 or operator_usb_max_records != 1_000_000):
             raise ValueError(
-                "Operator console requires the fixed 24-hour session, "
+                "Operator console requires the fixed eight-hour session, "
                 "30-second cleanup reserve, and full evidence budgets.")
         marvin_probe.validate_framing(bytesize, parity, stopbits)
     else:
@@ -1295,8 +1295,8 @@ def run_session(
             metadata["usb"] = usb_metadata
             metadata["status"] = "completed"
     except (OSError, ValueError, subprocess.SubprocessError, marvin_probe.serial.SerialException) as error:
-        if powered_trial:
-            motor_consent.notify_powered_trial_fault(error)
+        if powered_trial or _operator_console:
+            motor_consent.notify_powered_trial_fault_once(error)
         if encoder_feedback_observation:
             motor_consent.notify_collection_ended(error)
         if left_motor_powered_observation:
@@ -1324,9 +1324,9 @@ def run_session(
             except (OSError, ValueError, subprocess.SubprocessError) as drain_error:
                 metadata["drain_error"] = str(drain_error)
         raise
-    except KeyboardInterrupt:
-        if powered_trial:
-            motor_consent.notify_powered_trial_fault("Interrupted")
+    except KeyboardInterrupt as error:
+        if powered_trial or _operator_console:
+            motor_consent.notify_powered_trial_fault_once(error)
         if encoder_feedback_observation:
             motor_consent.notify_collection_ended("Interrupted")
         if left_motor_powered_observation:
@@ -1334,8 +1334,8 @@ def run_session(
         metadata["status"] = "failed" if observation or powered_trial else "interrupted"
         raise
     except BaseException as error:
-        if powered_trial:
-            motor_consent.notify_powered_trial_fault(error)
+        if powered_trial or _operator_console:
+            motor_consent.notify_powered_trial_fault_once(error)
             metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
         if encoder_feedback_observation:
             motor_consent.notify_collection_ended(error)

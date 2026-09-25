@@ -40,6 +40,10 @@ class _Limits:
     max_rx_bytes: int = 8192
     read_size: int = 512
     max_lateness: float = 0.05
+    max_journal_bytes: int = 262144
+    max_journal_records: int = 8192
+    journal_reserve_bytes: int = 0
+    journal_reserve_records: int = 0
 
 
 class _ZeroTransport(LiveTransport):

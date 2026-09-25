@@ -223,11 +223,17 @@ reconnects, wraps sequences, or exposes arbitrary opcodes. Tests and embedding
 applications may still inject the same typed owner boundary without weakening
 the installed path.
 
-Each production live invocation admits controls for a 24-hour operator session.
-Its serial evidence envelope reserves a further 30 seconds for mandatory stop,
-LED restore, transport close, and evidence sealing, followed by the existing
+Each production live invocation admits controls for an eight-hour operator
+session with a minimum two-second live polling interval. That enforced ceiling
+fits the non-wrapping sequence space and leaves explicit transaction,
+application-byte, and adapter-journal reserves for mandatory stop and LED
+restore. Its serial evidence envelope reserves a further 30 seconds for those
+cleanups, transport close, and evidence sealing, followed by the existing
 coordinated usbmon tail/close allowance. A runtime or cleanup failure closes the
-HTTP listener and cannot be reported as success.
+HTTP listener and cannot be reported as success. Any operator recorder,
+session-guard, transport, or post-nonzero fault prints `CUT_POWER_REQUIRED`
+directly on the parent terminal even though usbmon stderr is also retained
+privately.
 `OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.
