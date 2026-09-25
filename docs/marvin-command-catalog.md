@@ -65,6 +65,28 @@ units remain unknown unless stated.
 | `27` `ResetMotorPositions` | Odometry reset; empty. `Form1.cs:856` | Unknown legacy response shape | **Source-only; no live test.** | **Catalog-only: destructive state reset.** |
 | `28` `GetBatteryInfo` | Nominal read; empty. `Form1.cs:928` | **Proven:** `80`, 8 bytes / 18-byte frame | **Proven exchange.** Sequence 3088 returned `fdff6f3f7c02ae00`. PCTestApp prints but does not parse this reply; field types, units, and values remain unknown. Newer Drive `28` moves the projector image. | **Installed/proven read-only.** Retain the payload raw. |
 
+### Standalone all-zero stop request
+
+`tools.marvin_legacy_stop` promotes the already-transmitted cleanup suffix to an
+offline-first public stop-request primitive. The immutable `0B` frame is
+`53550d0b0008000000000000000000311445` (sequence 3413, four LE `uint16`
+zeros), SHA-256
+`07feeec91475227dbeab929d8d61fb00f966b0a84bb710fb168b97afa2df7159`.
+After a unique correlated empty raw-`80` response, and only then, it submits the
+existing sequence-3414 zero getter
+`53560d0a000000412a45`. The two-frame transcript SHA-256 is
+`36479fc7f68aef0f0e8072bcc9073ef361239b4d5e17e3db14503b7bc5dcf28e`.
+There is no retry, reconnect, arbitrary PWM, or second stop write.
+
+The literal stop frame has already been confirmed in serial and USB evidence
+multiple times as cleanup after moving raw-PWM profiles. Operators subsequently
+observed stopped wheels, including forward, reverse, and opposed-direction
+runs. Those observations justify reusing the exact request without another
+live proof, but they do **not** prove cleanup causation, braking, motor
+de-energization, application acknowledgment, or physical stop. The API and
+evidence therefore retain `physical_stop: not_established`; external cutoff
+remains primary.
+
 The installed live evidence above also includes the repeated powered trials in
 [legacy-powered-left-stop.md](legacy-powered-left-stop.md) and the fixed
 disconnected-load outcomes in

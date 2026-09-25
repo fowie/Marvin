@@ -299,6 +299,8 @@ def run_session(
     authorize_unvalidated_raw_pwm_left_forward_right_backward_2000_connected_proof=False,
     raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
     authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=False,
+    raw_pwm_all_zero_stop=False,
+    authorize_unvalidated_raw_pwm_all_zero_stop=False,
     raw_pwm_both_connected_left_forward_2000_proof=False,
     authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=False,
     raw_pwm_both_connected_right_forward_2000_proof=False,
@@ -427,6 +429,9 @@ def run_session(
             raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
         authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof=(
             authorize_unvalidated_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof),
+        raw_pwm_all_zero_stop=raw_pwm_all_zero_stop,
+        authorize_unvalidated_raw_pwm_all_zero_stop=(
+            authorize_unvalidated_raw_pwm_all_zero_stop),
         raw_pwm_both_connected_left_forward_2000_proof=(
             raw_pwm_both_connected_left_forward_2000_proof),
         authorize_unvalidated_raw_pwm_both_connected_left_forward_2000_proof=(
@@ -509,6 +514,7 @@ def run_session(
                                         *motor_consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_ONLY_FLAGS,
+                                        *motor_consent.RAW_PWM_STOP_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_ONLY_FLAGS,
                                         *motor_consent.RAW_PWM_BOTH_CONNECTED_RIGHT_FORWARD_ONLY_FLAGS,
                                         *motor_consent.DISCONNECTED_GET_LOG_ONLY_FLAGS,
@@ -551,8 +557,11 @@ def run_session(
             elif scope in (
                     *motor_consent.RAW_PWM_DISCONNECTED_SCOPES,
                     *motor_consent.RAW_PWM_CONNECTED_SCOPES):
-                from tools.marvin_legacy_raw_pwm_pilot import transcript_for_scope
-                TRANSCRIPT = transcript_for_scope(scope)
+                if scope == motor_consent.RAW_PWM_STOP_SCOPE:
+                    from tools.marvin_legacy_stop import TRANSCRIPT
+                else:
+                    from tools.marvin_legacy_raw_pwm_pilot import transcript_for_scope
+                    TRANSCRIPT = transcript_for_scope(scope)
             elif scope == motor_consent.LED_MAPPING_SCOPE:
                 from tools.marvin_legacy_led_mapper import transcript_for
                 TRANSCRIPT = transcript_for(
@@ -809,6 +818,8 @@ def run_session(
                             if scope == motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE
                             else "RawPwmDualMotorForwardValue2000OneSecondOnBlocksProof"
                             if scope == motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE
+                            else "RawPwmAllZeroStopRequest"
+                            if scope == motor_consent.RAW_PWM_STOP_SCOPE
                             else "RawPwmBothConnectedLeftForwardValue2000Proof"
                             if scope == motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE
                             else "RawPwmBothConnectedRightForwardValue2000Proof"
@@ -876,6 +887,8 @@ def run_session(
                             scope == motor_consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE),
                         fixed_raw_pwm_dual_motor_forward_2000_one_second_on_blocks_proof_authorized=(
                             scope == motor_consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE),
+                        fixed_raw_pwm_all_zero_stop_authorized=(
+                            scope == motor_consent.RAW_PWM_STOP_SCOPE),
                         fixed_raw_pwm_both_connected_left_forward_2000_proof_authorized=(
                             scope == motor_consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_SCOPE),
                         fixed_raw_pwm_both_connected_right_forward_2000_proof_authorized=(

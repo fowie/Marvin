@@ -13,6 +13,7 @@ from tests import test_marvin_session as session_tests
 from tests.test_marvin_legacy_client import frame
 from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_raw_pwm_pilot as pilot
+from tools import marvin_legacy_stop as stop
 from tools import marvin_motor_power_off_consent as consent
 from tools import marvin_session as session
 from tools import marvin_usbmon as usbmon
@@ -62,6 +63,7 @@ DECLARATIONS_LEFT_FORWARD_RIGHT_BACKWARD = dict.fromkeys(
     consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_FLAGS, True)
 DECLARATIONS_DUAL_FORWARD_ONE_SECOND = dict.fromkeys(
     consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_FLAGS, True)
+DECLARATIONS_STOP = dict.fromkeys(consent.RAW_PWM_STOP_FLAGS, True)
 DECLARATIONS_BOTH_CONNECTED_LEFT_FORWARD = dict.fromkeys(
     consent.RAW_PWM_BOTH_CONNECTED_LEFT_FORWARD_FLAGS, True)
 DECLARATIONS_BOTH_CONNECTED_RIGHT_FORWARD = dict.fromkeys(
@@ -1290,6 +1292,103 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._RawPwmLeftReverseRightForward2000Transport
             .absolute_cleanup_bound_seconds,
             0.75)
+
+    def test_standalone_stop_reuses_proved_zero_frame_offline(self):
+        with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
+                patch.object(os, "open", side_effect=AssertionError("no open")), \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(stop.main([]), 0)
+        plan = json.loads(stdout.getvalue())
+        self.assertEqual(
+            plan["stop_frame_hex"],
+            "53550d0b0008000000000000000000311445")
+        self.assertEqual(
+            plan["stop_frame_sha256"],
+            "07feeec91475227dbeab929d8d61fb00f966b0a84bb710fb168b97afa2df7159")
+        self.assertEqual(
+            plan["transcript_sha256"],
+            "36479fc7f68aef0f0e8072bcc9073ef361239b4d5e17e3db14503b7bc5dcf28e")
+        self.assertEqual(plan["fixed_stop_words_uint16"], [0, 0, 0, 0])
+        self.assertFalse(plan["automatic_retries"])
+        self.assertFalse(plan["automatic_reconnect"])
+        self.assertEqual(plan["physical_stop"], "not_established")
+        self.assertFalse(plan["further_live_proof_needed"])
+
+        declarations = dict.fromkeys(consent.RAW_PWM_STOP_FLAGS, True)
+        self.assertEqual(
+            consent.classify(**declarations), consent.RAW_PWM_STOP_SCOPE)
+        history = consent.powered_trial_history(declarations)
+        self.assertEqual(history["fixed_raw_pwm_words_uint16"], [0, 0, 0, 0])
+        self.assertEqual(history["physical_stop"], "not_established")
+        with patch.object(stop.zero, "_run_diagnostic",
+                          return_value={"status": "ok"}) as run:
+            self.assertEqual(stop.run_stop(
+                self.root / "stop", expected_physical_port="1-3", run=True,
+                **declarations), {"status": "ok"})
+        options = run.call_args.kwargs
+        self.assertEqual(options["review"]["stop_frame_hex"], plan["stop_frame_hex"])
+        self.assertEqual(options["session_options"], declarations)
+        self.assertEqual(options["serial_seconds"], 10)
+
+        harness = session_tests.SessionTests()
+        harness.setUp()
+        self.addCleanup(harness.doCleanups)
+        runner = Mock(side_effect=harness.capture)
+        result = harness.run_capture(
+            seconds=10, baudrate=57600, allow_unknown_command=True,
+            probe_profile="legacy", capture_runner=runner,
+            binary_payload_limit=4096, usb_tail_seconds=5,
+            usb_close_grace_seconds=5, actuators_isolated=False,
+            **DECLARATIONS_STOP)
+        self.assertEqual(result["scope"], consent.RAW_PWM_STOP_SCOPE)
+        self.assertEqual(result["probe_name"], "RawPwmAllZeroStopRequest")
+        self.assertTrue(result["fixed_raw_pwm_all_zero_stop_authorized"])
+        self.assertEqual(
+            result["immutable_application_transcript_hex"],
+            [raw.hex() for raw in stop.TRANSCRIPT])
+        stop._validate_capture(runner.call_args.kwargs)
+        command = harness.popen.call_args.args[0]
+        with patch.object(usbmon, "capture", return_value={"status": "completed"}) as capture, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(usbmon.main(command[2:]), 0)
+        stop._validate_capture(capture.call_args.kwargs)
+
+        class StopTransport:
+            token = "token"
+            steps = stop.STEPS
+            serial_bytes = 0
+
+            def __init__(self):
+                self.attempts = []
+                self.writes = 0
+                self.stop_raw80 = False
+                self.close = Mock()
+
+            def revalidate(self, *, deadline):
+                return self.token
+
+            def submit(self, step, *, deadline):
+                self.attempts.append(step)
+                self.writes += 1
+                return len(self.steps[step])
+
+        transport = StopTransport()
+        report = {}
+        with patch.object(pilot, "_response", side_effect=self.response()):
+            stop._observe(transport, report, clock=lambda: 0)
+        self.assertEqual(transport.attempts, ["stop", "verify"])
+        self.assertEqual(report["status"], stop.SUCCESS)
+        self.assertTrue(report["getter_reverified"])
+        self.assertEqual(report["physical_stop"], "not_established")
+
+        transport = StopTransport()
+        with patch.object(
+                pilot, "_response",
+                side_effect=self.response(fault=("stop", OSError("response fault")))), \
+                self.assertRaisesRegex(OSError, "response fault"):
+            stop._observe(transport, {}, clock=lambda: 0)
+        self.assertEqual(transport.attempts, ["stop"])
+        transport.close.assert_called_once()
 
 
 if __name__ == "__main__":
