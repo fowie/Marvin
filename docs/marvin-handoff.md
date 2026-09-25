@@ -1,6 +1,6 @@
 # Marvin canonical handoff
 
-Status checked **2026-09-24**. This is the shortest entry point for a fresh
+Status checked **2026-09-25**. This is the shortest entry point for a fresh
 host/session, especially a Jetson AGX Orin installed in Marvin. It separates
 verified evidence, operator reports, hypotheses, and unfinished work. Detailed
 procedures remain in the linked documents.
@@ -39,13 +39,25 @@ x86 host onto Jetson.
 | Surface | Verified state | Limits / next reference |
 |---|---|---|
 | Controller | Microsoft Marvin USB `045e:4444`; stable selector `/dev/serial/by-id/usb-Microsoft_Corp_2009_Microsoft_Marvin_12345678-if00`; legacy single-byte `S`/`E` framing works at 57600 8N1 with no flow control. Six getter IDs returned correlated, CRC-valid replies. | Exact firmware image is unknown. Preserve the legacy profile; successor EF/BE IDs collide with getters, motion, reset, and power operations. See [bring-up](marvin-bringup-plan.md) and [client](legacy-client.md). |
-| Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. PR #37 adds the offline-first, standalone `tools.marvin_legacy_stop` primitive around the already observed all-zero cleanup frame. | Raw PWM is not calibrated speed/torque/distance. The zero frame is a **stop request**: visible stopped wheels after prior cleanup uses do not establish causation, braking, de-energization, application acknowledgement, or physical stop. None of this authorizes ground driving. See [stop-request boundary](#motor-stop-request-boundary), [drive evidence](legacy-disconnected-order.md), and [PR #37](https://github.com/fowie/Marvin/pull/37). |
+| Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named `forward`, `backward`, `rotate-left`, and `rotate-right`, the standalone stop request, and supervised teleoperation passed operator acceptance on blocks with sealed evidence. PR #37 adds the offline-first `tools.marvin_legacy_stop` primitive around the already observed all-zero cleanup frame. | Raw PWM is not calibrated speed/torque/distance. The zero frame is a **stop request**: acceptance and visible stopped wheels do not establish causation, braking, de-energization, application acknowledgement, or a general physical-stop guarantee. None of this authorizes ground driving. See [acceptance boundary](#operator-acceptance-and-remaining-boundary), [stop-request boundary](#motor-stop-request-boundary), and [drive evidence](legacy-disconnected-order.md). |
 | Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
 | Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 AX-12+ (ID 2). A sealed installed-camera `2500 -> 2000 -> restore` run directly produced approximately 5° upward tilt and return. | Decreasing word0 -> camera upward is directly observed at the tested point. Increasing word0 -> downward is inverse inference, not directly exercised. Local scaling supports about 100 legacy units/degree, not precision, full-range linearity, or endpoints; projector tilt/word1 remains unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
 | Projector | Installed legacy PCTestApp source does **not** map projector power: `0x26` is empty-payload `DisableHeartbeat`, `0x27` is empty-payload `ResetMotorPositions`, and `0x28` is empty-payload `GetBatteryInfo`. A prior one-byte `0x27` ON/OFF experiment used an incompatible source-derived map and produced no observable effect. | Installed projector-power control remains unknown. Do not use mismatched-map `0x27`, `0x2B`, or `0x2C`. Generic legacy `0x0F SetPowerState` exists, but its bit mapping and rail safety are unproved. See [collision correction](#mismatched-map-0x27-collision-experiment) and the [command catalogue](marvin-command-catalog.md). |
-| Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. | Laptop Intel IPU3 nodes are not Marvin. REAR CAM and DEPTH CAM did not enumerate this camera. Grounding was necessary in one successful SPARE setup but was insufficient on REAR CAM; that is setup evidence, not a universal electrical prescription. Successor `DepthCamPower` is incompatible and must not be used. |
-| Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. | The working kernel change is host/kernel-specific and must be recreated or found upstream on Jetson. See [microphone host setup](#microphone-host-kernel-state) and [PR #33](https://github.com/fowie/Marvin/pull/33). |
+| Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. The accepted architecture connects it directly to Jetson rather than Marvin's internal `0451:2046` full-speed hub. | Direct-Jetson topology is **planned, not verified** until Jetson inventory and capture. Require exact USB ancestry and fixed MJPG 352x288 validation. Laptop IPU3 nodes are not Marvin; REAR CAM and DEPTH CAM did not enumerate it. Successor `DepthCamPower` must not be used. |
+| Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. The accepted architecture connects it directly to Jetson rather than Marvin's internal `0451:2046` full-speed hub. | Direct-Jetson topology is **planned, not verified** until Jetson inventory and capture. The exact Jetson kernel still requires upstream DMA fix `d0199ae` plus the exact `045e:fff0` fill-max quirk unless both are already present. See [microphone host setup](#microphone-host-kernel-state) and [PR #33](https://github.com/fowie/Marvin/pull/33). |
+
+## Operator acceptance and remaining boundary
+
+The operator accepted the following product behaviors on blocks with sealed
+evidence: `forward`, `backward`, `rotate-left`, `rotate-right`, stop request,
+and supervised teleoperation; camera center/restore and upward tilt; and wheel
+LED blink with restoration. This is operator acceptance of the tested bounded
+setups, not calibration, ground-drive authorization, an application ACK, or a
+general emergency-stop guarantee. Private artifacts remain private.
+
+Projector control remains unsupported. Installed camera downward motion has not
+been exercised live; it remains an inverse inference, not an accepted behavior.
 
 ## Evidence semantics and safety boundary
 
@@ -99,6 +111,14 @@ was captured. REAR CAM and DEPTH CAM did not enumerate it. A ground connection
 was necessary in the successful setup, but adding ground did not make REAR CAM
 work. Treat connector routing/power requirements beyond those observations as
 unknown.
+
+For the Jetson architecture, connect this camera directly to Jetson, not
+through Marvin's internal `0451:2046` full-speed hub. This is a bus-contention
+avoidance decision, not a completed Jetson result. Before capture, verify that
+`045e:0721` has the expected direct-Jetson USB parent ancestry and is not an
+IPU3 or unrelated node; then admit only fixed MJPG 352x288 for the first
+bounded frame. Keep the direct topology **planned/unverified** until that
+inventory and capture succeed.
 
 Do not send successor Head `0x1F DepthCamPower`: on the legacy controller the
 same numeric area has incompatible meanings, and that setter is neither a video
@@ -440,12 +460,17 @@ re-verify every condition before relying on it.
 3. With Marvin unpowered, inventory controller/camera/microphone USB identities,
    stable by-id names, and physical topology without opening endpoints or
    commanding anything. Reconcile `045e:4444`, `045e:0721`, and `045e:fff0`;
-   do not mistake IPU3 or other onboard Jetson media nodes for Marvin.
+   do not mistake IPU3 or other onboard Jetson media nodes for Marvin. The
+   planned architecture places `045e:0721` and `045e:fff0` directly on Jetson,
+   not behind Marvin's internal `0451:2046` full-speed hub. Verify their actual
+   USB parent ancestry before treating that plan as implemented.
 4. Determine whether the microphone fixes are upstream in the exact Jetson
    kernel. If needed, port/rebuild both changes as described above. Never copy
    the x86 module or signing key.
 5. Under explicit privacy consent, validate direct ALSA capture before
-   PipeWire. Keep media private and bounded.
+   PipeWire. Keep media private and bounded. Separately validate the directly
+   attached LifeCam with its exact `045e:0721` ancestry and one fixed MJPG
+   352x288 frame before exposing a general video path.
 6. Reproduce a read-only legacy `0x00 ReadRawData` baseline only after exact
    controller identity, stable selector, permissions, recorder behavior,
    isolation, cutoff, and a new evidence directory are reviewed.
@@ -453,7 +478,10 @@ re-verify every condition before relying on it.
    recording are validated on Jetson. Do not infer safety from matching bytes.
 8. Transfer only non-sensitive summaries/hashes unless the operator explicitly
    moves private evidence.
-9. Continue, in order: independently refine the provisional/cross-coupled
+9. Preserve the accepted bounded on-blocks drive/stop/teleoperation, camera
+   center/up, and wheel-blink profiles without broadening their values or
+   evidence claims. Projector control and live camera-down remain unavailable.
+10. Continue, in order: independently refine the provisional/cross-coupled
    P6/P7/P12 proximity assignments if needed; discriminate cliff channels with
    contemporaneous controls/recovery or a less cross-coupled stimulus; map
    servo words/mechanisms; perform reviewed full-control validation; only then
