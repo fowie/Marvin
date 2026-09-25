@@ -2050,8 +2050,21 @@ verified.
 | teleop-008/run-0001 | forward zero/set/zero transaction completed; operator observed forward then stop | `bba07a15174b933a20aaf44025a2214779e60e8f6d8102c024cd17fdb0c240f1` |
 | teleop-008/run-0002 | reverse zero/set/zero transaction completed; operator observed reverse then stop | `a1968ab2e8b0bc80f987086b378597939706d0b3b024aeb3a20a720086c2b067` |
 | teleop-008/run-0003 | standalone all-zero transaction completed | `6b67666f1ad93790a5e065865966e8a0c17168d15f7f2325f65fec67ab8115f0` |
+| teleop-009/run-0001 | rotate-left zero/set/zero transaction completed; operator observed rotate left then stop | `913466730c47eb88c174b659049a9f2bbf5e26d3b9ebc0d14f30d711cfbe16d8` |
+| teleop-009/run-0002 | rotate-right zero/set/zero transaction completed; operator observed rotate right then stop | `45f7b98dd5e47f51d35ae216b3c331dcc97533940d6040cc646501af09104459` |
+| teleop-009/run-0003 | second rotate-right zero/set/zero transaction completed | `af56dc187de145962e03bf2c1abfad280e1dd53df0cae51a64f1a61131bd9136` |
+| teleop-009/run-0004 | standalone all-zero transaction completed | `d2ddc8b8f6b83b63fe161690f17cb800b45056a7dcf0d3b4b1e6016d5e1dab99` |
 | teleop-006/run-0001 | earlier forward transaction completed under the prior getter-first profile | `eb29b963379f7e71d33775d5f12f3f28815d34a68f974e772d44baa3e70dcbc3` |
 | teleop-006/run-0002 | earlier standalone all-zero transaction completed | `fa9642eea9cb61fbd31e69438c202b6247869da3b9c631bcadce3b9355d6d937` |
+
+The teleop-009 operator report names inputs `a`, `d`, `x`, `q` and says `q`
+exited without a duplicate stop. The sealed action directories instead contain
+rotate left, rotate right, a second rotate right, then one standalone stop.
+Thus they establish both rotation transactions and exactly one recorded stop
+after the last motion, but they do not establish the reported key-to-directory
+mapping or explain the extra rotate-right transaction. All four root and nested
+manifests verified; their USB summaries completed with no OUT submission error,
+pending OUT record, or unmatched completion.
 
 These records establish bounded transaction completion and the stated operator
 observations only. Empty raw-`80`/`82` responses are not application ACKs, and

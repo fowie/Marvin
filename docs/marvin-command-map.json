@@ -530,6 +530,14 @@
             "transaction_results": "forward and reverse each 54 accepted TX / 0 uncertain with zero cleanup completed; quit stop 18 accepted TX / 0 uncertain",
             "root_manifest_sha256": ["bba07a15174b933a20aaf44025a2214779e60e8f6d8102c024cd17fdb0c240f1", "a1968ab2e8b0bc80f987086b378597939706d0b3b024aeb3a20a720086c2b067", "6b67666f1ad93790a5e065865966e8a0c17168d15f7f2325f65fec67ab8115f0"]
           },
+          "teleop_009": {
+            "reported_inputs": ["a", "d", "x", "q"],
+            "operator_observation": "visible rotate left then stop; visible rotate right then stop; explicit stop completed; q reportedly exited without duplicate stop",
+            "sealed_action_scopes": ["rotate-left", "rotate-right", "rotate-right", "standalone-stop"],
+            "transaction_results": "each rotation 54 accepted TX / 0 uncertain with zero cleanup completed; stop 18 accepted TX / 0 uncertain",
+            "evidence_discrepancy": "sealed run-0003 is a second rotate-right transaction, not stop; artifacts establish both directions and one final stop but not the reported key-to-directory mapping",
+            "root_manifest_sha256": ["913466730c47eb88c174b659049a9f2bbf5e26d3b9ebc0d14f30d711cfbe16d8", "45f7b98dd5e47f51d35ae216b3c331dcc97533940d6040cc646501af09104459", "af56dc187de145962e03bf2c1abfad280e1dd53df0cae51a64f1a61131bd9136", "d2ddc8b8f6b83b63fe161690f17cb800b45056a7dcf0d3b4b1e6016d5e1dab99"]
+          },
           "teleop_006": {
             "inputs": ["w", "q"],
             "transaction_results": "earlier getter-first forward and standalone stop transactions completed",
