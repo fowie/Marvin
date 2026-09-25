@@ -6,9 +6,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from threading import Thread
+from threading import Event, Thread
 import time
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -58,6 +59,10 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(writes[-1][15], 255)
         with self.assertRaisesRegex(ValueError, "Combined simultaneous"):
             leds.action("on_right_position_0_blue", {})
+        with self.assertRaisesRegex(ValueError, "Only the active"):
+            leds.action("off_right_position_0_blue", {})
+        with self.assertRaisesRegex(ValueError, "Combined simultaneous"):
+            leds.action("on_front_left_blue", {})
         leds.action("off_left_position_0_red", {})
         leds.action("on_right_position_0_blue", {})
         leds.close()
@@ -110,6 +115,42 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(pulses, ["forward"] + ["rotate-right"] * 4)
         self.assertEqual(writes[-1], baseline)
         self.assertGreaterEqual(len(stops), 2)
+
+    def test_priority_stop_interrupts_fixed_action_after_current_pulse(self):
+        entered, finish_pulse = Event(), Event()
+        pulses, stops = [], []
+
+        def pulse(direction):
+            pulses.append(direction)
+            entered.set()
+            self.assertTrue(finish_pulse.wait(2))
+
+        runtime = marvin_operator.OperatorRuntime(
+            None, managers={
+                "drive": marvin_managers.DriveManager(
+                    pulse, lambda: stops.append("stop")),
+            })
+        runtime.start()
+        fixed_result, stop_result = [], []
+        fixed = Thread(target=lambda: fixed_result.append(
+            runtime.manager_action("drive", "fixed_forward", {})))
+        fixed.start()
+        self.assertTrue(entered.wait(2))
+        stop = Thread(target=lambda: stop_result.append(
+            runtime.manager_action("drive", "stop", {})))
+        stop.start()
+        time.sleep(0.05)
+        finish_pulse.set()
+        fixed.join(2)
+        stop.join(2)
+        self.assertFalse(fixed.is_alive())
+        self.assertFalse(stop.is_alive())
+        self.assertEqual(pulses, ["forward"])
+        self.assertEqual(stops, ["stop"])
+        self.assertEqual(
+            fixed_result[0]["result"], "cancelled_by_priority_stop")
+        self.assertEqual(fixed_result[0]["completed_pulses"], 1)
+        runtime.close()
 
     def test_real_subprocess_recorders_finalize_private_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -179,6 +220,66 @@ class ManagerTests(unittest.TestCase):
                 corrupt.action("stop", {})
             self.assertFalse(bad.exists())
             self.assertEqual(list(root.glob(".bad.mkv.*.tmp")), [])
+
+    def test_recorder_escalation_and_nonzero_exit_never_publish(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\0" * 28
+
+            def process(script):
+                def start(_argv, **options):
+                    return subprocess.Popen(
+                        [sys.executable, "-c", script],
+                        stdin=options["stdin"], stdout=options["stdout"],
+                        stderr=options["stderr"], close_fds=options["close_fds"])
+                return start
+
+            nonzero = (
+                "import os,signal,sys,time\n"
+                f"payload={wave!r}\n"
+                "def done(*_): os.write(1,payload); sys.exit(7)\n"
+                "signal.signal(signal.SIGINT,done)\ntime.sleep(30)\n"
+            )
+            failed = marvin_managers.MicrophoneManager(
+                device_check=lambda **_options: {}, popen=process(nonzero))
+            failed.start()
+            failed_output = root / "nonzero.wav"
+            failed.action("start", {
+                "output": str(failed_output), "usb_path": "1-2.3",
+                "privacy_authorized": True})
+            time.sleep(0.1)
+            with self.assertRaisesRegex(OSError, "Invalid bounded WAV"):
+                failed.action("stop", {})
+            self.assertFalse(failed_output.exists())
+
+            scripts = {
+                "terminate": (
+                    "import signal,time\n"
+                    "signal.signal(signal.SIGINT,signal.SIG_IGN)\n"
+                    "time.sleep(30)\n"
+                ),
+                "kill": (
+                    "import signal,time\n"
+                    "signal.signal(signal.SIGINT,signal.SIG_IGN)\n"
+                    "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                    "time.sleep(30)\n"
+                ),
+            }
+            for outcome, script in scripts.items():
+                recorder = marvin_managers.MicrophoneManager(
+                    device_check=lambda **_options: {}, popen=process(script))
+                recorder.start()
+                output = root / f"{outcome}.wav"
+                recorder.action("start", {
+                    "output": str(output), "usb_path": "1-2.3",
+                    "privacy_authorized": True})
+                time.sleep(0.1)
+                with self.subTest(outcome=outcome), patch.object(
+                        marvin_managers, "PROCESS_STOP_SECONDS", 0.05), \
+                        self.assertRaisesRegex(OSError, f"required {outcome}"):
+                    recorder.action("stop", {})
+                self.assertFalse(output.exists())
+                self.assertEqual(list(root.glob(f".{outcome}.wav.*.tmp")), [])
 
 
 if __name__ == "__main__":

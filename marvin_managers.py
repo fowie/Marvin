@@ -8,6 +8,7 @@ import secrets
 import signal
 import subprocess
 import tempfile
+from threading import Lock
 import time
 
 import marvin_camera
@@ -36,6 +37,9 @@ class DriveManager:
         self._lease_deadline = None
         self._last_error = None
         self._pulses = 0
+        self._stop_lock = Lock()
+        self._stop_requested = 0
+        self._stop_completed = 0
 
     def start(self):
         if self._state != "new":
@@ -57,19 +61,26 @@ class DriveManager:
             return self.status() | {"lease": self._owner}
         if name == "release":
             self._require_lease(values)
-            self._stop_now("released")
+            self._complete_stop(self.request_stop(), "released")
             return self.status()
         if name.startswith("heartbeat_"):
             direction = name.removeprefix("heartbeat_")
+            stop_generation = values.pop("_stop_generation", self.movement_token())
             self._require_direction(direction)
             self._require_lease(values)
+            if self._cancelled(stop_generation):
+                self._complete_stop(self._requested_stop(), "priority_stop")
+                return self.status() | {"result": "cancelled_before_pulse"}
             requested_at = values.get("requested_at")
             if type(requested_at) not in (int, float) or now - requested_at > DEADMAN_LEASE_SECONDS:
-                self._stop_now("stale_heartbeat")
+                self._complete_stop(self.request_stop(), "stale_heartbeat")
                 raise ValueError("Heartbeat was not fresh; stop was requested.")
             try:
                 self._drive(direction)
                 self._pulses += 1
+                if self._cancelled(stop_generation):
+                    self._complete_stop(self._requested_stop(), "priority_stop")
+                    return self.status() | {"result": "cancelled_after_pulse"}
                 self._direction = direction
                 self._lease_deadline = self._clock() + DEADMAN_LEASE_SECONDS
                 self._state = "leased"
@@ -79,6 +90,7 @@ class DriveManager:
             return self.status()
         if name.startswith("fixed_"):
             direction = name.removeprefix("fixed_")
+            stop_generation = values.pop("_stop_generation", self.movement_token())
             self._require_direction(direction)
             if values:
                 raise ValueError("Fixed drive actions accept no fields.")
@@ -87,6 +99,12 @@ class DriveManager:
             completed = 0
             try:
                 for _ in range(4):
+                    if self._cancelled(stop_generation):
+                        self._complete_stop(self._requested_stop(), "priority_stop")
+                        return self.status() | {
+                            "result": "cancelled_by_priority_stop",
+                            "completed_pulses": completed,
+                        }
                     self._drive(direction)
                     completed += 1
                     self._pulses += 1
@@ -98,9 +116,12 @@ class DriveManager:
                 "completed_pulses": completed,
             }
         if name == "stop":
+            generation = values.pop("_stop_generation", None)
             if values:
                 raise ValueError("Stop accepts no fields.")
-            self._stop_now("explicit_stop")
+            if generation is None:
+                generation = self.request_stop()
+            self._complete_stop(generation, "explicit_stop")
             return self.status()
         raise ValueError("Unknown drive action.")
 
@@ -120,6 +141,31 @@ class DriveManager:
         if self._owner is None or not secrets.compare_digest(
                 str(values.get("lease", "")), self._owner):
             raise ValueError("The active dead-man lease is required.")
+
+    def movement_token(self):
+        with self._stop_lock:
+            return self._stop_requested
+
+    def request_stop(self):
+        with self._stop_lock:
+            self._stop_requested += 1
+            return self._stop_requested
+
+    def _requested_stop(self):
+        with self._stop_lock:
+            return self._stop_requested
+
+    def _cancelled(self, movement_token):
+        with self._stop_lock:
+            return self._stop_requested > movement_token
+
+    def _complete_stop(self, generation, reason):
+        with self._stop_lock:
+            if self._stop_completed >= generation:
+                return
+        self._stop_now(reason)
+        with self._stop_lock:
+            self._stop_completed = max(self._stop_completed, generation)
 
     def _stop_now(self, reason):
         try:
@@ -205,6 +251,8 @@ class LedManager:
             led = LEDS[channel]
         except KeyError:
             raise ValueError("Unknown evidence-mapped LED channel.") from None
+        if not enabled and self._active != channel:
+            raise ValueError("Only the active evidence-mapped LED channel can be turned off.")
         if enabled and self._active not in (None, channel):
             raise ValueError(
                 "Combined simultaneous LED effects are not evidence-supported; "
@@ -374,19 +422,20 @@ class _RecorderManager:
     def _stop_process(self):
         process = self._process
         if process.poll() is not None:
-            return
+            return "exited"
         process.send_signal(signal.SIGINT)
         try:
             process.wait(PROCESS_STOP_SECONDS)
-            return
+            return "sigint"
         except subprocess.TimeoutExpired:
             process.terminate()
         try:
             process.wait(PROCESS_STOP_SECONDS)
-            return
+            return "terminate"
         except subprocess.TimeoutExpired:
             process.kill()
         process.wait(PROCESS_STOP_SECONDS)
+        return "kill"
 
     def _finish(self, *, graceful):
         if self._process is None:
@@ -395,10 +444,10 @@ class _RecorderManager:
             return
         process = self._process
         success = False
-        intentional_stop = graceful and process.poll() is None
         try:
+            stop_result = "natural"
             if graceful:
-                self._stop_process()
+                stop_result = self._stop_process()
             else:
                 process.wait(PROCESS_STOP_SECONDS)
             self._stderr_stream.seek(0)
@@ -407,7 +456,11 @@ class _RecorderManager:
             self._stderr_stream = None
             self._stream.close()
             self._stream = None
-            self._validate_output(process.returncode, intentional_stop)
+            if stop_result in ("terminate", "kill"):
+                raise OSError(
+                    f"{self.kind} recorder required {stop_result}; "
+                    "staged output cannot be finalized.")
+            self._validate_output(process.returncode)
             os.replace(self._stage, self._destination)
             success = True
             self._state = "ready"
@@ -476,7 +529,7 @@ class MicrophoneManager(_RecorderManager):
         ]
         return self._spawn(destination, stage, fd, argv)
 
-    def _validate_output(self, returncode, intentional_stop):
+    def _validate_output(self, returncode):
         size = self._stage.stat().st_size
         with self._stage.open("rb") as stream:
             header = stream.read(12)
@@ -484,10 +537,14 @@ class MicrophoneManager(_RecorderManager):
             MEDIA_LIMIT_SECONDS * marvin_microphone.RATE
             * marvin_microphone.CHANNELS * marvin_microphone.SAMPLE_BYTES + 44
         )
-        if ((returncode and not intentional_stop) or not 44 <= size <= maximum
+        if (returncode or not 44 <= size <= maximum
                 or header[:4] != b"RIFF" or header[8:12] != b"WAVE"):
             raise OSError(
                 f"Invalid bounded WAV result (exit {returncode}, {size} bytes).")
+        if int.from_bytes(header[4:8], "little") + 8 != size:
+            raise OSError(
+                f"Incomplete WAV result (declared {int.from_bytes(header[4:8], 'little') + 8}, "
+                f"received {size} bytes).")
 
 
 class CameraManager(_RecorderManager):
@@ -526,12 +583,12 @@ class CameraManager(_RecorderManager):
         ]
         return self._spawn(destination, stage, fd, argv)
 
-    def _validate_output(self, returncode, intentional_stop):
+    def _validate_output(self, returncode):
         detail = self._stderr.decode(errors="replace").lower()
         size = self._stage.stat().st_size
         with self._stage.open("rb") as stream:
             header = stream.read(4)
-        if ((returncode and not intentional_stop) or header != b"\x1aE\xdf\xa3"
+        if (returncode or header != b"\x1aE\xdf\xa3"
                 or any(word in detail for word in _CORRUPT_VIDEO)):
             raise OSError(
                 f"Invalid or incomplete V4L2 recording (exit {returncode}, "
@@ -544,3 +601,14 @@ class CameraManager(_RecorderManager):
             "format": "MJPG",
             "size": marvin_camera.FRAME_SIZE,
         }
+
+
+def build_managers(*, drive_action, stop_action, read_led_state, write_led_state,
+                   microphone=None, camera=None):
+    """Build the four named managers around production owner-bound callbacks."""
+    return {
+        "drive": DriveManager(drive_action, stop_action),
+        "leds": LedManager(read_led_state, write_led_state),
+        "microphone": MicrophoneManager() if microphone is None else microphone,
+        "camera": CameraManager() if camera is None else camera,
+    }

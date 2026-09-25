@@ -398,6 +398,15 @@ class OperatorRuntime:
         result = queue.Queue(maxsize=1)
         priority = 0 if action == "stop" else 1 if action == "release" else 10
         try:
+            try:
+                drive_manager = self.managers["drive"] if manager == "drive" else None
+            except KeyError:
+                raise ValueError("Drive manager is not configured.") from None
+            if manager == "drive" and action == "stop":
+                values = {"_stop_generation": drive_manager.request_stop()}
+            elif movement:
+                values = {**values,
+                          "_stop_generation": drive_manager.movement_token()}
             self._commands.put((
                 priority, next(self._command_sequence),
                 f"manager:{manager}:{action}", values, result))

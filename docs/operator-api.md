@@ -11,6 +11,9 @@ controller owner as the sensor source. `OperatorRuntime` invokes manager actions
 on its polling thread, so sensor polling pauses around every controller action
 and resumes only after the action returns. A second drive request is rejected
 rather than queued. Pending stop and release requests have priority.
+`marvin_managers.build_managers(...)` constructs those exact names around the
+accepted owner-bound drive/stop and full-state LED callbacks, so layer 3 does
+not duplicate legacy protocol logic.
 
 ## JSON and SSE routes
 
@@ -75,9 +78,10 @@ delegates to the existing hardened API.
 Each recorder owns at most one process, passes an argv list without a shell,
 hard-stops at five minutes, and reports only PID, elapsed time, output path,
 state, and errors. New private mode-`0600` staged output is atomically finalized
-only after a successful structural/diagnostic check. Failure or shutdown removes
-partial files. Direct-host video remains planned and unverified until Jetson
-acceptance.
+only after a zero-exit graceful SIGINT or natural completion plus a successful
+structural/diagnostic check. Any terminate/kill escalation, nonzero exit,
+failure, or shutdown removes partial files. Direct-host video remains planned
+and unverified until Jetson acceptance.
 
 ## Layer 3 integration requirements
 
