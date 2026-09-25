@@ -135,7 +135,7 @@ def capture(output, *, run=False, expected_usb_path=None,
         )
         device = _select(devices, expected_usb_path)
         argv = [
-            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning",
             "-f", "v4l2", "-input_format", FFMPEG_FORMAT,
             "-video_size", FRAME_SIZE, "-i", device["node"],
             "-frames:v", "1", "-an", "-c:v", "copy",
@@ -149,16 +149,19 @@ def capture(output, *, run=False, expected_usb_path=None,
             raise TimeoutError(
                 f"ffmpeg exceeded the {CAPTURE_TIMEOUT_SECONDS}-second capture limit; "
                 "no retry was attempted.") from error
+        detail = completed.stderr or b""
+        if isinstance(detail, bytes):
+            detail = detail.decode(errors="replace")
+        detail = detail.strip()[-2000:] or "no stderr"
         if completed.returncode:
-            detail = completed.stderr or b""
-            if isinstance(detail, bytes):
-                detail = detail.decode(errors="replace")
             raise OSError(
                 f"ffmpeg failed with exit {completed.returncode}: "
-                f"{detail.strip()[-2000:] or 'no stderr'}")
+                f"{detail}")
         frame = completed.stdout
         if not isinstance(frame, bytes) or not frame:
-            raise OSError("ffmpeg reported success without a captured frame.")
+            raise OSError(
+                "ffmpeg exited 0 without a captured frame: "
+                f"{detail}")
         if len(frame) > MAX_CAPTURE_BYTES:
             raise OSError(
                 f"ffmpeg returned {len(frame)} bytes; limit is {MAX_CAPTURE_BYTES}.")

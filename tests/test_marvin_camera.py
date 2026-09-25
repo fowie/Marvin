@@ -117,7 +117,7 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
             output, run=True, expected_usb_path="1-2.3",
             privacy_confirmed=True, **self.options())
         expected = [
-            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning",
             "-f", "v4l2", "-input_format", "mjpeg",
             "-video_size", "352x288", "-i", node,
             "-frames:v", "1", "-an", "-c:v", "copy",
@@ -209,6 +209,21 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
                 expected_usb_path="1-2.3", privacy_confirmed=True,
                 **{**self.options(), "runner": failed})
         self.assertFalse((self.root / "failed.jpg").exists())
+
+        def empty(argv, **kwargs):
+            if argv[0] == "ffmpeg":
+                return subprocess.CompletedProcess(
+                    argv, 0, b"",
+                    b"Output file is empty, nothing was encoded")
+            return self.runner(argv, **kwargs)
+
+        with self.assertRaisesRegex(
+                OSError, "exited 0 without.*Output file is empty"):
+            marvin_camera.capture(
+                self.root / "empty.jpg", run=True,
+                expected_usb_path="1-2.3", privacy_confirmed=True,
+                **{**self.options(), "runner": empty})
+        self.assertFalse((self.root / "empty.jpg").exists())
 
         def interrupted(argv, **kwargs):
             if argv[0] == "ffmpeg":
