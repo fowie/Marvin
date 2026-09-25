@@ -39,7 +39,7 @@ x86 host onto Jetson.
 | Surface | Verified state | Limits / next reference |
 |---|---|---|
 | Controller | Microsoft Marvin USB `045e:4444`; stable selector `/dev/serial/by-id/usb-Microsoft_Corp_2009_Microsoft_Marvin_12345678-if00`; legacy single-byte `S`/`E` framing works at 57600 8N1 with no flow control. Six getter IDs returned correlated, CRC-valid replies. | Exact firmware image is unknown. Preserve the legacy profile; successor EF/BE IDs collide with getters, motion, reset, and power operations. See [bring-up](marvin-bringup-plan.md) and [client](legacy-client.md). |
-| Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. | Raw PWM is not calibrated speed/torque/distance. Visible stop does not prove cleanup caused it, and none of this authorizes ground driving. See [drive evidence](legacy-disconnected-order.md) and the offline-default `tools.marvin_legacy_drive_step`. |
+| Motors | Legacy `0x0B SetRawMotorPWM` has bounded on-blocks evidence at raw value `2000`. Named 0.25 s `forward`, `backward`, `rotate-left`, and `rotate-right` profiles exist; continuous dual-forward rotation was observed for about 1 s in the dedicated proof. PR #37 adds the offline-first, standalone `tools.marvin_legacy_stop` primitive around the already observed all-zero cleanup frame. | Raw PWM is not calibrated speed/torque/distance. The zero frame is a **stop request**: visible stopped wheels after prior cleanup uses do not establish causation, braking, de-energization, application acknowledgement, or physical stop. None of this authorizes ground driving. See [stop-request boundary](#motor-stop-request-boundary), [drive evidence](legacy-disconnected-order.md), and [PR #37](https://github.com/fowie/Marvin/pull/37). |
 | Sensors | Legacy `0x00 ReadRawData` repeatedly returned a correlated 134-byte payload. Source-labelled fields include eight proximity words and five cliff words. Cliff words are five LE `uint16` values at payload-relative byte offsets `20..29`. Controlled clear/target/recovery runs cover all eight proximity fields in physical perimeter order. | P5/P9/P11/P13/P4 assignments are decisive within this campaign; P6/P7/P12 are strongly supported but retain cross-coupling caveats. Physical units, firmware internals, health, thresholds, and cliff assignments remain unknown. See [sensor evidence](#sensor-topology-and-mapping-evidence) and [cliff/proximity mapping](cliff-proximity-mapping.md). |
 | LEDs | Legacy `0x17/0x19` getters and separately authorized `0x18/0x1A` state/blink setters have protocol and visible-effect evidence. State indices 0-14, 16, and 17 were visibly mapped; index 15 had no visible effect. Wheel blink at index 12 was observed and exact visible baseline restoration was operator-confirmed. | Raw `0x82` remains opaque and visible behavior does not prove application acknowledgement or electrical topology. Reuse the [catalogue evidence](marvin-command-catalog.md#completed-live-interactive-led-mapping); do not remap casually. |
 | Tilt servos | Legacy getter `0x1D`, setter `0x1E`; selector-free baseline getter `[2500,2730]`. AX Protocol 1.0 capture establishes that word0 drives the J24 AX-12+ (ID 2). A sealed installed-camera `2500 -> 2000 -> restore` run directly produced approximately 5° upward tilt and return. | Decreasing word0 -> camera upward is directly observed at the tested point. Increasing word0 -> downward is inverse inference, not directly exercised. Local scaling supports about 100 legacy units/degree, not precision, full-range linearity, or endpoints; projector tilt/word1 remains unproved. See [servo status](#servo-result-and-boundary), [servo mapping](legacy-servo-mapping.md), and [PR #34](https://github.com/fowie/Marvin/pull/34). |
@@ -70,6 +70,24 @@ x86 host onto Jetson.
   plug or hub and was explicitly excluded as non-actionable in the microphone
   root-cause work. Do not use it as a Marvin blocker or attribution signal.
   A new, independently identified electrical fault is a different matter.
+
+## Motor stop-request boundary
+
+[PR #37](https://github.com/fowie/Marvin/pull/37) publishes a standalone,
+offline-first bounded all-zero raw-PWM stop-request primitive at commit
+`b7bf5747e18a0413967e83c6c690a7fb20dca19d`. Its exact fixed frame is:
+
+```text
+53550d0b0008000000000000000000311445
+```
+
+The frame SHA-256 is
+`07feeec91475227dbeab929d8d61fb00f966b0a84bb710fb168b97afa2df7159`.
+This is the same cleanup frame serial/USB-confirmed in multiple forward,
+reverse, and opposed-direction runs followed by operator-observed stopped
+wheels. That supports reuse without another proof run, but does **not**
+attribute stopping to the frame or establish braking, de-energization,
+application acknowledgement, causation, or physical stop.
 
 ## Camera result and boundary
 
@@ -442,3 +460,4 @@ State verified from GitHub on 2026-09-24:
 | [#30](https://github.com/fowie/Marvin/pull/30) | **Merged** | Microphone-array discovery |
 | [#33](https://github.com/fowie/Marvin/pull/33) | **Open** | Microphone failure diagnosis, kernel fix, verification, and rollback |
 | [#34](https://github.com/fowie/Marvin/pull/34) | **Open** | Front-camera AX-12+/J24 identification, word0 command mapping, and directly observed bounded camera motion/restoration |
+| [#37](https://github.com/fowie/Marvin/pull/37) | **Open** | Standalone bounded all-zero raw-PWM stop-request primitive with explicit physical-effect limits |
