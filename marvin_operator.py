@@ -3,12 +3,13 @@
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import itertools
 import os
 from pathlib import Path
 import queue
 import signal
 import stat
-from threading import Condition, Event, RLock, Thread, current_thread, main_thread
+from threading import Condition, Event, Lock, RLock, Thread, current_thread, main_thread
 import time
 from typing import Protocol
 
@@ -40,6 +41,8 @@ class SensorSource(Protocol):
 class RuntimeManager(Protocol):
     def start(self) -> None: ...
     def status(self) -> dict: ...
+    def action(self, name: str, values: dict) -> dict: ...
+    def tick(self, now: float) -> bool: ...
     def close(self) -> None: ...
 
 
@@ -199,7 +202,9 @@ class OperatorRuntime:
         self._lock = RLock()
         self._changed = Condition(self._lock)
         self._stop = Event()
-        self._commands = queue.Queue()
+        self._commands = queue.PriorityQueue()
+        self._command_sequence = itertools.count()
+        self._drive_pending = Lock()
         self._thread = None
         self._recorder = None
         self._revision = 0
@@ -246,6 +251,12 @@ class OperatorRuntime:
             while not self._stop.is_set():
                 self._drain_commands()
                 now = time.monotonic()
+                changed = False
+                for manager in self.managers.values():
+                    changed = manager.tick(now) or changed
+                if changed:
+                    with self._changed:
+                        self._publish()
                 if self.source is not None and now >= deadline:
                     try:
                         snapshot = self.source.read()
@@ -305,11 +316,21 @@ class OperatorRuntime:
     def _drain_commands(self):
         while True:
             try:
-                command, value, result = self._commands.get_nowait()
+                _priority, _sequence, command, value, result = self._commands.get_nowait()
             except queue.Empty:
                 return
             try:
-                if command == "start_recording":
+                if command.startswith("manager:"):
+                    _, manager_name, action = command.split(":", 2)
+                    try:
+                        manager = self.managers[manager_name]
+                    except KeyError:
+                        raise ValueError("Unknown runtime manager.") from None
+                    response = manager.action(action, value)
+                    with self._changed:
+                        self._publish()
+                    result.put((True, response))
+                elif command == "start_recording":
                     if self.source is None:
                         raise ValueError("Recording requires a configured sensor source.")
                     if self._recorder is not None:
@@ -326,6 +347,9 @@ class OperatorRuntime:
                     self._publish()
                 result.put((True, self._recording))
             except Exception as error:
+                if command.startswith("manager:"):
+                    with self._changed:
+                        self._publish()
                 result.put((False, error))
 
     def _record(self, snapshot, now):
@@ -353,11 +377,37 @@ class OperatorRuntime:
         if command not in ("start_recording", "stop_recording"):
             raise ValueError("Unknown recording command.")
         result = queue.Queue(maxsize=1)
-        self._commands.put((command, directory, result))
+        self._commands.put((10, next(self._command_sequence), command, directory, result))
         try:
             success, value = result.get(timeout=5)
         except queue.Empty as error:
             raise TimeoutError("Recording command timed out.") from error
+        if not success:
+            raise value
+        return value
+
+    def manager_action(self, manager, action, values):
+        if type(manager) is not str or type(action) is not str or type(values) is not dict:
+            raise ValueError("Manager action requires names and an object payload.")
+        if self._state != "running":
+            raise RuntimeError("Operator runtime is not running.")
+        movement = manager == "drive" and (
+            action.startswith("heartbeat_") or action.startswith("fixed_"))
+        if movement and not self._drive_pending.acquire(blocking=False):
+            raise ValueError("A bounded drive action is already pending; no movement backlog is allowed.")
+        result = queue.Queue(maxsize=1)
+        priority = 0 if action == "stop" else 1 if action == "release" else 10
+        try:
+            self._commands.put((
+                priority, next(self._command_sequence),
+                f"manager:{manager}:{action}", values, result))
+            try:
+                success, value = result.get(timeout=120)
+            except queue.Empty as error:
+                raise TimeoutError("Manager command timed out.") from error
+        finally:
+            if movement:
+                self._drive_pending.release()
         if not success:
             raise value
         return value
@@ -448,8 +498,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _event_type(status):
         if status.get("state") == "failed" or status.get("error"):
             return "error"
-        drive = status.get("managers", {}).get("drive", {})
-        return "error" if drive.get("error") else "status"
+        return (
+            "error" if any(
+                manager.get("error")
+                for manager in status.get("managers", {}).values())
+            else "status"
+        )
 
     def do_GET(self):
         if self.path.startswith("/api/") and not self._require_loopback_host():
@@ -462,6 +516,19 @@ class _Handler(BaseHTTPRequestHandler):
                 "status": "unavailable", "error": "No sensor snapshot is available."})
         elif self.path == "/api/recording":
             self._json(200, self.server.runtime.status()["recording"])
+        elif self.path in (
+                "/api/drive", "/api/leds", "/api/media/audio",
+                "/api/media/video"):
+            manager = {
+                "/api/drive": "drive",
+                "/api/leds": "leds",
+                "/api/media/audio": "microphone",
+                "/api/media/video": "camera",
+            }[self.path]
+            managers = self.server.runtime.status()["managers"]
+            self._json(
+                200 if manager in managers else 404,
+                managers.get(manager, {"status": "not_configured"}))
         elif self.path == "/api/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -487,11 +554,39 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         routes = {
-            "/api/recording/start": "start_recording",
-            "/api/recording/stop": "stop_recording",
+            "/api/recording/start": ("recording", "start_recording"),
+            "/api/recording/stop": ("recording", "stop_recording"),
+            "/api/drive/acquire": ("drive", "acquire"),
+            "/api/drive/release": ("drive", "release"),
+            "/api/drive/stop": ("drive", "stop"),
+            "/api/leds/reset": ("leds", "reset"),
+            "/api/media/audio/start": ("microphone", "start"),
+            "/api/media/audio/stop": ("microphone", "stop"),
+            "/api/media/video/start": ("camera", "start"),
+            "/api/media/video/stop": ("camera", "stop"),
+            "/api/media/video/capture": ("camera", "capture"),
         }
-        command = routes.get(self.path)
-        if command is None:
+        route = routes.get(self.path)
+        if route is None:
+            parts = self.path.split("/")
+            if len(parts) == 5 and parts[:3] == ["", "api", "drive"]:
+                mode, direction = parts[3:]
+                if mode in ("heartbeat", "fixed") and direction in (
+                        "forward", "backward", "rotate-left", "rotate-right"):
+                    route = ("drive", f"{mode}_{direction}")
+            elif len(parts) == 5 and parts[:3] == ["", "api", "leds"]:
+                channel, state = parts[3:]
+                if channel in (
+                        "left-position-0-red", "left-position-0-blue",
+                        "left-position-1-red", "left-position-1-blue",
+                        "left-position-2-red", "left-position-2-blue",
+                        "right-position-0-red", "right-position-0-blue",
+                        "right-position-1-red", "right-position-1-blue",
+                        "right-position-2-red", "right-position-2-blue",
+                        "wheels", "front-left-blue", "front-right-red",
+                        "bottom-green", "bottom-blue") and state in ("on", "off"):
+                    route = ("leds", f"{state}_{channel.replace('-', '_')}")
+        if route is None:
             self._json(404, {"status": "not_found"})
             return
         if not self._require_loopback_host():
@@ -503,14 +598,44 @@ class _Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise ValueError("JSON body must be an object.")
-            allowed = {"directory"} if command == "start_recording" else set()
-            if set(body) != allowed:
-                raise ValueError("Unexpected or missing JSON fields.")
-            result = self.server.runtime.recording(command, body.get("directory"))
-        except (OSError, ValueError, TypeError, TimeoutError, json.JSONDecodeError) as error:
+            manager, command = route
+            if manager == "recording":
+                allowed = {"directory"} if command == "start_recording" else set()
+                if set(body) != allowed:
+                    raise ValueError("Unexpected or missing JSON fields.")
+                result = self.server.runtime.recording(command, body.get("directory"))
+            else:
+                allowed = (
+                    {"lease"} if command in ("release",) or command.startswith("heartbeat_")
+                    else {"output", "usb_path", "privacy_authorized"}
+                    if command in ("start", "capture") else set()
+                )
+                if set(body) != allowed:
+                    raise ValueError("Unexpected or missing JSON fields.")
+                if command.startswith("heartbeat_"):
+                    body["requested_at"] = time.monotonic()
+                result = self.server.runtime.manager_action(manager, command, body)
+        except (OSError, ValueError, TypeError, RuntimeError, TimeoutError,
+                json.JSONDecodeError) as error:
             self._json(400, {"status": "failed", "error": str(error)[:1024]})
         else:
-            self._json(200, {"status": "ok", "recording": result})
+            try:
+                self._json(200, {"status": "ok", manager: result})
+            except (BrokenPipeError, ConnectionResetError):
+                if manager == "drive" and (
+                        command == "acquire" or command.startswith("heartbeat_")):
+                    lease = result.get("lease") or body.get("lease")
+                    if lease:
+                        try:
+                            self.server.runtime.manager_action(
+                                "drive", "release", {"lease": lease})
+                        except Exception:
+                            pass
+                elif manager == "leds" and command.startswith(("on_", "off_")):
+                    try:
+                        self.server.runtime.manager_action("leds", "reset", {})
+                    except Exception:
+                        pass
 
 
 def serve(runtime, *, port=8765, ready=None):

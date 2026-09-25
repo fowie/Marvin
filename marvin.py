@@ -615,7 +615,7 @@ and physical stop remain unproved and require operator observation/cutoff.""",
 
 def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
          sensor_expected_identity=None, operator_source=None,
-         operator_ready=None):
+         operator_managers=None, operator_ready=None):
     parser = _parser()
     args, extra = parser.parse_known_args(argv)
     if args.command == "microphone":
@@ -643,6 +643,7 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
                 operator_source,
                 poll_seconds=args.poll_seconds,
                 chunk_seconds=args.chunk_seconds,
+                managers=operator_managers,
             )
             marvin_operator.serve(runtime, port=args.port, ready=operator_ready)
             return 0

@@ -223,6 +223,19 @@ reconnects, wraps sequences, or exposes arbitrary opcodes.
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.
 
+Layer 2 adds injected `drive`, `leds`, `microphone`, and `camera` managers plus
+narrow JSON actions on that same server. Controller actions execute on the
+polling owner thread, pause sensor polling, reject movement backlog, and publish
+state/errors through the existing SSE stream. Dead-man motion requires a fresh
+0.75-second lease heartbeat for each proved 250 ms pulse; fixed-key motion is
+four sequential proved pulses, not calibrated distance or uninterrupted exact
+motion. LED control preserves one exact 18-byte baseline and permits only one
+evidence-mapped binary channel at a time because simultaneous effects are not
+proved. Direct-host WAV and MJPG/MKV recorders are private, exclusive, capped at
+five minutes, and clean partial files. Camera recording remains planned and
+unverified until Jetson acceptance. The complete route and integration contract
+is in [docs/operator-api.md](docs/operator-api.md).
+
 Poll intervals are bounded to `0.5..60` seconds (default `2`). Recording chunks
 are bounded to `10..3600` seconds (default `300`) and are new mode-`0600` JSONL
 files in an operator-selected existing directory with no group/other
