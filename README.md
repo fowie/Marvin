@@ -212,7 +212,8 @@ because its installed eight-byte response has no proven legacy decoder.
 ### Continuous local operator API
 
 `marvin operator serve` runs a long-lived stdlib HTTP service bound only to
-`127.0.0.1` (default port `8765`). Without `--run` it is status-only and opens
+`127.0.0.1` (default port `8765`) and serves the dependency-free browser
+dashboard at `http://127.0.0.1:8765/`. Without `--run` it is status-only, opens
 no hardware. Live polling requires an application-injected, already validated
 `marvin_operator.SensorSource`; the CLI deliberately rejects `--run` without
 that boundary rather than falling back to a weaker serial path. The built-in
@@ -235,6 +236,16 @@ proved. Direct-host WAV and MJPG/MKV recorders are private, exclusive, capped at
 five minutes, and clean partial files. Camera recording remains planned and
 unverified until Jetson acceptance. The complete route and integration contract
 is in [docs/operator-api.md](docs/operator-api.md).
+
+The browser uses the same HTTP/SSE listener and owner-thread command queue. It
+shows raw sensor confidence/boundaries, JSONL recording state, dead-man and
+fixed-pulse drive controls, evidence-mapped individual LEDs, and private media
+controls. No device value is inserted as HTML, and no media is previewed,
+played, uploaded, or transcribed. Live embedding configuration pins the
+controller port, private evidence/media roots, isolation declarations, and the
+current exact direct-host microphone and LifeCam USB paths; missing
+configuration leaves the corresponding controls disabled with a reason. See
+the API document for the exact flags and supervised acceptance sequence.
 
 Poll intervals are bounded to `0.5..60` seconds (default `2`). Recording chunks
 are bounded to `10..3600` seconds (default `300`) and are new mode-`0600` JSONL

@@ -580,6 +580,20 @@ and physical stop remain unproved and require operator observation/cutoff.""",
                        default=marvin_operator.DEFAULT_POLL_SECONDS)
     serve.add_argument("--chunk-seconds", type=int,
                        default=marvin_operator.DEFAULT_CHUNK_SECONDS)
+    serve.add_argument("--expected-physical-port", metavar="PORT",
+                       help="exact reviewed controller USB topology")
+    serve.add_argument("--evidence-root", type=Path, metavar="PRIVATE_DIR",
+                       help="existing private directory for sensor JSONL/evidence")
+    serve.add_argument("--actuators-isolated", action="store_true",
+                       help="declare reviewed actuator power and signal isolation")
+    serve.add_argument("--unprivileged-usbmon", action="store_true",
+                       help="declare ordinary-user target-scoped usbmon")
+    serve.add_argument("--media-directory", type=Path, metavar="PRIVATE_DIR",
+                       help="existing private output directory for media")
+    serve.add_argument("--microphone-usb-path", metavar="PATH",
+                       help="current exact direct-host 045e:fff0 USB path")
+    serve.add_argument("--lifecam-usb-path", metavar="PATH",
+                       help="current exact direct-host 045e:0721 USB path")
     microphone = actions.add_parser(
         "microphone", add_help=False,
         help="delegate to bounded microphone status/list/capture")
@@ -639,11 +653,39 @@ def main(argv=None, *, sensor_transport=None, sensor_ownership_key=None,
                 raise ValueError(
                     "Live operator service requires an injected validated transport; "
                     "no device was opened.")
+            configuration = {
+                "expected_physical_port": args.expected_physical_port,
+                "evidence_root": (
+                    None if args.evidence_root is None
+                    else str(args.evidence_root.resolve())),
+                "actuators_isolated": args.actuators_isolated,
+                "unprivileged_usbmon": args.unprivileged_usbmon,
+                "media_directory": (
+                    None if args.media_directory is None
+                    else str(args.media_directory.resolve())),
+                "microphone_usb_path": args.microphone_usb_path,
+                "camera_usb_path": args.lifecam_usb_path,
+            }
+            if args.run and (
+                    not args.expected_physical_port
+                    or args.evidence_root is None
+                    or args.actuators_isolated is not True
+                    or args.unprivileged_usbmon is not True):
+                raise ValueError(
+                    "Live operator sensors require expected controller port, "
+                    "private evidence root, actuator isolation, and ordinary-user usbmon.")
+            if args.run and operator_managers is None:
+                operator_managers = marvin_operator.managers_for_owner(
+                    operator_source,
+                    microphone=bool(args.media_directory and args.microphone_usb_path),
+                    camera=bool(args.media_directory and args.lifecam_usb_path),
+                )
             runtime = marvin_operator.OperatorRuntime(
                 operator_source,
                 poll_seconds=args.poll_seconds,
                 chunk_seconds=args.chunk_seconds,
                 managers=operator_managers,
+                configuration=configuration,
             )
             marvin_operator.serve(runtime, port=args.port, ready=operator_ready)
             return 0

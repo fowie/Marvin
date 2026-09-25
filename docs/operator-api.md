@@ -1,4 +1,4 @@
-# Local operator API contract
+# Local operator API and dashboard
 
 Layer 2 extends the existing `OperatorRuntime` and its localhost-only HTTP/SSE
 server. It does not open a second listener, enable CORS, or expose arbitrary
@@ -15,6 +15,40 @@ rather than queued. Pending stop and release requests have priority.
 accepted owner-bound drive/stop and full-state LED callbacks, so layer 3 does
 not duplicate legacy protocol logic.
 
+Layer 3 serves `/`, `/style.css`, and `/app.js` from that same listener. The
+assets are packaged Python constants: there is no CDN, external asset, frontend
+framework, telemetry, wildcard CORS, or second process. The server adds a
+self-only CSP, `nosniff`, no-referrer, and no-store headers. Browser POSTs must
+be same-origin, JSON, no larger than 4096 bytes, and match an exact route/body
+schema.
+
+Offline launch is hardware-free and leaves every live control disabled:
+
+```sh
+marvin operator serve --port 8765
+```
+
+An embedding application starts live mode by injecting one validated owner as
+`operator_source`. That same object must implement `drive_step`, `stop`,
+`read_led_state`, and `write_led_state`; `managers_for_owner()` binds those
+callbacks without opening a second controller path. Live configuration is:
+
+```text
+--run
+--expected-physical-port PORT
+--evidence-root PRIVATE_DIR
+--actuators-isolated
+--unprivileged-usbmon
+--media-directory PRIVATE_DIR
+--microphone-usb-path CURRENT_EXACT_PATH
+--lifecam-usb-path CURRENT_EXACT_PATH
+```
+
+The evidence root and media directory must already exist, be owned by the
+operator, and have no group/other permissions. Missing controller callbacks
+prevent live startup. Missing media paths omit those managers, so their controls
+remain visibly disabled. The CLI does not silently open a weaker serial path.
+
 ## JSON and SSE routes
 
 All routes bind to `127.0.0.1`. Request bodies must contain exactly the fields
@@ -23,6 +57,9 @@ listed.
 | Method | Route | JSON fields |
 |---|---|---|
 | GET | `/api/status` | - |
+| GET | `/` | dependency-free dashboard |
+| GET | `/style.css` | packaged stylesheet |
+| GET | `/app.js` | packaged browser controller |
 | GET | `/api/events` | - |
 | GET | `/api/drive` | - |
 | POST | `/api/drive/acquire` | none |
@@ -43,6 +80,7 @@ listed.
 
 SSE publishes the complete runtime status as `status` events and switches to an
 `error` event while the runtime or any manager reports an error.
+Each newly observed sensor snapshot is also sent as a `sensor` event.
 
 ## Drive boundary
 
@@ -101,3 +139,27 @@ release on pointer/key loss and page teardown, display four-pulse fixed motion
 truthfully, surface every manager/SSE error, require explicit privacy consent and
 current sysfs paths, and complete direct-host Jetson camera acceptance before
 presenting video recording as verified.
+
+## Supervised acceptance
+
+1. First launch without `--run`; verify the dashboard loads at
+   `http://127.0.0.1:8765/`, all controls are disabled, and no device is opened.
+2. Review the exact controller, microphone, and LifeCam topology paths. Create
+   separate mode-`0700` evidence and media directories.
+3. Secure Marvin on blocks, isolate the declared actuator power/signals, arrange
+   an operator at the external cutoff, and start the embedding application once
+   with all live flags above. Do not retry after an identity, write, cleanup, or
+   evidence failure.
+4. Verify sensor freshness and start/stop one JSONL recording. Inspect only its
+   private path and sealed evidence outside the dashboard.
+5. Exercise each dead-man direction briefly, releasing by pointer/key, then test
+   window blur and the priority Stop control. Treat completed transactions as
+   protocol evidence only, not proof of physical stop.
+6. Toggle one LED at a time and Reset to the captured baseline. Cut power on a
+   mismatch or uncertain restore.
+7. With explicit privacy confirmation and no bystanders, record a short WAV.
+   LifeCam frame/video remain planned/unverified until separate Jetson
+   acceptance; never infer acceptance from a structurally valid file.
+8. Shut down once and confirm the runtime reports stopped, the drive stop and
+   LED baseline restore were attempted, recorders ended, and no partial media
+   remains.

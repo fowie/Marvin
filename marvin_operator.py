@@ -14,6 +14,8 @@ import time
 from typing import Protocol
 
 import marvin_sensors
+import marvin_dashboard
+import marvin_managers
 from tools.marvin_legacy_client import LegacyClient, Limits
 
 
@@ -47,6 +49,25 @@ class RuntimeManager(Protocol):
 class ActionRuntimeManager(RuntimeManager, Protocol):
     def action(self, name: str, values: dict) -> dict: ...
     def tick(self, now: float) -> bool: ...
+
+
+def managers_for_owner(owner, *, microphone=False, camera=False):
+    """Bind accepted controller callbacks to the same owner as sensor polling."""
+    required = ("drive_step", "stop", "read_led_state", "write_led_state")
+    missing = [name for name in required if not callable(getattr(owner, name, None))]
+    if missing:
+        raise ValueError(
+            "Controller owner is missing accepted callbacks: " + ", ".join(missing))
+    managers = {
+        "drive": marvin_managers.DriveManager(owner.drive_step, owner.stop),
+        "leds": marvin_managers.LedManager(
+            owner.read_led_state, owner.write_led_state),
+    }
+    if microphone:
+        managers["microphone"] = marvin_managers.MicrophoneManager()
+    if camera:
+        managers["camera"] = marvin_managers.CameraManager()
+    return managers
 
 
 class PersistentSensorSource:
@@ -146,6 +167,10 @@ class _Recorder:
         self.rows += 1
 
     def status(self):
+        elapsed = (
+            None if self.started is None else
+            max(0.0, time.monotonic() - self.started)
+        )
         return {
             "active": self.directory_fd is not None,
             "chunk_open": self.stream is not None,
@@ -153,6 +178,7 @@ class _Recorder:
             "file": None if self.path is None else self.path.name,
             "chunk": self.chunk,
             "chunk_seconds": self.chunk_seconds,
+            "chunk_elapsed_seconds": elapsed,
             "rows": self.rows,
             "opened_at": self.opened_at,
         }
@@ -182,6 +208,7 @@ class OperatorRuntime:
                  poll_seconds=DEFAULT_POLL_SECONDS,
                  chunk_seconds=DEFAULT_CHUNK_SECONDS,
                  managers: dict[str, RuntimeManager] | None = None,
+                 configuration: dict | None = None,
                  startup_timeout=None):
         if type(poll_seconds) not in (int, float) or not MIN_POLL_SECONDS <= poll_seconds <= MAX_POLL_SECONDS:
             raise ValueError(f"poll_seconds must be {MIN_POLL_SECONDS}..{MAX_POLL_SECONDS}.")
@@ -189,6 +216,7 @@ class OperatorRuntime:
             raise ValueError(f"chunk_seconds must be {MIN_CHUNK_SECONDS}..{MAX_CHUNK_SECONDS}.")
         self.source = source
         self.managers = {} if managers is None else dict(managers)
+        self.configuration = {} if configuration is None else dict(configuration)
         if any(type(name) is not str or not name.isidentifier()
                for name in self.managers):
             raise ValueError("Manager names must be identifiers.")
@@ -383,6 +411,10 @@ class OperatorRuntime:
     def recording(self, command, directory=None):
         if command not in ("start_recording", "stop_recording"):
             raise ValueError("Unknown recording command.")
+        configured = self.configuration.get("evidence_root")
+        if command == "start_recording" and configured is not None:
+            if Path(directory).resolve() != Path(configured).resolve():
+                raise ValueError("Recording must use the configured private evidence root.")
         result = queue.Queue(maxsize=1)
         self._commands.put((10, next(self._command_sequence), command, directory, result))
         try:
@@ -398,6 +430,18 @@ class OperatorRuntime:
             raise ValueError("Manager action requires names and an object payload.")
         if self._state != "running":
             raise RuntimeError("Operator runtime is not running.")
+        if manager in ("microphone", "camera") and action in ("start", "capture"):
+            directory = self.configuration.get("media_directory")
+            expected_path = self.configuration.get(
+                "microphone_usb_path" if manager == "microphone"
+                else "camera_usb_path")
+            if directory is None or expected_path is None:
+                raise ValueError(f"{manager} route is not configured.")
+            output = Path(values.get("output", "")).resolve()
+            if output.parent != Path(directory).resolve():
+                raise ValueError("Media output must be directly inside the configured private directory.")
+            if values.get("usb_path") != expected_path:
+                raise ValueError("Media request does not match the configured exact USB path.")
         movement = manager == "drive" and (
             action.startswith("heartbeat_") or action.startswith("fixed_"))
         if movement and not self._drive_pending.acquire(blocking=False):
@@ -453,6 +497,7 @@ class OperatorRuntime:
                     name: manager.status()
                     for name, manager in self.managers.items()
                 },
+                "configuration": dict(self.configuration),
                 "revision": self._revision,
             }
 
@@ -491,12 +536,22 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
+    def _headers(self, content_type, length):
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; connect-src 'self'; img-src 'self'; "
+            "script-src 'self'; style-src 'self'; object-src 'none'; "
+            "base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+
     def _json(self, status, value):
         data = json.dumps(value, ensure_ascii=True, allow_nan=False).encode("ascii")
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
+        self._headers("application/json", len(data))
         self.end_headers()
         self.wfile.write(data)
 
@@ -518,9 +573,21 @@ class _Handler(BaseHTTPRequestHandler):
         return "error" if drive.get("error") else "status"
 
     def do_GET(self):
-        if self.path.startswith("/api/") and not self._require_loopback_host():
+        if not self._require_loopback_host():
             return
-        if self.path == "/api/status":
+        if self.path in ("/", "/index.html", "/style.css", "/app.js"):
+            value, content_type = {
+                "/": (marvin_dashboard.HTML, "text/html; charset=utf-8"),
+                "/index.html": (marvin_dashboard.HTML, "text/html; charset=utf-8"),
+                "/style.css": (marvin_dashboard.CSS, "text/css; charset=utf-8"),
+                "/app.js": (marvin_dashboard.JS, "text/javascript; charset=utf-8"),
+            }[self.path]
+            data = value.encode("utf-8")
+            self.send_response(200)
+            self._headers(content_type, len(data))
+            self.end_headers()
+            self.wfile.write(data)
+        elif self.path == "/api/status":
             self._json(200, self.server.runtime.status())
         elif self.path == "/api/sensors/latest":
             latest = self.server.runtime.latest()
@@ -545,9 +612,11 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Connection", "close")
             self.end_headers()
             revision = -1
+            sensor_at = None
             try:
                 while True:
                     status = self.server.runtime.wait_event(revision)
@@ -556,6 +625,14 @@ class _Handler(BaseHTTPRequestHandler):
                     event = self._event_type(status)
                     self.wfile.write(
                         f"id: {revision}\nevent: {event}\ndata: {data}\n\n".encode("ascii"))
+                    latest = self.server.runtime.latest()
+                    if latest is not None and latest["observed_at"] != sensor_at:
+                        sensor_at = latest["observed_at"]
+                        sensor = json.dumps(
+                            latest, ensure_ascii=True, allow_nan=False,
+                            separators=(",", ":"))
+                        self.wfile.write(
+                            f"event: sensor\ndata: {sensor}\n\n".encode("ascii"))
                     self.wfile.flush()
                     if status["state"] in ("failed", "stopped"):
                         break
@@ -604,6 +681,14 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._require_loopback_host():
             return
         try:
+            host = self.headers.get("Host", "")
+            if host.split(":", 1)[0] != "127.0.0.1":
+                raise ValueError("Host must be the loopback address.")
+            origin = self.headers.get("Origin")
+            if origin is not None and origin != f"http://{host}":
+                raise ValueError("Cross-origin requests are not accepted.")
+            if self.headers.get_content_type() != "application/json":
+                raise ValueError("Content-Type must be application/json.")
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 <= length <= MAX_BODY_BYTES:
                 raise ValueError("Request body is too large.")
@@ -648,6 +733,11 @@ class _Handler(BaseHTTPRequestHandler):
                         self.server.runtime.manager_action("leds", "reset", {})
                     except Exception:
                         pass
+
+    def do_OPTIONS(self):
+        self._json(405, {"status": "method_not_allowed"})
+
+    do_PUT = do_DELETE = do_PATCH = do_OPTIONS
 
 
 def serve(runtime, *, port=8765, ready=None):

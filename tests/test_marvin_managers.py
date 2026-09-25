@@ -28,6 +28,20 @@ def wave_bytes(data=b"\0\0"):
 
 
 class ManagerTests(unittest.TestCase):
+    def test_same_owner_wiring(self):
+        class Owner:
+            def read(self): return {}
+            def drive_step(self, direction): return direction
+            def stop(self): return None
+            def read_led_state(self): return bytes(18)
+            def write_led_state(self, payload): return payload
+
+        owner = Owner()
+        managers = marvin_operator.managers_for_owner(owner)
+        self.assertEqual(set(managers), {"drive", "leds"})
+        self.assertIs(managers["drive"]._drive.__self__, owner)
+        self.assertIs(managers["leds"]._read.__self__, owner)
+
     def test_drive_and_led_state_cleanup(self):
         now = [10.0]
         pulses, stops = [], []

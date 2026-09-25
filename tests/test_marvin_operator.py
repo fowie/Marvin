@@ -9,6 +9,7 @@ import time
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 import marvin
 import marvin_operator
@@ -94,6 +95,21 @@ class OperatorTests(unittest.TestCase):
                 time.sleep(0.01)
             status = json.load(urlopen(base + "/api/status", timeout=2))
             self.assertEqual(status["connection"]["status"], "connected")
+            with urlopen(base + "/", timeout=2) as page:
+                html = page.read().decode()
+                self.assertIn("Marvin operator", html)
+                self.assertEqual(page.headers["X-Content-Type-Options"], "nosniff")
+                self.assertIn("script-src 'self'", page.headers["Content-Security-Policy"])
+                self.assertEqual(page.headers["Cache-Control"], "no-store")
+            with urlopen(base + "/app.js", timeout=2) as script:
+                javascript = script.read().decode()
+            for contract in (
+                    "pointercancel", "keyup", "visibilitychange", "pagehide",
+                    'event.code==="Space"', "!event.repeat", "privacy_authorized:true",
+                    "/api/leds/reset", "SSE error", "keepalive:true"):
+                self.assertIn(contract, javascript)
+            self.assertNotIn("innerHTML", javascript)
+            self.assertNotIn("eval(", javascript)
             latest = json.load(urlopen(base + "/api/sensors/latest", timeout=2))
             self.assertEqual(len(latest["snapshot"]["raw_telemetry"]["fields"]), 82)
 
@@ -139,6 +155,15 @@ class OperatorTests(unittest.TestCase):
                 rows = [json.loads(line) for line in files[0].read_text().splitlines()]
                 self.assertGreaterEqual(len(rows), 1)
                 self.assertEqual(len(rows[0]["snapshot"]["raw_telemetry"]["fields"]), 82)
+
+            bad_origin = Request(
+                base + "/api/recording/stop", data=b"{}",
+                headers={"Content-Type": "application/json",
+                         "Origin": "https://example.invalid"}, method="POST")
+            with self.assertRaises(HTTPError) as rejected:
+                urlopen(bad_origin, timeout=2)
+            self.assertEqual(rejected.exception.code, 400)
+            rejected.exception.close()
         finally:
             server.shutdown()
             server.server_close()
