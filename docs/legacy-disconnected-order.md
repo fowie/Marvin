@@ -1957,16 +1957,13 @@ forward/other/no motion, visible stop/uncertainty, abnormal behavior, and cutoff
 | exact-zero `0A` baseline | 3387 | `533b0d0a000000499745` |
 | one dual-forward `0B` setter | 3388 | `533c0d0b0008000000d0070000d007e22f45` |
 | one mandatory all-zero `0B` cleanup | 3389 | `533d0d0b000800000000000000000058bc45` |
-| conditional exact-zero `0A` getter | 3390 | `533e0d0a00000049c245` |
 
 Transcript SHA-256:
-`efc78618ca4c6f208886a61628f2b38e475250c45abbb5d08dea12f5624b24d0`.
-Bounds are four writes / 56 TX / 56 expected RX / 8192 maximum RX, or three
-writes / 46 TX if verification is suppressed. The setter has one fixed 250 ms
-observation after its clean response, then exactly one cleanup. Strict 500 ms
-prewrite response, USB, and evidence gates remain; no retry or reconnect.
-The final getter runs only after a clean raw-`80` cleanup response. Any nonzero
-payload faults and retains the state lock; it never triggers a second cleanup.
+`0c9cba28941b5acf37a46aadc41d27410136015e7cce41ad727994d678e9e454`.
+Bounds are three writes / 46 TX / 38 expected RX / 8192 maximum RX. The setter
+has one fixed 250 ms observation after its clean response, then exactly one
+cleanup. Strict 500 ms prewrite response, USB, and evidence gates remain; no
+retry or reconnect. No post-cleanup getter is sent.
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -1981,7 +1978,8 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
-The September 25 installed-product acceptance used these exact sequences.
+The first September 25 installed-product acceptance used these sequences plus
+the now-removed historical sequence-3390 getter.
 Both wheels visibly moved forward and visibly stopped, then the operator cut
 power. The host exchange, in order, was:
 
@@ -1990,7 +1988,7 @@ power. The host exchange, in order, was:
 | baseline getter | `533b0d0a80080000000000000000000abb45` | raw `80`, words `[0,0,0,0]` |
 | forward setter | `533c0d0b820000e9f445` | opaque raw `82`, empty |
 | all-zero cleanup | `533d0d0b80000049e545` | opaque raw `80`, empty |
-| verification getter | `533e0d0a8008006400000064000000175545` | raw `80`, words `[100,0,100,0]` |
+| historical verification getter | `533e0d0a8008006400000064000000175545` | raw `80`, opaque words `[100,0,100,0]` |
 
 Cleanup began 0.7513473349972628 seconds after setter prewrite. Serial and
 usbmon recorded four exact OUT/IN pairs, 56 accepted TX bytes, 56 RX bytes,
@@ -1999,22 +1997,25 @@ and CRC correlation, and no pairing fault. The final getter was therefore not
 carryover or response misattribution. It also matches earlier per-channel
 post-cleanup `100` observations.
 
+The next installed-product run repeated the same baseline, setter, and cleanup
+responses with complete usbmon evidence and visible forward motion followed by
+visible stop. Its sequence-3390 getter instead returned
+`533e0d0a800800c8000000640000001d7845`, opaque LE words
+`[200,0,100,0]`. All nested manifests verified. Thus the post-cleanup command
+`0A` value is demonstrably variable under the same bounded transaction.
+
 The empty cleanup response is not an application acknowledgment. Visible stop
 does not establish braking, de-energization, cleanup causation, or the meaning
-of the getter values. Comparison with all sealed public-direction runs shows a
-narrow setter-specific envelope: reverse and both opposed-wheel runs returned
-exact zero after cleanup; forward returned exact zero in earlier runs and
-exactly `[100,0,100,0]` here. The product verifier accepts only those exact
-observed combinations and rejects every other nonzero payload. It does not
-generalize `100` into a floor/deadband rule or stopped-state meaning.
+of either getter value. The installed handler source is unavailable, and
+PCTestApp sends but does not decode command `0A`; no floor, range, scaling,
+decay, deadband, or stopped-state interpretation is supported.
 
-The installed handler source is unavailable, and PCTestApp sends but does not
-decode command `0A`; exact field semantics and reset/decay behavior therefore
-remain unknown. A zero-only/read-only characterization would not establish
-post-motion causation beyond the existing sealed observations, so it is not a
-prerequisite to the same bounded profile. Any broader accepted getter shape
-requires separately reviewed read-only or zero-command evidence; another
-nonzero motion probe must not be used to expand the envelope.
+Future live profiles therefore end after the exact baseline, setter, and
+mandatory zero-cleanup transactions. They use three writes / 46 TX bytes /
+38 expected RX bytes and do not send sequence 3390. Successful completion means
+only that those bounded transactions passed the identity, write, sequence,
+command, CRC, and usbmon gates. Physical stop remains `not_established` and
+requires operator observation and the external cutoff.
 
 ## Proven fixed legacy getter survey
 

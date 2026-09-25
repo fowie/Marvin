@@ -521,6 +521,7 @@
         "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
         "nonzero_final_getter": "fault and restoration lock; no second cleanup",
         "protocol": "both runs: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
+        "current_product_profile": "sequences 3387..3389 only; 3 writes / 46 TX / 38 expected RX; no post-cleanup getter; success means the bounded zero-command transaction completed, while application acknowledgment and physical stop remain unproved",
         "runs": [
           {
             "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",

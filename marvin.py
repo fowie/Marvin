@@ -530,7 +530,9 @@ teleop over those drive/stop primitives, and the fixed wheel-blink pilot.
 Live projector power is disabled because its source map conflicts with the
 installed legacy command map. Camera down 5 is a fixed offline-only inverse
 hypothesis. Named steady LEDs are offline-only plans. Teleop creates one
-evidence subdirectory per action.""",
+evidence subdirectory per action. Drive success means the bounded setter and
+zero-cleanup transactions completed; application acknowledgment and physical
+stop remain unproved and require operator observation/cutoff.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     actions = parser.add_subparsers(dest="command", required=True)

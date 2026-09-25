@@ -66,20 +66,21 @@ fails, or receives Ctrl-C; write acceptance and protocol correlation still do
 not prove physical stop or restoration.
 
 There is deliberately no arbitrary command, PWM, duration or servo target.
-`stop` sends the fixed all-zero raw-PWM request and conditionally verifies the
-zero getter; it is a stop request with previously observed stopped wheels, not
-proof of braking, de-energization or causation. Camera down 5 provides the fixed
+`stop` sends the fixed all-zero raw-PWM request and requires its correlated
+empty raw-`80` response; it is a stop request with previously observed stopped
+wheels, not proof of braking, de-energization or causation. Camera down 5 provides the fixed
 offline `2500 -> 3000` inverse-hypothesis plan, but live camera-down remains
 blocked until the installed linkage is observed. Use the external cutoff
 whenever cleanup or restoration is reported uncertain.
 
-`drive` and `teleop` use one bounded nonzero setter, a mandatory all-zero
-cleanup in `finally`, and one correlated verification getter. The verifier is
-setter-specific: reverse and opposed-wheel profiles require exact zero;
-forward accepts exact zero or the exact sealed acceptance observation
-`[100,0,100,0]`. This is an empirical cleanup evidence envelope, not an ACK,
-calibrated PWM meaning, or proof of braking, de-energization, or stop causation.
-Every other nonzero getter still fails closed and requires the external cutoff.
+`drive` and `teleop` use one bounded nonzero setter and a mandatory all-zero
+cleanup in `finally`. Success means the exact baseline, setter, and cleanup
+transactions completed under the identity, write, sequence, command, CRC, and
+usbmon gates. It does not mean application acknowledgment or physical stop.
+Post-cleanup command-`0A` values proved variable (`[100,0,100,0]` then
+`[200,0,100,0]`) despite the same command sequence and visible stop, so future
+live plans no longer request or interpret that unsupported telemetry. Operator
+observation and the external cutoff remain required.
 
 Camera and projector use one internal two-word servo-axis implementation.
 Changing one axis constructs the complete setter pair from `[2500,2730]` and
@@ -259,10 +260,10 @@ python -m tools.marvin_legacy_stop
 ```
 
 Its public Python API is `tools.marvin_legacy_stop.prepare()` and
-`run_stop(...)`. A live run sends exactly one fixed all-zero `0B` request and,
-only after its proved raw-`80` response, one fixed `0A` getter. This is a
-zero-PWM request with protocol evidence, not proof of braking, de-energization,
-cleanup causation, or physical stop.
+`run_stop(...)`. A live run sends exactly one fixed all-zero `0B` request and
+requires one correlated empty raw-`80` response. It sends no post-stop getter.
+This is a zero-PWM request with protocol evidence, not proof of braking,
+de-energization, cleanup causation, or physical stop.
 
 The explicitly selected [left-motor-powered read-only observation](docs/legacy-live.md#left-motor-powered-read-only-observation)
 has one separately authorized recorded result and remains **under HARDWARE HOLD**: exactly one fixed

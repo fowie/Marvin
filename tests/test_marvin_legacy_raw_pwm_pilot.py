@@ -154,16 +154,15 @@ class RawPwmPilotTests(unittest.TestCase):
             "53010d0a0000004ccd45",
             "53020d0b0008000100000000000000a64f45",
             "53030d0b0008000000000000000000674245",
-            "53040d0a0000004c9845",
         ])
         self.assertEqual(
             plan["transcript_sha256"],
-            "6880718e5a54cf8a8225d3d2afc3cd4cc975f6c0bb6552a8de4161bf4a6b0df8")
+            "a01c7123f58e502a3195620a2c7caede58bca671cd22c581632ab287e8466f20")
         self.assertEqual(
             (plan["maximum_writes"], plan["maximum_application_bytes"],
              plan["minimum_application_bytes_after_setter"],
              plan["maximum_expected_response_bytes"]),
-            (4, 56, 46, 56))
+            (3, 46, 46, 38))
         self.assertEqual(pilot.decode_packet(pilot.STEPS["set"]).payload,
                          b"\x01\x00" + bytes(6))
         self.assertFalse(plan["automatic_retries"])
@@ -178,15 +177,14 @@ class RawPwmPilotTests(unittest.TestCase):
             "53050d0a0000004d4945",
             "53060d0b000800e8030000000000005ea945",
             "53070d0b0008000000000000000000628645",
-            "53080d0a0000004c5445",
         ])
         self.assertEqual(
             plan_1000["transcript_sha256"],
-            "f9fb5e2ae27dbbeb0c8c57b3d9bb1663ca2d34fa16f2c2ae7966e505310e012b")
+            "534422141ecf02e3f21e53d96216dd6a2f67da82b8b04092664a86d92026162a")
         self.assertEqual(plan_1000["fixed_setter_words_uint16"], [1000, 0, 0, 0])
         self.assertEqual(
             pilot.transcript_for_scope(consent.RAW_PWM_1000_PILOT_SCOPE),
-            pilot.TRANSCRIPT_1000)
+            pilot.TRANSCRIPT_1000[:3])
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
                 patch.object(os, "open", side_effect=AssertionError("no open")), \
                 redirect_stdout(io.StringIO()) as stdout:
@@ -196,11 +194,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "53090d0a0000004d8545",
             "530a0d0b000800d00700000000000015d745",
             "530b0d0b00080000000000000000006e8a45",
-            "530c0d0a0000004dd045",
         ])
         self.assertEqual(
             plan_2000["transcript_sha256"],
-            "9a3a6fa3110df4769b62391cd289cebbd06bf801b04154117f4a989c1a78d51b")
+            "3dad32fd81d51f2ea9cbdd6cccc76f6340ae96d7d85ecc7cb3a599596a26b19a")
         self.assertEqual(plan_2000["fixed_setter_words_uint16"], [2000, 0, 0, 0])
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
                 patch.object(os, "open", side_effect=AssertionError("no open")), \
@@ -211,11 +208,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "530d0d0a0000004c0145",
             "530e0d0b000800e803000000000000576145",
             "530f0d0b00080000000000000000006b4e45",
-            "53100d0a0000004f8c45",
         ])
         self.assertEqual(
             connected_plan["transcript_sha256"],
-            "35c73a4732f7ee75e95f27c291018d7a038172a80c3a9bc9827aabd2d0cac575")
+            "0bfe147e482d28f0f3d4458e15ea65c21f3fe1b116ff10719947ff5a2e4c4f8d")
         self.assertEqual(connected_plan["observation_seconds"], .25)
         self.assertEqual(connected_plan["maximum_setter_to_cleanup_start_seconds"], .75)
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
@@ -227,11 +223,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "53110d0a0000004e5d45",
             "53120d0b000800d0070000000000000dcf45",
             "53130d0b0008000000000000000000769245",
-            "53140d0a0000004e0845",
         ])
         self.assertEqual(
             connected_2000_plan["transcript_sha256"],
-            "00c4193c533cdcf24d94b280bd866255ceb6d94a9e3fb4e01eb59899749853a8")
+            "77c3179cfc91765358573cb7cb91ef22d8a21e52a7764b51cfbd560be6949a18")
         self.assertEqual(connected_2000_plan["fixed_setter_words_uint16"], [2000, 0, 0, 0])
         self.assertEqual(
             connected_2000_plan["status"],
@@ -246,11 +241,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "53150d0a0000004fd945",
             "53160d0b0008000000d00700000000d5c745",
             "53170d0b0008000000000000000000735645",
-            "53180d0a0000004ec445",
         ])
         self.assertEqual(
             word1_plan["transcript_sha256"],
-            "41b8589d900c4e071e8c5510a70411d43561bf2059314537b63b7b7d20dc5d27")
+            "490502eea89a98fb1e0e070059efb1ab4d9e050efea6f02bfe99fd9f1758aab3")
         self.assertEqual(word1_plan["fixed_setter_words_uint16"], [0, 2000, 0, 0])
         self.assertEqual(word1_plan["observation_seconds"], 3)
         with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
@@ -262,11 +256,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "53190d0a0000004f1545",
             "531a0d0b0008000000d00700000000d9cb45",
             "531b0d0b00080000000000000000007f5a45",
-            "531c0d0a0000004f4045",
         ])
         self.assertEqual(
             connected_word1_plan["transcript_sha256"],
-            "2bdece99255756fed374341c9d8520eb7e0231c398aa5eb8f1e5da8dc8d58b95")
+            "5389ac028774d4e976d30ffd309e5488862b60fa0c0cd7c731e79c41cb594075")
         self.assertEqual(
             connected_word1_plan["fixed_setter_words_uint16"], [0, 2000, 0, 0])
         self.assertEqual(connected_word1_plan["observation_seconds"], .25)
@@ -275,15 +268,13 @@ class RawPwmPilotTests(unittest.TestCase):
                 "531d0d0a0000004e9145",
                 "531e0d0b00080000000000d0070000f35e45",
                 "531f0d0b00080000000000000000007a9e45",
-                "53200d0a0000004a7c45",
-             ], "64bf02c70c5b94a5e2845e73468d72a3b441fa4cd0002f38012707a2b2bc8fca",
+             ], "e652b964164efb759cd15c3305b6112a0e7dc8bf68a4e6ef275ae5403915e2d5",
              [0, 0, 2000, 0]),
             (FLAGS_WORD3_2000, [
                 "53210d0a0000004bad45",
                 "53220d0b000800000000000000d0075a6145",
                 "53230d0b000800000000000000000046a245",
-                "53240d0a0000004bf845",
-             ], "6ecfb0fac2ed75ae890517d913ba82b1e5a460d52826bf50661d0ec01304700d",
+             ], "b67e52a3c4594e87a78cc3a0fb2b3c12c6260a5255ee232c571a4f3fb0b0b74b",
              [0, 0, 0, 2000]),
         ):
             with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
@@ -300,15 +291,13 @@ class RawPwmPilotTests(unittest.TestCase):
                 "53250d0a0000004a2945",
                 "53260d0b00080000000000d0070000caa645",
                 "53270d0b0008000000000000000000436645",
-                "53280d0a0000004b3445",
-             ], "4bb4f48a37e8a08db303b7df19990108504ca4e5800d71c13ddd9fd189a2f064",
+             ], "b1c2bcf1efee0041289f40f530d8afe655466305406e2a2c77db774071d6a1ee",
              [0, 0, 2000, 0]),
             (FLAGS_WORD3_2000_RIGHT_CONNECTED, [
                 "53290d0a0000004ae545",
                 "532a0d0b000800000000000000d00753a945",
                 "532b0d0b00080000000000000000004f6a45",
-                "532c0d0a0000004ab045",
-             ], "45853e630a4d4f1fb292b77ffe68c0c0bef1258bfb757de80840f9210c106ccd",
+             ], "fd00cfe67fd7a8ca71e396428553498ee26b661a76986d84fd9d8f5089a30c83",
              [0, 0, 0, 2000]),
         ):
             with patch.object(session, "preflight", side_effect=AssertionError("no hardware")), \
@@ -333,11 +322,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "533b0d0a000000499745",
             "533c0d0b0008000000d0070000d007e22f45",
             "533d0d0b000800000000000000000058bc45",
-            "533e0d0a00000049c245",
         ])
         self.assertEqual(
             dual_plan["transcript_sha256"],
-            "efc78618ca4c6f208886a61628f2b38e475250c45abbb5d08dea12f5624b24d0")
+            "0c9cba28941b5acf37a46aadc41d27410136015e7cce41ad727994d678e9e454")
         self.assertEqual(dual_plan["fixed_setter_words_uint16"], [0, 2000, 0, 2000])
         self.assertEqual(
             dual_plan["operator_selected_physical_plug_label"], "Motor L and Motor R")
@@ -353,26 +341,23 @@ class RawPwmPilotTests(unittest.TestCase):
             "53470d0a000000426b45",
             "53480d0b000800d0070000d0070000de9445",
             "53490d0b00080000000000000000002cc845",
-            "534a0d0a000000437645",
         ])
         self.assertEqual(
             reverse_plan["transcript_sha256"],
-            "01062cff9b64d2334d9b7fb023db002723444922eb4f291d7ddf5dcc569de9bd")
+            "bd4b4601c3623c29955ad0f31722d6bed5499f747ce4a29e304b267940cf49d2")
         self.assertEqual(reverse_plan["fixed_setter_words_uint16"], [2000, 0, 2000, 0])
         for declarations, frames, digest, words in (
             (DECLARATIONS_LEFT_REVERSE_RIGHT_FORWARD, [
                 "534b0d0a00000042a745",
                 "534c0d0b000800d00700000000d0074e5345",
                 "534d0d0b0008000000000000000000290c45",
-                "534e0d0a00000042f245",
-             ], "e1b7c5fbe491c37b8c2b78dd352d6d96885049c61f9d3e3f46e242d139b475f2",
+             ], "2f9ea8efa66511d433fdbda4391e41430b69c2f00385a5158d3fe35ca87dd3b2",
              [2000, 0, 0, 2000]),
             (DECLARATIONS_LEFT_FORWARD_RIGHT_BACKWARD, [
                 "534f0d0a000000432345",
                 "53500d0b0008000000d007d00700001b4045",
                 "53510d0b000800000000000000000034d045",
-                "53520d0a00000040ae45",
-             ], "1673977cfce05b88411e568bd3fd1a5cf029a419c24f74b7b5da6622a2b3ea36",
+             ], "bda21553b8e6938ab38d604999288dfce768a6891e792b2437519cfe1945664e",
              [0, 2000, 2000, 0]),
         ):
             flags = ["--" + name.replace("_", "-") for name in declarations]
@@ -396,11 +381,10 @@ class RawPwmPilotTests(unittest.TestCase):
             "53530d0a000000417f45",
             "53540d0b0008000000d0070000d0078b8745",
             "53550d0b0008000000000000000000311445",
-            "53560d0a000000412a45",
         ])
         self.assertEqual(
             sustained_plan["transcript_sha256"],
-            "e40ce7c77ede5ea1c3d9784d419928d12e6838ef94b9c01f87fdac4fb69305a7")
+            "3aa534fe7ea1b482cd44cc4fad5b625b5ce87916902b73d9aa167d0ae90c7929")
         self.assertEqual(sustained_plan["observation_seconds"], 1.0)
         self.assertEqual(sustained_plan["maximum_setter_to_cleanup_start_seconds"], 1.75)
         self.assertFalse(sustained_plan["ground_drive_authorized"])
@@ -419,15 +403,13 @@ class RawPwmPilotTests(unittest.TestCase):
                 "533f0d0a000000481345",
                 "53400d0b0008000000d00700000000839145",
                 "53410d0b0008000000000000000000250045",
-                "53420d0a000000423e45",
-             ], "039eb52792de9be997c1ec92ae5d236d5a9c6f39ad7b39f24584c748bac0a846",
+             ], "f7ee9966115836e3c18056d4ff188375f5383aa013e84c6a71d4b838d73200b1",
              [0, 2000, 0, 0]),
             (DECLARATIONS_BOTH_CONNECTED_RIGHT_FORWARD, [
                 "53430d0a00000043ef45",
                 "53440d0b000800000000000000d0073c0745",
                 "53450d0b000800000000000000000020c445",
-                "53460d0a00000043ba45",
-             ], "1bd1d7eaf79f367f049a4852e0901df44265d41a3515fdf474e67cd32cdd8501",
+             ], "c30dd72fbfc75d99070349234fd135448d16e27522809e3312bea1b071db0134",
              [0, 0, 0, 2000]),
         ):
             flags = ["--" + name.replace("_", "-") for name in declarations]
@@ -525,9 +507,9 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertEqual(result["scope"], consent.RAW_PWM_PILOT_SCOPE)
         self.assertEqual(result["probe_name"], "DisconnectedLoadRawPwmWord0OnePilot")
         self.assertTrue(result["fixed_raw_pwm_word0_one_pilot_authorized"])
-        self.assertEqual(result["requested_application_bytes"], 56)
+        self.assertEqual(result["requested_application_bytes"], 46)
         self.assertEqual(result["immutable_application_transcript_hex"],
-                         [raw.hex() for raw in pilot.TRANSCRIPT])
+                         [raw.hex() for raw in pilot.TRANSCRIPT[:3]])
         for flag in FLAGS:
             self.assertIn(flag, command)
         pilot._validate_capture(runner.call_args.kwargs)
@@ -701,7 +683,7 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertTrue(result_1000["fixed_raw_pwm_word0_1000_pilot_authorized"])
         self.assertEqual(
             result_1000["immutable_application_transcript_hex"],
-            [raw.hex() for raw in pilot.TRANSCRIPT_1000])
+            [raw.hex() for raw in pilot.TRANSCRIPT_1000[:3]])
         for flag in FLAGS_1000:
             self.assertIn(flag, command_1000)
         pilot._validate_capture(runner_1000.call_args.kwargs)
@@ -723,7 +705,7 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertTrue(result_2000["fixed_raw_pwm_word0_2000_pilot_authorized"])
         self.assertEqual(
             result_2000["immutable_application_transcript_hex"],
-            [raw.hex() for raw in pilot.TRANSCRIPT_2000])
+            [raw.hex() for raw in pilot.TRANSCRIPT_2000[:3]])
         for flag in FLAGS_2000:
             self.assertIn(flag, command_2000)
         pilot._validate_capture(runner_2000.call_args.kwargs)
@@ -837,14 +819,15 @@ class RawPwmPilotTests(unittest.TestCase):
         report = {}
         with patch.object(pilot, "_response",
                           side_effect=self.response({"cleanup": 0x82})), \
-                redirect_stderr(io.StringIO()):
+                redirect_stderr(io.StringIO()), \
+                self.assertRaisesRegex(OSError, "correlated empty raw-80"):
             pilot._observe(transport, report, clock=lambda: 0)
         self.assertEqual(transport.attempts, ["baseline", "set", "cleanup"])
         self.assertEqual(report["restoration"],
                          "zero_cleanup_attempted_but_application_unverified")
         self.assertEqual(report["subsequent_live_phase_gate"],
                          "physical_output_baseline_confirmation_and_power_cycle_acknowledgment_required")
-        self.assertEqual(report["status"], pilot.SUCCESS)
+        self.assertEqual(report["status"], "failed")
         self.assertEqual((report["accepted_tx_bytes"], report["uncertain_tx_bytes"]),
                          (46, 0))
         transport.wait.assert_called_once_with(3)
@@ -855,12 +838,12 @@ class RawPwmPilotTests(unittest.TestCase):
         with patch.object(pilot, "_response", side_effect=self.response()), \
                 redirect_stderr(io.StringIO()):
             pilot._observe(transport, report, clock=lambda: 0)
-        self.assertEqual(transport.attempts, ["baseline", "set", "cleanup", "verify"])
-        self.assertTrue(report["getter_reverified"])
+        self.assertEqual(transport.attempts, ["baseline", "set", "cleanup"])
+        self.assertTrue(report["cleanup_transaction_completed"])
         self.assertEqual(
             report["restoration"],
-            "getter_setter_specific_cleanup_envelope_reverified")
-        self.assertEqual(report["accepted_tx_bytes"], 56)
+            "zero_cleanup_transaction_completed_physical_stop_unverified")
+        self.assertEqual(report["accepted_tx_bytes"], 46)
 
         transport_1000 = _Transport()
         transport_1000.steps = pilot.STEPS_1000
@@ -871,10 +854,10 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(transport_1000, report_1000, clock=lambda: 0)
         self.assertEqual(
             [row["sequence"] for row in report_1000["responses"]],
-            [3333, 3334, 3335, 3336])
+            [3333, 3334, 3335])
         self.assertEqual(report_1000["status"], pilot.SUCCESS_1000)
         self.assertEqual(transport_1000.attempts,
-                         ["baseline", "set", "cleanup", "verify"])
+                         ["baseline", "set", "cleanup"])
 
         transport_2000 = _Transport()
         transport_2000.steps = pilot.STEPS_2000
@@ -885,7 +868,7 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(transport_2000, report_2000, clock=lambda: 0)
         self.assertEqual(
             [row["sequence"] for row in report_2000["responses"]],
-            [3337, 3338, 3339, 3340])
+            [3337, 3338, 3339])
         self.assertEqual(report_2000["status"], pilot.SUCCESS_2000)
 
         word1_transport = _Transport()
@@ -897,15 +880,15 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(word1_transport, word1_report, clock=lambda: 0)
         self.assertEqual(
             [row["sequence"] for row in word1_report["responses"]],
-            [3349, 3350, 3351, 3352])
+            [3349, 3350, 3351])
         word1_transport.wait.assert_called_once_with(3)
         self.assertEqual(word1_report["status"], pilot.SUCCESS_WORD1_2000)
 
         for steps, success, sequences in (
             (pilot.STEPS_WORD2_2000, pilot.SUCCESS_WORD2_2000,
-             [3357, 3358, 3359, 3360]),
+             [3357, 3358, 3359]),
             (pilot.STEPS_WORD3_2000, pilot.SUCCESS_WORD3_2000,
-             [3361, 3362, 3363, 3364]),
+             [3361, 3362, 3363]),
         ):
             motor_r_transport = _Transport()
             motor_r_transport.steps = steps
@@ -922,10 +905,10 @@ class RawPwmPilotTests(unittest.TestCase):
         for steps, success, sequences in (
             (pilot.STEPS_WORD2_2000_RIGHT_CONNECTED,
              pilot.SUCCESS_WORD2_2000_RIGHT_CONNECTED,
-             [3365, 3366, 3367, 3368]),
+             [3365, 3366, 3367]),
             (pilot.STEPS_WORD3_2000_RIGHT_CONNECTED,
              pilot.SUCCESS_WORD3_2000_RIGHT_CONNECTED,
-             [3369, 3370, 3371, 3372]),
+             [3369, 3370, 3371]),
         ):
             connected_right_transport = _Transport()
             connected_right_transport.steps = steps
@@ -959,7 +942,7 @@ class RawPwmPilotTests(unittest.TestCase):
         self.assertIn("OBSERVE_BOTH_MOTOR_NOW", stderr.getvalue())
         self.assertEqual(
             [row["sequence"] for row in dual_report["responses"]],
-            [3387, 3388, 3389, 3390])
+            [3387, 3388, 3389])
         self.assertEqual(dual_report["status"], pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED)
         sustained_transport = _Transport()
         sustained_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND
@@ -978,7 +961,7 @@ class RawPwmPilotTests(unittest.TestCase):
             sustained_transport, 1.5, 1.75, clock=ANY)
         self.assertEqual(
             [row["sequence"] for row in sustained_report["responses"]],
-            [3411, 3412, 3413, 3414])
+            [3411, 3412, 3413])
         self.assertEqual(
             sustained_report["status"], pilot.SUCCESS_DUAL_FORWARD_2000_ONE_SECOND)
         self.assertEqual(sustained_report["setter_to_cleanup_start_seconds"], 0)
@@ -997,7 +980,7 @@ class RawPwmPilotTests(unittest.TestCase):
                 self.assertRaises(InterruptedError):
             pilot._observe(interrupted_transport, {}, clock=lambda: 0)
         self.assertEqual(
-            interrupted_transport.attempts, ["baseline", "set", "cleanup", "verify"])
+            interrupted_transport.attempts, ["baseline", "set", "cleanup"])
         self.assertTrue(interrupted_transport.cleanup_attempted)
         late_transport = _Transport()
         late_transport.steps = pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND
@@ -1022,7 +1005,7 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(late_transport, late_report, clock=lambda: 0)
         self.assertEqual(late_report["setter_to_cleanup_start_seconds"], 1.76)
         self.assertEqual(
-            late_transport.attempts, ["baseline", "set", "cleanup", "verify"])
+            late_transport.attempts, ["baseline", "set", "cleanup"])
 
         connected_word1_transport = _Transport()
         connected_word1_transport.steps = pilot.STEPS_WORD1_2000_LEFT_CONNECTED
@@ -1036,7 +1019,7 @@ class RawPwmPilotTests(unittest.TestCase):
                 connected_word1_transport, connected_word1_report, clock=lambda: 0)
         self.assertEqual(
             [row["sequence"] for row in connected_word1_report["responses"]],
-            [3353, 3354, 3355, 3356])
+            [3353, 3354, 3355])
         connected_word1_transport.wait.assert_called_once_with(.25)
         self.assertEqual(
             connected_word1_report["status"], pilot.SUCCESS_WORD1_2000_LEFT_CONNECTED)
@@ -1052,7 +1035,7 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(connected_transport, connected_report, clock=lambda: 0)
         self.assertEqual(
             [row["sequence"] for row in connected_report["responses"]],
-            [3341, 3342, 3343, 3344])
+            [3341, 3342, 3343])
         connected_transport.wait.assert_called_once_with(.25)
         self.assertEqual(connected_report["status"], pilot.SUCCESS_LEFT_CONNECTED)
 
@@ -1067,77 +1050,36 @@ class RawPwmPilotTests(unittest.TestCase):
             pilot._observe(connected_2000_transport, connected_2000_report, clock=lambda: 0)
         self.assertEqual(
             [row["sequence"] for row in connected_2000_report["responses"]],
-            [3345, 3346, 3347, 3348])
+            [3345, 3346, 3347])
         connected_2000_transport.wait.assert_called_once_with(.25)
         self.assertEqual(
             connected_2000_report["status"], pilot.SUCCESS_2000_LEFT_CONNECTED)
 
-        live_artifact = bytes.fromhex("53140d0a80080000006400000000002c7045")
-        evidence_transport = Mock(
-            steps=pilot.STEPS_2000_LEFT_CONNECTED,
-            last_write_sequence=3348,
-            last_write_started=1.0,
-            event=Mock())
-
-        def feed_live_artifact(_transport, evidence, **_):
-            evidence.feed(Received(live_artifact, 1.1, 1.2), 1.3)
-
-        with patch.object(pilot.zero, "_observe_response",
-                          side_effect=feed_live_artifact), \
-                self.assertRaisesRegex(OSError, "unexpected_raw_pwm_payload"):
-            pilot._response(
-                evidence_transport, {"responses": []}, "verify",
-                deadline=2.0, clock=lambda: 1.5)
-
-        teleop_frames = tuple(bytes.fromhex(raw) for raw in (
+        common = (
             "533b0d0a80080000000000000000000abb45",
             "533c0d0b820000e9f445",
             "533d0d0b80000049e545",
-            "533e0d0a8008006400000064000000175545",
-        ))
-        teleop_transport = Mock(
-            steps=pilot.STEPS_DUAL_FORWARD_2000_CONNECTED,
-            last_write_sequence=None,
-            last_write_started=1.0,
-            event=Mock())
-        teleop_report = {"responses": []}
-        for step, raw in zip(("baseline", "set", "cleanup", "verify"), teleop_frames):
-            request = pilot.decode_packet(teleop_transport.steps[step])
-            teleop_transport.last_write_sequence = request.sequence
-
-            def feed(_transport, evidence, *, packet=raw, **_):
-                evidence.feed(Received(packet, 1.1, 1.2), 1.3)
-
-            with patch.object(pilot.zero, "_observe_response", side_effect=feed):
-                pilot._response(
-                    teleop_transport, teleop_report, step,
-                    deadline=2.0, clock=lambda: 1.5)
+        )
+        teleop_003 = common + ("533e0d0a8008006400000064000000175545",)
+        teleop_004 = common + ("533e0d0a800800c8000000640000001d7845",)
+        for transcript in (teleop_003, teleop_004):
+            packets = [pilot.decode_packet(bytes.fromhex(raw)) for raw in transcript]
+            self.assertEqual(
+                [(packet.sequence, packet.command, packet.response_field,
+                  packet.payload.hex()) for packet in packets[:3]],
+                [
+                    (3387, 0x0A, 0x80, "0000000000000000"),
+                    (3388, 0x0B, 0x82, ""),
+                    (3389, 0x0B, 0x80, ""),
+                ])
         self.assertEqual(
-            [(row["step"], row["sequence"], row["raw_payload_hex"])
-             for row in teleop_report["responses"]],
-            [
-                ("baseline", 3387, "0000000000000000"),
-                ("set", 3388, ""),
-                ("cleanup", 3389, ""),
-                ("verify", 3390, "6400000064000000"),
-            ])
+            [pilot.decode_packet(bytes.fromhex(transcript[-1])).payload.hex()
+             for transcript in (teleop_003, teleop_004)],
+            ["6400000064000000", "c800000064000000"])
         self.assertEqual(
-            teleop_report["responses"][-1]["cleanup_evidence_classification"],
-            "sealed_dual_forward_post_cleanup_observation")
-        unsupported = frame(
-            bytes.fromhex("6400000000000000"),
-            sequence=3390, command=0x0A, status=0x80)
-
-        def feed_unsupported(_transport, evidence, **_):
-            evidence.feed(Received(unsupported, 1.1, 1.2), 1.3)
-
-        teleop_transport.last_write_sequence = 3390
-        with patch.object(
-                pilot.zero, "_observe_response", side_effect=feed_unsupported), \
-                self.assertRaisesRegex(OSError, "unexpected_raw_pwm_payload"):
-            pilot._response(
-                teleop_transport, {"responses": []}, "verify",
-                deadline=2.0, clock=lambda: 1.5)
+            pilot.prepare(consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE)
+            ["immutable_application_transcript_hex"],
+            [raw.hex() for raw in pilot.TRANSCRIPT_DUAL_FORWARD_2000_CONNECTED[:3]])
 
         faults = (
             (("set", "error"), None),
@@ -1369,7 +1311,7 @@ class RawPwmPilotTests(unittest.TestCase):
             delayed_transport, 0.751, 1.0, clock=ANY)
         self.assertEqual(
             delayed_transport.attempts,
-            ["baseline", "set", "cleanup", "verify"])
+            ["baseline", "set", "cleanup"])
         self.assertEqual(
             delayed_report["status"],
             pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED)
@@ -1388,7 +1330,9 @@ class RawPwmPilotTests(unittest.TestCase):
             "07feeec91475227dbeab929d8d61fb00f966b0a84bb710fb168b97afa2df7159")
         self.assertEqual(
             plan["transcript_sha256"],
-            "36479fc7f68aef0f0e8072bcc9073ef361239b4d5e17e3db14503b7bc5dcf28e")
+            "07feeec91475227dbeab929d8d61fb00f966b0a84bb710fb168b97afa2df7159")
+        self.assertEqual((plan["maximum_writes"], plan["maximum_expected_response_bytes"]),
+                         (1, 10))
         self.assertEqual(plan["fixed_stop_words_uint16"], [0, 0, 0, 0])
         self.assertFalse(plan["automatic_retries"])
         self.assertFalse(plan["automatic_reconnect"])
@@ -1457,9 +1401,9 @@ class RawPwmPilotTests(unittest.TestCase):
         report = {}
         with patch.object(pilot, "_response", side_effect=self.response()):
             stop._observe(transport, report, clock=lambda: 0)
-        self.assertEqual(transport.attempts, ["stop", "verify"])
+        self.assertEqual(transport.attempts, ["stop"])
         self.assertEqual(report["status"], stop.SUCCESS)
-        self.assertTrue(report["getter_reverified"])
+        self.assertTrue(report["stop_transaction_completed"])
         self.assertEqual(report["physical_stop"], "not_established")
 
         transport = StopTransport()

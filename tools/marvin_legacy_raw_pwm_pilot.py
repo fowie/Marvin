@@ -22,7 +22,6 @@ from tools.marvin_paths import new_output_path
 
 
 ZERO_PWM = bytes(8)
-DUAL_FORWARD_POST_CLEANUP = bytes.fromhex("6400000064000000")
 WORD0_ONE = (1).to_bytes(2, "little") + bytes(6)
 WORD0_1000 = (1000).to_bytes(2, "little") + bytes(6)
 WORD0_2000 = (2000).to_bytes(2, "little") + bytes(6)
@@ -335,14 +334,14 @@ SETTER_PAYLOADS = {
 }
 def transcript_for_scope(scope):
     try:
-        return PROFILES[scope]["transcript"]
+        return PROFILES[scope]["transcript"][:3]
     except KeyError:
         raise ValueError("Unknown fixed raw-PWM pilot scope.") from None
 
 
 def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
     profile = PROFILES[scope]
-    transcript = profile["transcript"]
+    transcript = profile["transcript"][:3]
     first_sequence = profile["first_sequence"]
     value = profile["value"]
     setter_payload = SETTER_PAYLOADS.get(
@@ -351,7 +350,6 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         (first_sequence, 0x0A, b""),
         (first_sequence + 1, 0x0B, setter_payload),
         (first_sequence + 2, 0x0B, ZERO_PWM),
-        (first_sequence + 3, 0x0A, b""),
     )
     for raw, fields in zip(transcript, expected):
         packet = decode_packet(raw)
@@ -417,16 +415,17 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "minimum_application_bytes_after_setter": sum(map(len, transcript[:3])),
         "maximum_writes": len(transcript),
         "maximum_serial_rx_bytes": 8192,
-        "maximum_expected_response_bytes": 56,
+        "maximum_expected_response_bytes": 38,
         "response_policy": (
             "baseline_getter_requires_unique_crc_valid_correlated_raw80_exact_zero; "
-            "verification_getter_requires an exact setter-specific sealed-evidence "
-            "cleanup payload; "
-            "setter_and_cleanup_accept_unique_crc_valid_correlated_empty_raw80_or_raw82_opaquely"),
+            "setter_accepts_unique_crc_valid_correlated empty raw80 or raw82 opaquely; "
+            "cleanup transaction requires unique CRC-valid correlated empty raw80"),
         "response_time_origin": "matching_immediate_pre_os_write_monotonic_timestamp",
         "cleanup_policy": (
             "exactly_one_fixed_all_zero_attempt after any nonzero may reach syscall"),
-        "conditional_verification": "cmd0a only after clean empty raw80 cleanup response",
+        "post_cleanup_getter": (
+            "not_sent; historical values are variable opaque telemetry and do not "
+            "verify cleanup or physical stop"),
         "unverified_restoration_policy": (
             "physical_output_baseline_confirmation_and_power_cycle_acknowledgment_required"),
         "automatic_retries": False,
@@ -480,11 +479,8 @@ class _RawPwmTransport(LiveTransport):
             if self.completed != ["baseline"]:
                 raise OSError("Raw-PWM setter requires the exact zero baseline.")
             self.may_have_applied = True
-        elif step == "verify":
-            if not self.cleanup_raw80:
-                raise OSError("Raw-PWM getter verification requires a clean raw-80 cleanup.")
         else:
-            raise OSError("Only the fixed raw-PWM pilot transcript is permitted.")
+            raise OSError("Only baseline, one setter, and one cleanup are permitted.")
         count = self._submit_once(self.steps[step], deadline=deadline)
         if count == len(self.steps[step]):
             self.completed.append(step)
@@ -645,14 +641,9 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
     expected_payloads = (b"",)
     if step == "baseline":
         expected_payloads = (ZERO_PWM,)
-    elif step == "verify":
-        setter_payload = decode_packet(transport.steps["set"]).payload
-        expected_payloads = (
-            (ZERO_PWM, DUAL_FORWARD_POST_CLEANUP)
-            if setter_payload == DUAL_FORWARD_2000 else (ZERO_PWM,))
     evidence = zero._ResponseEvidence(
         transport.event, sequence=request.sequence, command=request.command,
-        accepted_response_fields=((0x80,) if step in ("baseline", "verify")
+        accepted_response_fields=((0x80,) if step == "baseline"
                                   else (0x80, 0x82)),
         validate_packet=lambda packet: (
             [] if packet.payload in expected_payloads else ["unexpected_raw_pwm_payload"]))
@@ -670,12 +661,6 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
             "raw_response_field": packet.response_field,
             "payload_bytes": len(packet.payload),
             "raw_payload_hex": packet.payload.hex(),
-            "cleanup_evidence_classification": (
-                "exact_zero"
-                if step == "verify" and packet.payload == ZERO_PWM
-                else "sealed_dual_forward_post_cleanup_observation"
-                if step == "verify" else None
-            ),
             "application_acknowledgment": "not_established",
             "events": evidence.events,
         })
@@ -692,6 +677,9 @@ def _attempt_cleanup(transport, report, *, clock=time.monotonic):
     packet = _response(transport, report, "cleanup", deadline=deadline, clock=clock)
     report["cleanup_raw_response_field"] = packet.response_field
     transport.cleanup_raw80 = packet.response_field == 0x80
+    if not transport.cleanup_raw80:
+        raise OSError(
+            "Zero cleanup response did not match the installed correlated empty raw-80 shape.")
     if hasattr(transport, "absolute_cleanup_bound_seconds"):
         elapsed = (
             report["cleanup_prewrite_monotonic"]
@@ -722,7 +710,7 @@ def _observe(transport, report, *, clock=time.monotonic):
     report.update(
         status="not_started", accepted_tx_bytes=0, uncertain_tx_bytes=0,
         responses=[], nonzero_may_have_applied=False, cleanup_attempted=False,
-        cleanup_raw_response_field=None, getter_reverified=False,
+        cleanup_raw_response_field=None, cleanup_transaction_completed=False,
         operator_scope_observation="pending_external_operator_report",
         application_acknowledgment="not_established", physical_stop="not_established",
     )
@@ -770,14 +758,7 @@ def _observe(transport, report, *, clock=time.monotonic):
             except BaseException as error:
                 cleanup_errors.append(("cleanup", error))
         if transport.cleanup_raw80:
-            try:
-                verify_deadline = clock() + CLEANUP_SECONDS
-                _submit(transport, report, "verify", deadline=verify_deadline)
-                _response(transport, report, "verify",
-                          deadline=verify_deadline, clock=clock)
-                report["getter_reverified"] = True
-            except BaseException as error:
-                cleanup_errors.append(("verify", error))
+            report["cleanup_transaction_completed"] = True
         try:
             transport.close(deadline=clock() + CLEANUP_SECONDS)
         except BaseException as error:
@@ -792,12 +773,12 @@ def _observe(transport, report, *, clock=time.monotonic):
                 for step, error in cleanup_errors
             ],
             restoration=(
-                "getter_setter_specific_cleanup_envelope_reverified"
-                if report["getter_reverified"]
+                "zero_cleanup_transaction_completed_physical_stop_unverified"
+                if report["cleanup_transaction_completed"]
                 else "zero_cleanup_attempted_but_application_unverified"),
             subsequent_live_phase_gate=(
                 "none"
-                if report["getter_reverified"]
+                if report["cleanup_transaction_completed"]
                 else "physical_output_baseline_confirmation_and_power_cycle_acknowledgment_required"),
             physical_stop="not_established",
         )
@@ -865,7 +846,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     root = output.parent
     previous = _load_state(root)
     if previous and previous["status"] not in (
-            "restored", "power_cycle_reset_confirmed", "set_aborted_before_baseline",
+            "restored", "cleanup_transaction_completed",
+            "power_cycle_reset_confirmed", "set_aborted_before_baseline",
             "set_aborted_before_nonzero", "aborted_before_hardware"):
         raise ValueError("RESTORATION_ACK_REQUIRED before another live diagnostic.")
     state = {
@@ -880,7 +862,7 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
             output, expected_physical_port=expected_physical_port, review=prepare(scope),
             transport_type=transport_type, observe=_observe,
             limits=zero._Limits(
-                first_sequence=profile["first_sequence"], max_requests=4, interval=0),
+                first_sequence=profile["first_sequence"], max_requests=3, interval=0),
             session_options={"actuators_isolated": False, **declarations},
             declarations={**consent.powered_trial_history(declarations),
                           "run_id": str(uuid.uuid4())},
@@ -917,8 +899,8 @@ def run_diagnostic(output, *, expected_physical_port, run=False,
     observation = result["observation"]
     state.update(
         status=(
-            "restored"
-            if observation["getter_reverified"]
+            "cleanup_transaction_completed"
+            if observation["cleanup_transaction_completed"]
             else "raw_pwm_restoration_unverified"),
         restoration=observation["restoration"],
         set_manifest_sha256=_verify_manifest(output),

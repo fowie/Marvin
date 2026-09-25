@@ -1,4 +1,4 @@
-"""Fixed all-zero raw-PWM stop request with optional zero getter evidence.
+"""Fixed all-zero raw-PWM stop request.
 
 Offline by default. This requests zero raw PWM; it does not prove braking,
 motor de-energization, or physical stop.
@@ -19,10 +19,7 @@ from tools.marvin_legacy_live import LiveTransport
 from tools.marvin_legacy_protocol import decode_packet
 
 
-STEPS = {
-    "stop": pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND["cleanup"],
-    "verify": pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND["verify"],
-}
+STEPS = {"stop": pilot.STEPS_DUAL_FORWARD_2000_ONE_SECOND["cleanup"]}
 TRANSCRIPT = tuple(STEPS.values())
 SERIAL_SECONDS = 10
 SUCCESS = "raw_pwm_all_zero_stop_request_complete_unverified"
@@ -30,10 +27,8 @@ SUCCESS = "raw_pwm_all_zero_stop_request_complete_unverified"
 
 def prepare():
     stop = decode_packet(STEPS["stop"])
-    verify = decode_packet(STEPS["verify"])
-    if ((stop.sequence, stop.command, stop.payload) != (3413, 0x0B, bytes(8))
-            or (verify.sequence, verify.command, verify.payload) != (3414, 0x0A, b"")):
-        raise ValueError("Fixed stop transcript disagrees with the proved pilot suffix.")
+    if (stop.sequence, stop.command, stop.payload) != (3413, 0x0B, bytes(8)):
+        raise ValueError("Fixed stop request disagrees with the proved cleanup frame.")
     return {
         "status": "dry_run",
         "name": consent.RAW_PWM_STOP_SCOPE,
@@ -44,13 +39,13 @@ def prepare():
         "stop_frame_sha256": hashlib.sha256(STEPS["stop"]).hexdigest(),
         "transcript_sha256": hashlib.sha256(b"".join(TRANSCRIPT)).hexdigest(),
         "fixed_stop_words_uint16": [0, 0, 0, 0],
-        "maximum_writes": 2,
+        "maximum_writes": 1,
         "maximum_application_bytes": sum(map(len, TRANSCRIPT)),
         "maximum_serial_rx_bytes": 8192,
-        "maximum_expected_response_bytes": 28,
+        "maximum_expected_response_bytes": 10,
         "response_policy": (
             "stop requires unique CRC-valid correlated empty raw80; "
-            "then getter requires unique CRC-valid correlated raw80 exact eight zero bytes"),
+            "this proves only the bounded zero-command transaction completed"),
         "automatic_retries": False,
         "automatic_reconnect": False,
         "physical_effect": "operator_observation_not_protocol_evidence",
@@ -82,11 +77,8 @@ class _StopTransport(LiveTransport):
         if step == "stop":
             if self.completed:
                 raise OSError("All-zero stop request must be first and attempted once.")
-        elif step == "verify":
-            if self.completed != ["stop"] or not self.stop_raw80:
-                raise OSError("Zero getter requires a clean raw-80 stop response.")
         else:
-            raise OSError("Only the fixed stop request and conditional getter are permitted.")
+            raise OSError("Only the fixed stop request is permitted.")
         count = self._submit_once(self.steps[step], deadline=deadline)
         if count == len(self.steps[step]):
             self.completed.append(step)
@@ -97,7 +89,8 @@ def _observe(transport, report, *, clock=time.monotonic):
     deadline = clock() + SERIAL_SECONDS
     report.update(
         status="not_started", accepted_tx_bytes=0, uncertain_tx_bytes=0,
-        responses=[], stop_request_submission_started=False, getter_reverified=False,
+        responses=[], stop_request_submission_started=False,
+        stop_transaction_completed=False,
         application_acknowledgment="not_established",
         operator_observation="not_collected", physical_stop="not_established",
     )
@@ -110,12 +103,9 @@ def _observe(transport, report, *, clock=time.monotonic):
             transport, report, "stop", deadline=deadline, clock=clock)
         report["stop_raw_response_field"] = packet.response_field
         if packet.response_field != 0x80:
-            raise OSError("All-zero stop response is opaque; zero getter suppressed.")
+            raise OSError("All-zero stop response is opaque; stop transaction failed.")
         transport.stop_raw80 = True
-        pilot._submit(transport, report, "verify", deadline=deadline)
-        pilot._response(
-            transport, report, "verify", deadline=deadline, clock=clock)
-        report["getter_reverified"] = True
+        report["stop_transaction_completed"] = True
         report["status"] = SUCCESS
     finally:
         transport.close(deadline=clock() + pilot.CLEANUP_SECONDS)
@@ -123,8 +113,8 @@ def _observe(transport, report, *, clock=time.monotonic):
             application_submission_attempts=transport.writes,
             serial_rx_bytes=transport.serial_bytes,
             protocol_result=(
-                "zero_raw_pwm_getter_reverified"
-                if report["getter_reverified"]
+                "zero_command_transaction_completed_physical_stop_unverified"
+                if report["stop_transaction_completed"]
                 else "stop_request_result_unverified"),
             physical_stop="not_established",
         )
@@ -147,7 +137,7 @@ def run_stop(output, *, expected_physical_port, run=False, **declarations):
     return zero._run_diagnostic(
         output, expected_physical_port=expected_physical_port, review=prepare(),
         transport_type=_StopTransport, observe=_observe,
-        limits=zero._Limits(first_sequence=3413, max_requests=2, interval=0),
+        limits=zero._Limits(first_sequence=3413, max_requests=1, interval=0),
         session_options=declarations,
         declarations={
             **consent.powered_trial_history(declarations),
