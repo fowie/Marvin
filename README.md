@@ -75,14 +75,14 @@ offline `2500 -> 3000` inverse-hypothesis plan, but live camera-down remains
 blocked until the installed linkage is observed. Use the external cutoff
 whenever cleanup or restoration is reported uncertain.
 
-`drive` and `teleop` use one bounded nonzero setter and a mandatory all-zero
-cleanup in `finally`. Success means the exact baseline, setter, and cleanup
-transactions completed under the identity, write, sequence, command, CRC, and
-usbmon gates. It does not mean application acknowledgment or physical stop.
-Post-cleanup command-`0A` values proved variable (`[100,0,100,0]` then
-`[200,0,100,0]`) despite the same command sequence and visible stop, so future
-live plans no longer request or interpret that unsupported telemetry. Operator
-observation and the external cutoff remain required.
+`drive` and `teleop` use an initial all-zero `0B` transaction, one bounded
+nonzero `0B` setter, and a mandatory all-zero `0B` cleanup in `finally`.
+Success means those three setter transactions completed under the identity,
+write, sequence, command, CRC, and usbmon gates. It does not mean application
+acknowledgment or physical stop. Command-`0A` values proved variable after
+motion, including before a successive teleop action, so public drive plans
+never request or interpret that unsupported telemetry. Operator observation
+and the external cutoff remain required.
 
 Camera and projector use one internal two-word servo-axis implementation.
 Changing one axis constructs the complete setter pair from `[2500,2730]` and
@@ -246,9 +246,9 @@ electrical faults.
 The offline-default `tools.marvin_legacy_drive_step` facade exposes only the
 proved named raw-PWM mappings: `forward`, `backward`, `rotate-left`, and
 `rotate-right`. It requires explicit `--duration 0.25 --raw-pwm 2000`; other
-values are intentionally rejected. Live use
-retains the fixed pilot's exact-zero baseline, one bounded nonzero dwell,
-single all-zero cleanup attempt, evidence lock, and operator declarations.
+values are intentionally rejected. Live use sends an initial all-zero setter,
+one bounded nonzero dwell, and one mandatory all-zero cleanup attempt under the
+evidence lock and operator declarations.
 These are raw wire values and bounded observations, not calibrated movement or
 proof of stop/cleanup effect. For an offline plan:
 

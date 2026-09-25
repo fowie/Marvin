@@ -117,7 +117,7 @@ class _Transport:
             raise OSError(step + " uncertain")
         if self.submit_fault == (step, "partial"):
             return 1
-        return len(pilot.STEPS[step])
+        return len(self.steps[step])
 
 
 class RawPwmPilotTests(unittest.TestCase):
@@ -319,14 +319,20 @@ class RawPwmPilotTests(unittest.TestCase):
             self.assertEqual(pilot.main(FLAGS_DUAL_FORWARD_CONNECTED), 0)
         dual_plan = json.loads(stdout.getvalue())
         self.assertEqual(dual_plan["immutable_application_transcript_hex"], [
-            "533b0d0a000000499745",
+            "533b0d0b00080000000000000000005eba45",
             "533c0d0b0008000000d0070000d007e22f45",
             "533d0d0b000800000000000000000058bc45",
         ])
         self.assertEqual(
             dual_plan["transcript_sha256"],
-            "0c9cba28941b5acf37a46aadc41d27410136015e7cce41ad727994d678e9e454")
+            "a282b0a55da947e8e622464d27d6b5e5c566f5292d6162552321792f153ec9d4")
         self.assertEqual(dual_plan["fixed_setter_words_uint16"], [0, 2000, 0, 2000])
+        self.assertEqual(
+            (dual_plan["maximum_application_bytes"],
+             dual_plan["maximum_expected_response_bytes"]),
+            (54, 30))
+        self.assertIsNone(dual_plan["required_baseline_payload_hex"])
+        self.assertEqual(dual_plan["initial_zero_command_words_uint16"], [0, 0, 0, 0])
         self.assertEqual(
             dual_plan["operator_selected_physical_plug_label"], "Motor L and Motor R")
         reverse_flags = [
@@ -338,26 +344,26 @@ class RawPwmPilotTests(unittest.TestCase):
             self.assertEqual(pilot.main(reverse_flags), 0)
         reverse_plan = json.loads(stdout.getvalue())
         self.assertEqual(reverse_plan["immutable_application_transcript_hex"], [
-            "53470d0a000000426b45",
+            "53470d0b0008000000000000000000230645",
             "53480d0b000800d0070000d0070000de9445",
             "53490d0b00080000000000000000002cc845",
         ])
         self.assertEqual(
             reverse_plan["transcript_sha256"],
-            "bd4b4601c3623c29955ad0f31722d6bed5499f747ce4a29e304b267940cf49d2")
+            "f3102cd14b4dba39f7415c2148c804cf03cc393bb2d91f3b58ffe1523f15d467")
         self.assertEqual(reverse_plan["fixed_setter_words_uint16"], [2000, 0, 2000, 0])
         for declarations, frames, digest, words in (
             (DECLARATIONS_LEFT_REVERSE_RIGHT_FORWARD, [
-                "534b0d0a00000042a745",
+                "534b0d0b00080000000000000000002f0a45",
                 "534c0d0b000800d00700000000d0074e5345",
                 "534d0d0b0008000000000000000000290c45",
-             ], "2f9ea8efa66511d433fdbda4391e41430b69c2f00385a5158d3fe35ca87dd3b2",
+             ], "9936df08b3388338784a091f79ef206b54c18e521d19ceb3c8f633e98d1c5a5c",
              [2000, 0, 0, 2000]),
             (DECLARATIONS_LEFT_FORWARD_RIGHT_BACKWARD, [
-                "534f0d0a000000432345",
+                "534f0d0b00080000000000000000002ace45",
                 "53500d0b0008000000d007d00700001b4045",
                 "53510d0b000800000000000000000034d045",
-             ], "bda21553b8e6938ab38d604999288dfce768a6891e792b2437519cfe1945664e",
+             ], "f66f37661b6106a2884d72a102650222c3cc2a7cfe786dcec5d0f4709c5d1db6",
              [0, 2000, 2000, 0]),
         ):
             flags = ["--" + name.replace("_", "-") for name in declarations]
@@ -1081,6 +1087,31 @@ class RawPwmPilotTests(unittest.TestCase):
             ["immutable_application_transcript_hex"],
             [raw.hex() for raw in pilot.TRANSCRIPT_DUAL_FORWARD_2000_CONNECTED[:3]])
 
+        teleop_007_reverse_request = "53470d0a000000426b45"
+        teleop_007_reverse_response = "53470d0a80080064000000640000006fec45"
+        request = pilot.decode_packet(bytes.fromhex(teleop_007_reverse_request))
+        response = pilot.decode_packet(bytes.fromhex(teleop_007_reverse_response))
+        self.assertEqual(
+            (request.sequence, request.command, request.payload),
+            (3399, 0x0A, b""))
+        self.assertEqual(
+            (response.sequence, response.command, response.response_field,
+             response.payload.hex()),
+            (3399, 0x0A, 0x80, "6400000064000000"))
+        self.assertEqual(
+            [packet.command for packet in map(
+                pilot.decode_packet,
+                pilot.transcript_for_scope(
+                    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE))],
+            [0x0B, 0x0B, 0x0B])
+        self.assertNotIn(
+            bytes.fromhex(teleop_007_reverse_request),
+            pilot.transcript_for_scope(
+                consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE))
+        self.assertNotIn(
+            pilot.STEPS_DUAL_REVERSE_2000_CONNECTED["set"],
+            (bytes.fromhex(teleop_007_reverse_request),))
+
         faults = (
             (("set", "error"), None),
             (("set", "partial"), None),
@@ -1251,6 +1282,14 @@ class RawPwmPilotTests(unittest.TestCase):
                 self.assertEqual(plan["physical_stop"], "not_established")
                 self.assertEqual(
                     plan["maximum_setter_to_cleanup_start_seconds"], 1.0)
+                self.assertEqual(
+                    [pilot.decode_packet(bytes.fromhex(raw)).command
+                     for raw in plan["immutable_application_transcript_hex"]],
+                    [0x0B, 0x0B, 0x0B])
+                self.assertEqual(
+                    (plan["maximum_application_bytes"],
+                     plan["maximum_expected_response_bytes"]),
+                    (54, 30))
                 self.assertIn("--authorize-unvalidated-drive-step", plan["required"])
 
             stdout = io.StringIO()
@@ -1311,7 +1350,7 @@ class RawPwmPilotTests(unittest.TestCase):
             delayed_transport, 0.751, 1.0, clock=ANY)
         self.assertEqual(
             delayed_transport.attempts,
-            ["baseline", "set", "cleanup"])
+            ["prezero", "set", "cleanup"])
         self.assertEqual(
             delayed_report["status"],
             pilot.SUCCESS_DUAL_FORWARD_2000_CONNECTED)

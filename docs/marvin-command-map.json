@@ -521,7 +521,7 @@
         "gates": "exact-zero baseline; one setter; mandatory one all-zero cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
         "nonzero_final_getter": "fault and restoration lock; no second cleanup",
         "protocol": "both runs: 4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
-        "current_product_profile": "sequences 3387..3389 only; 3 writes / 46 TX / 38 expected RX; no post-cleanup getter; success means the bounded zero-command transaction completed, while application acknowledgment and physical stop remain unproved",
+        "current_product_profile": "sequences 3387..3389; all-zero cmd0B, bounded nonzero cmd0B, mandatory all-zero cmd0B; 3 writes / 54 TX / 30 expected RX; no cmd0A getter; success means the bounded transactions completed, while application acknowledgment and physical stop remain unproved",
         "runs": [
           {
             "operator_observation": "neither wheel moved; no abnormal behavior; cleanup completed; robot powered off",
@@ -548,6 +548,7 @@
         "protocol": "4 writes / 56 accepted TX / 0 uncertain TX / 56 RX; exact-zero raw80 baseline; raw82 setter; one raw80 cleanup; exact-zero raw80 final getter",
         "operator_observation": "both wheels moved backward and stopped; robot powered off",
         "stop_attribution": "observed stop and software cleanup are separate facts; cause unproved",
+        "current_product_profile": "sequences 3399..3401; frames 53470d0b0008000000000000000000230645 / 53480d0b000800d0070000d0070000de9445 / 53490d0b00080000000000000000002cc845; SHA-256 f3102cd14b4dba39f7415c2148c804cf03cc393bb2d91f3b58ffe1523f15d467; no cmd0A getter",
         "hashes": ["b2fc0e4ef1d7ed8587f1fd2a0da60b8186a287a5437cf0aae72d7067fdbfeaba", "c992e1143e6290244fb7c37ef426c368c1b4eb6ec3799de0f71bab10a36fd870", "f594956ac7f1d98e7584cfbabd97ec99c01d21b8996064a886a5491c14c3f01a", "a89b6e835574be36d0a37130484f1d3d608ebfdf3080259d1bb38dd0f219af13"]
       },
       "opposite_wheel_direction_profiles": {
@@ -574,6 +575,7 @@
           "hashes": ["e03241a98f94ac9cb9a0cbc8a9b2fbe41f65fd363b81e8e4c36fb8c055cd1425", "aaabbadc861ed004f98035fdd036b7155bdfa9a8d4f98b582cf57efea83028b0", "9ee56537afcfb98f45bc5f03311789a21107ecd8b56caa9771c6c92b6496c617", "6b420bb9f50559802fde01b7f8ebc6fcb908bade676aa9915694836270de4e89"]
         },
         "bounds": "each 4 writes / 56 TX / 56 expected RX / 8192 maximum RX; 3 writes / 46 TX if getter suppressed; cleanup by 750ms after setter prewrite",
+        "current_product_profiles": "left reverse/right forward sequences 3403..3405 SHA-256 9936df08b3388338784a091f79ef206b54c18e521d19ceb3c8f633e98d1c5a5c; left forward/right backward sequences 3407..3409 SHA-256 f66f37661b6106a2884d72a102650222c3cc2a7cfe786dcec5d0f4709c5d1db6; each is all-zero cmd0B, bounded nonzero cmd0B, mandatory all-zero cmd0B; 54 TX / 30 expected RX; no cmd0A getter",
         "gates": "independent runs; exact-zero baseline; one 250ms setter; mandatory one cleanup; conditional exact-zero getter; strict 500ms/prewrite/USB/evidence; no retry/reconnect",
         "operator_observation": "report each wheel direction, crosstalk/mismatch, stop/uncertainty, abnormal behavior, and cutoff separately",
         "interpretation": "names state wheel directions only; differential-drive spin/yaw is a hypothesis, not established behavior",

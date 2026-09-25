@@ -1943,7 +1943,7 @@ respective source-field `+1000`, five-update, 50 ms cadence tests, while direct
 raw PWM moved both motors. This is a bounded empirical difference, not evidence
 of a particular enable, prerequisite, mode, or interpretation of raw `82`.
 
-### Dual-motor raw-PWM forward acceptance and unresolved cleanup state
+### Current bounded drive transaction and historical acceptance
 
 Both physical motors are connected to their correctly labelled opposite-side
 controller connectors; servos remain isolated, both encoders connected, wheels
@@ -1954,16 +1954,24 @@ forward/other/no motion, visible stop/uncertainty, abnormal behavior, and cutoff
 
 | Step | Sequence | Exact request |
 |---:|---:|---|
-| exact-zero `0A` baseline | 3387 | `533b0d0a000000499745` |
+| initial all-zero `0B` transaction | 3387 | `533b0d0b00080000000000000000005eba45` |
 | one dual-forward `0B` setter | 3388 | `533c0d0b0008000000d0070000d007e22f45` |
 | one mandatory all-zero `0B` cleanup | 3389 | `533d0d0b000800000000000000000058bc45` |
 
 Transcript SHA-256:
-`0c9cba28941b5acf37a46aadc41d27410136015e7cce41ad727994d678e9e454`.
-Bounds are three writes / 46 TX / 38 expected RX / 8192 maximum RX. The setter
+`a282b0a55da947e8e622464d27d6b5e5c566f5292d6162552321792f153ec9d4`.
+Bounds are three writes / 54 TX / 30 expected RX / 8192 maximum RX. The setter
 has one fixed 250 ms observation after its clean response, then exactly one
 cleanup. Strict 500 ms prewrite response, USB, and evidence gates remain; no
-retry or reconnect. No post-cleanup getter is sent.
+retry or reconnect. No command-`0A` getter is sent.
+
+The other public direction transcripts use the same zero/set/zero shape:
+
+| Direction | Sequences | Exact frames | SHA-256 |
+|---|---:|---|---|
+| backward | 3399..3401 | `53470d0b0008000000000000000000230645`; `53480d0b000800d0070000d0070000de9445`; `53490d0b00080000000000000000002cc845` | `f3102cd14b4dba39f7415c2148c804cf03cc393bb2d91f3b58ffe1523f15d467` |
+| rotate left | 3403..3405 | `534b0d0b00080000000000000000002f0a45`; `534c0d0b000800d00700000000d0074e5345`; `534d0d0b0008000000000000000000290c45` | `9936df08b3388338784a091f79ef206b54c18e521d19ceb3c8f633e98d1c5a5c` |
+| rotate right | 3407..3409 | `534f0d0b00080000000000000000002ace45`; `53500d0b0008000000d007d00700001b4045`; `53510d0b000800000000000000000034d045` | `f66f37661b6106a2884d72a102650222c3cc2a7cfe786dcec5d0f4709c5d1db6` |
 
 ```bash
 python3 -m tools.marvin_legacy_raw_pwm_pilot \
@@ -1978,8 +1986,9 @@ python3 -m tools.marvin_legacy_raw_pwm_pilot \
   --output NEW_PRIVATE_EVIDENCE_DIRECTORY --run
 ```
 
-The first September 25 installed-product acceptance used these sequences plus
-the now-removed historical sequence-3390 getter.
+The first September 25 installed-product acceptance used the same sequence
+numbers but the historical command-`0A` baseline shown below, plus the
+now-removed sequence-3390 getter.
 Both wheels visibly moved forward and visibly stopped, then the operator cut
 power. The host exchange, in order, was:
 
@@ -2010,12 +2019,20 @@ of either getter value. The installed handler source is unavailable, and
 PCTestApp sends but does not decode command `0A`; no floor, range, scaling,
 decay, deadband, or stopped-state interpretation is supported.
 
-Future live profiles therefore end after the exact baseline, setter, and
-mandatory zero-cleanup transactions. They use three writes / 46 TX bytes /
-38 expected RX bytes and do not send sequence 3390. Successful completion means
-only that those bounded transactions passed the identity, write, sequence,
-command, CRC, and usbmon gates. Physical stop remains `not_established` and
-requires operator observation and the external cutoff.
+Teleop-007 then proved the getter is also invalid as the next action's
+precondition. After a successful forward action, the reverse action sent only
+historical request `53470d0a000000426b45` and received
+`53470d0a80080064000000640000006fec45` (`[100,0,100,0]`). It failed before
+the reverse setter: 10 accepted TX bytes, `nonzero_may_have_applied=false`,
+and no cleanup attempt.
+
+Current public profiles therefore request zero rather than infer it: initial
+all-zero `0B`, one bounded nonzero `0B`, and mandatory all-zero `0B` cleanup.
+They use three writes / 54 TX bytes / 30 expected RX bytes and no command `0A`.
+Successful completion means only that those bounded transactions passed the
+identity, write, sequence, command, CRC, and usbmon gates. Physical stop
+remains `not_established` and requires operator observation and the external
+cutoff.
 
 ## Proven fixed legacy getter survey
 

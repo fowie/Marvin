@@ -51,6 +51,14 @@ def _steps(first_sequence, payload):
     }
 
 
+def _drive_steps(first_sequence, payload):
+    return {
+        "prezero": _frame(first_sequence, 0x0B, ZERO_PWM),
+        "set": _frame(first_sequence + 1, 0x0B, payload),
+        "cleanup": _frame(first_sequence + 2, 0x0B, ZERO_PWM),
+    }
+
+
 STEPS = _steps(3329, WORD0_ONE)
 TRANSCRIPT = tuple(STEPS.values())
 STEPS_1000 = _steps(3333, WORD0_1000)
@@ -76,7 +84,7 @@ TRANSCRIPT_WORD2_2000_RIGHT_CONNECTED = tuple(
 STEPS_WORD3_2000_RIGHT_CONNECTED = _steps(3369, WORD3_2000)
 TRANSCRIPT_WORD3_2000_RIGHT_CONNECTED = tuple(
     STEPS_WORD3_2000_RIGHT_CONNECTED.values())
-STEPS_DUAL_FORWARD_2000_CONNECTED = _steps(3387, DUAL_FORWARD_2000)
+STEPS_DUAL_FORWARD_2000_CONNECTED = _drive_steps(3387, DUAL_FORWARD_2000)
 TRANSCRIPT_DUAL_FORWARD_2000_CONNECTED = tuple(
     STEPS_DUAL_FORWARD_2000_CONNECTED.values())
 STEPS_BOTH_CONNECTED_LEFT_FORWARD_2000 = _steps(3391, WORD1_2000)
@@ -85,14 +93,14 @@ TRANSCRIPT_BOTH_CONNECTED_LEFT_FORWARD_2000 = tuple(
 STEPS_BOTH_CONNECTED_RIGHT_FORWARD_2000 = _steps(3395, WORD3_2000)
 TRANSCRIPT_BOTH_CONNECTED_RIGHT_FORWARD_2000 = tuple(
     STEPS_BOTH_CONNECTED_RIGHT_FORWARD_2000.values())
-STEPS_DUAL_REVERSE_2000_CONNECTED = _steps(3399, DUAL_REVERSE_2000)
+STEPS_DUAL_REVERSE_2000_CONNECTED = _drive_steps(3399, DUAL_REVERSE_2000)
 TRANSCRIPT_DUAL_REVERSE_2000_CONNECTED = tuple(
     STEPS_DUAL_REVERSE_2000_CONNECTED.values())
-STEPS_LEFT_REVERSE_RIGHT_FORWARD_2000 = _steps(
+STEPS_LEFT_REVERSE_RIGHT_FORWARD_2000 = _drive_steps(
     3403, LEFT_REVERSE_RIGHT_FORWARD_2000)
 TRANSCRIPT_LEFT_REVERSE_RIGHT_FORWARD_2000 = tuple(
     STEPS_LEFT_REVERSE_RIGHT_FORWARD_2000.values())
-STEPS_LEFT_FORWARD_RIGHT_BACKWARD_2000 = _steps(
+STEPS_LEFT_FORWARD_RIGHT_BACKWARD_2000 = _drive_steps(
     3407, LEFT_FORWARD_RIGHT_BACKWARD_2000)
 TRANSCRIPT_LEFT_FORWARD_RIGHT_BACKWARD_2000 = tuple(
     STEPS_LEFT_FORWARD_RIGHT_BACKWARD_2000.values())
@@ -332,6 +340,14 @@ SETTER_PAYLOADS = {
         LEFT_FORWARD_RIGHT_BACKWARD_2000),
     consent.RAW_PWM_DUAL_FORWARD_ONE_SECOND_SCOPE: DUAL_FORWARD_2000,
 }
+PUBLIC_DRIVE_SCOPES = frozenset((
+    consent.RAW_PWM_DUAL_FORWARD_CONNECTED_SCOPE,
+    consent.RAW_PWM_DUAL_REVERSE_CONNECTED_SCOPE,
+    consent.RAW_PWM_LEFT_REVERSE_RIGHT_FORWARD_SCOPE,
+    consent.RAW_PWM_LEFT_FORWARD_RIGHT_BACKWARD_SCOPE,
+))
+
+
 def transcript_for_scope(scope):
     try:
         return PROFILES[scope]["transcript"][:3]
@@ -346,8 +362,10 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
     value = profile["value"]
     setter_payload = SETTER_PAYLOADS.get(
         scope, value.to_bytes(2, "little") + bytes(6))
+    public_drive = scope in PUBLIC_DRIVE_SCOPES
     expected = (
-        (first_sequence, 0x0A, b""),
+        (first_sequence, 0x0B if public_drive else 0x0A,
+         ZERO_PWM if public_drive else b""),
         (first_sequence + 1, 0x0B, setter_payload),
         (first_sequence + 2, 0x0B, ZERO_PWM),
     )
@@ -364,7 +382,10 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "profile": "marvin-legacy-se",
         "immutable_application_transcript_hex": [raw.hex() for raw in transcript],
         "transcript_sha256": hashlib.sha256(b"".join(transcript)).hexdigest(),
-        "required_baseline_payload_hex": ZERO_PWM.hex(),
+        "required_baseline_payload_hex": (
+            None if public_drive else ZERO_PWM.hex()),
+        "initial_zero_command_words_uint16": (
+            [0, 0, 0, 0] if public_drive else None),
         "fixed_setter_words_uint16": [
             int.from_bytes(setter_payload[offset:offset + 2], "little")
             for offset in range(0, 8, 2)
@@ -415,9 +436,12 @@ def prepare(scope=consent.RAW_PWM_PILOT_SCOPE):
         "minimum_application_bytes_after_setter": sum(map(len, transcript[:3])),
         "maximum_writes": len(transcript),
         "maximum_serial_rx_bytes": 8192,
-        "maximum_expected_response_bytes": 38,
+        "maximum_expected_response_bytes": 30 if public_drive else 38,
         "response_policy": (
-            "baseline_getter_requires_unique_crc_valid_correlated_raw80_exact_zero; "
+            ("initial_zero_setter_requires_unique_crc_valid_correlated_empty_raw80; "
+             if public_drive else
+             "baseline_getter_requires_unique_crc_valid_correlated_raw80_exact_zero; ")
+            +
             "setter_accepts_unique_crc_valid_correlated empty raw80 or raw82 opaquely; "
             "cleanup transaction requires unique CRC-valid correlated empty raw80"),
         "response_time_origin": "matching_immediate_pre_os_write_monotonic_timestamp",
@@ -472,15 +496,17 @@ class _RawPwmTransport(LiveTransport):
     def submit(self, step, *, deadline):
         if step == "cleanup":
             return self._cleanup_once(deadline=deadline)
-        if step == "baseline":
+        if step in ("baseline", "prezero"):
             if self.completed:
-                raise OSError("Raw-PWM baseline must be first.")
+                raise OSError("Raw-PWM pre-motion transaction must be first.")
         elif step == "set":
-            if self.completed != ["baseline"]:
-                raise OSError("Raw-PWM setter requires the exact zero baseline.")
+            first_step = "prezero" if "prezero" in self.steps else "baseline"
+            if self.completed != [first_step]:
+                raise OSError("Raw-PWM setter requires the completed pre-motion gate.")
             self.may_have_applied = True
         else:
-            raise OSError("Only baseline, one setter, and one cleanup are permitted.")
+            raise OSError(
+                "Only one pre-motion transaction, one setter, and one cleanup are permitted.")
         count = self._submit_once(self.steps[step], deadline=deadline)
         if count == len(self.steps[step]):
             self.completed.append(step)
@@ -639,11 +665,11 @@ def _response(transport, report, step, *, deadline, clock=time.monotonic):
             or transport.last_write_started > clock()):
         raise OSError("Response evidence lacks the matching immediate pre-syscall boundary.")
     expected_payloads = (b"",)
-    if step == "baseline":
+    if request.command == 0x0A:
         expected_payloads = (ZERO_PWM,)
     evidence = zero._ResponseEvidence(
         transport.event, sequence=request.sequence, command=request.command,
-        accepted_response_fields=((0x80,) if step == "baseline"
+        accepted_response_fields=((0x80,) if step in ("baseline", "prezero", "cleanup")
                                   else (0x80, 0x82)),
         validate_packet=lambda packet: (
             [] if packet.payload in expected_payloads else ["unexpected_raw_pwm_payload"]))
@@ -719,8 +745,9 @@ def _observe(transport, report, *, clock=time.monotonic):
     try:
         if transport.revalidate(deadline=deadline) != transport.token:
             raise OSError("Fresh transport identity differs from the pinned connection.")
-        _submit(transport, report, "baseline", deadline=deadline)
-        _response(transport, report, "baseline", deadline=deadline, clock=clock)
+        first_step = "prezero" if "prezero" in transport.steps else "baseline"
+        _submit(transport, report, first_step, deadline=deadline)
+        _response(transport, report, first_step, deadline=deadline, clock=clock)
         report["nonzero_may_have_applied"] = True
         _submit(transport, report, "set", deadline=deadline)
         if hasattr(transport, "absolute_cleanup_bound_seconds"):
