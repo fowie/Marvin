@@ -815,6 +815,55 @@ The sealed run's top-level manifest verified and has SHA-256
 This completed execution is not standing authorization, and no further
 hardware action is authorized by it.
 
+### Offline inverse installed-camera 500-unit profile
+
+The fixed inverse profile changes only word 0 from baseline `[2500,2730]` to
+`[3000,2730]`, holds for 0.250 seconds from clean correlated setter-response
+end, then makes the mandatory `[2500,2730]` restore from `finally` and issues
+the final getter only after a uniquely correlated restore response. Word 1
+remains exactly 2730. The expected installed conversion is `3000 // 3 = 1000`,
+which remains within the AX Goal Position range `0..1023`.
+
+Dry run:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-plus-500-unit-installed-camera-diagnostic
+```
+
+Reviewed live template for a future separately authorized setup session:
+
+```sh
+python3 -m tools.marvin_legacy_front_servo_mapper \
+  --word0-plus-500-unit-installed-camera-diagnostic \
+  --run --expected-physical-port REVIEWED-PORT --output NEW-SESSION-DIR \
+  --authorize-unchanged-setup-session-after-fresh-safety-confirmation
+```
+
+The immutable requests use sequences 3526 through 3529. Decreasing word 0 by
+500 directly produced approximately 5 degrees upward at the installed camera;
+therefore increasing it by 500 is expected to produce approximately 5 degrees
+downward, but that direction remains an inverse hypothesis until directly
+exercised. The same 0.010-second hold-overrun ceiling, 0.760-second maximum
+setter-start-to-restore-start exposure, pinned identity checks, no automatic
+retry/reconnect, and setup-scoped exact `RUN`/`END` input apply. No arbitrary
+value, sequence, timing or count is exposed.
+
+```text
+53c60d1d00000059ce45
+53c70d1e000400b80baa0ac8f245
+53c80d1e000400c409aa0a409245
+53c90d1d000000593145
+```
+
+Their concatenated SHA-256 is
+`0a236bcd7d6d90751bbbe42b7c0b9d6bb92d9bfe002bea2af5171a9ec0fa9d2e`.
+The target 3000 is the reviewed legacy UI maximum; its expected AX Goal value
+1000 is 23 counts below the AX maximum 1023. This is the safety boundary:
+the profile provides no larger target and does not establish the physical
+camera endpoint, clearance beyond the tested approximately 5-degree motion,
+or full-range calibration.
+
 ## Historically named word-1 50-unit diagnostic
 
 The next discriminator is a separate named profile only. It preserves word 0

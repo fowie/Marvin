@@ -275,14 +275,18 @@ class SessionTests(unittest.TestCase):
 
     def test_large_held_front_servo_modes_keep_same_true_recorder_state(self):
         from tools.marvin_legacy_front_servo_mapper import (
-            WORD0_100_UNIT_TRANSCRIPT, WORD0_500_UNIT_TRANSCRIPT)
+            WORD0_100_UNIT_TRANSCRIPT, WORD0_500_UNIT_TRANSCRIPT,
+            WORD0_PLUS_500_UNIT_TRANSCRIPT)
         for flag, transcript, name in (
                 ("_front_servo_word0_100_unit_mapper",
                  WORD0_100_UNIT_TRANSCRIPT,
                  "LegacyFrontCameraServoWord0100Unit"),
                 ("_front_servo_word0_500_unit_mapper",
                  WORD0_500_UNIT_TRANSCRIPT,
-                 "LegacyFrontCameraServoWord0500Unit")):
+                 "LegacyFrontCameraServoWord0500Unit"),
+                ("_front_servo_word0_plus_500_unit_mapper",
+                 WORD0_PLUS_500_UNIT_TRANSCRIPT,
+                 "LegacyFrontCameraServoWord0Plus500Unit")):
             with self.subTest(flag=flag):
                 self.output = Path(self.temp.name) / flag
                 self.finished = False
