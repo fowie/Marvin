@@ -34,9 +34,18 @@ class MicrophoneTests(unittest.TestCase):
         values = {
             "/sys/bus/usb/devices/1-1.1.2.4/idVendor": "045e\n",
             "/sys/bus/usb/devices/1-1.1.2.4/idProduct": "fff0\n",
+            "/proc/asound/cards": (
+                " 1 [Array          ]: USB-Audio - Microsoft Microphone Array\n"),
             "/proc/asound/Array/stream0": STREAM,
         }
         return values[str(path)]
+
+    @staticmethod
+    def resolve_path(path):
+        usb = Path("/sys/devices/pci/usb1/1-1/1-1.1/1-1.1.2/1-1.1.2.4")
+        if str(path).startswith("/sys/class/sound/"):
+            return usb / "1-1.1.2.4:1.2" / "sound" / path.name
+        return usb
 
     def test_import_and_default_status_are_offline(self):
         with patch.object(subprocess, "run", side_effect=AssertionError("no subprocess")), \
@@ -64,11 +73,33 @@ class MicrophoneTests(unittest.TestCase):
                 runner=runner, path_exists=lambda path: False)
         result = microphone.list_device(
             device=microphone.ALSA_DEVICE, run=True, read_text=self.read_text, runner=runner,
-            path_exists=lambda path: True)
+            path_exists=lambda path: True, resolve_path=self.resolve_path)
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["usb_id"], microphone.USB_ID)
+        self.assertEqual(result["alsa_card_index"], 1)
         runner.assert_called_once_with(
             ["arecord", "-l"], capture_output=True, text=True, timeout=3, check=False)
+
+        def mismatched(path):
+            if str(path).startswith("/sys/class/sound/"):
+                return Path("/sys/devices/unrelated/sound") / path.name
+            return self.resolve_path(path)
+
+        with self.assertRaisesRegex(microphone.MicrophoneError, "not below reviewed USB"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, run=True, read_text=self.read_text,
+                runner=Mock(), path_exists=lambda path: True,
+                resolve_path=mismatched)
+        with self.assertRaisesRegex(microphone.MicrophoneError, "exactly one ALSA card"):
+            microphone.list_device(
+                device=microphone.ALSA_DEVICE, run=True,
+                read_text=lambda path: (
+                    self.read_text(path)
+                    + " 2 [Array          ]: USB-Audio - Other Array\n"
+                    if str(path) == "/proc/asound/cards"
+                    else self.read_text(path)),
+                runner=Mock(), path_exists=lambda path: True,
+                resolve_path=self.resolve_path)
 
     def test_capture_is_bounded_exclusive_and_surfaces_failures(self):
         duration, file_type = 1, "raw"
@@ -82,7 +113,7 @@ class MicrophoneTests(unittest.TestCase):
             output, device=microphone.ALSA_DEVICE, duration_seconds=duration,
             max_bytes=limit, file_type=file_type, run=True,
             authorize_audio_capture=True, read_text=self.read_text, runner=runner,
-            path_exists=lambda path: True)
+            path_exists=lambda path: True, resolve_path=self.resolve_path)
         self.assertEqual((result["bytes"], output.stat().st_size), (limit, limit))
         self.assertEqual(output.stat().st_mode & 0o777, 0o600)
         command = runner.call_args_list[1].args[0]
@@ -95,7 +126,7 @@ class MicrophoneTests(unittest.TestCase):
                 output, device=microphone.ALSA_DEVICE, duration_seconds=duration,
                 max_bytes=limit, file_type=file_type, run=True,
                 authorize_audio_capture=True, read_text=self.read_text, runner=Mock(),
-                path_exists=lambda path: True)
+                path_exists=lambda path: True, resolve_path=self.resolve_path)
         failed = Mock(side_effect=[
             listing, subprocess.CompletedProcess([], 1, b"", b"pcm_read: Input/output error")])
         with self.assertRaisesRegex(microphone.MicrophoneError, "pcm_read"):
@@ -103,7 +134,7 @@ class MicrophoneTests(unittest.TestCase):
                 self.root / "failed.pcm", device=microphone.ALSA_DEVICE,
                 duration_seconds=duration, max_bytes=limit, file_type=file_type,
                 run=True, authorize_audio_capture=True, read_text=self.read_text, runner=failed,
-                path_exists=lambda path: True)
+                path_exists=lambda path: True, resolve_path=self.resolve_path)
         self.assertFalse((self.root / "failed.pcm").exists())
 
     def test_cli_rejects_unbounded_or_unconsented_capture(self):

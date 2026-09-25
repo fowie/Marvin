@@ -135,6 +135,22 @@ class MarvinFacadeTests(unittest.TestCase):
             robot.projector_power("off")
         with self.assertRaises(ValueError):
             marvin.marvin_legacy_protocol.projector_power_request(1, 1)
+        acknowledgments = dict.fromkeys(projector_power.ACKNOWLEDGMENTS, True)
+        with patch("os.open", side_effect=AssertionError("open reached")), \
+                patch("os.write", side_effect=AssertionError("write reached")), \
+                patch.object(
+                    marvin.marvin_session, "preflight",
+                    side_effect=AssertionError("preflight reached")):
+            with self.assertRaisesRegex(ValueError, "permanently disabled"):
+                projector_power.run_smoke(
+                    "new", expected_physical_port="1-3", run=True,
+                    **acknowledgments)
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(marvin.main([
+                    "projector", "power", "on", "--run",
+                    "--expected-physical-port", "1-3",
+                    "--output", "new", "--confirm-safe-setup",
+                ]), 1)
 
     def test_teleop_dispatches_actions_to_sequential_evidence_paths(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -198,99 +214,6 @@ class MarvinFacadeTests(unittest.TestCase):
                 robot.teleop(
                     input_fn=lambda prompt: "d", output_stream=io.StringIO())
             stop.assert_not_called()
-
-    def test_projector_smoke_always_attempts_off_after_on_may_apply(self):
-        class Clock:
-            now = 10.0
-
-            def __call__(self):
-                return self.now
-
-        class Transport:
-            token = b"identity"
-            serial_bytes = 0
-
-            def __init__(self, *, wait_error=None, on_error=None, off_error=None,
-                         hold=projector_power.HOLD_SECONDS):
-                self.wait_error = wait_error
-                self.on_error = on_error
-                self.off_error = off_error
-                self.hold = hold
-                self.on_may_have_applied = False
-                self.off_attempted = False
-                self.writes = 0
-                self.steps = []
-                self.identities = 0
-
-            def revalidate(self, *, deadline):
-                return self.token
-
-            def identity(self, *, deadline):
-                self.identities += 1
-                return self.token
-
-            def submit(self, step, *, deadline):
-                self.steps.append(step)
-                self.writes += 1
-                if step == "on":
-                    self.on_may_have_applied = True
-                    if self.on_error:
-                        raise self.on_error
-                else:
-                    self.off_attempted = True
-                    if self.off_error:
-                        raise self.off_error
-                return len(projector_power.STEPS[step])
-
-            def wait(self, seconds):
-                if self.wait_error:
-                    raise self.wait_error
-                clock.now += self.hold
-
-            def close(self, *, deadline):
-                return None
-
-        def run(transport):
-            report = {}
-            with patch.object(projector_power, "_response", return_value=object()):
-                projector_power._observe(transport, report, clock=clock)
-            return report
-
-        clock = Clock()
-        normal = Transport()
-        report = run(normal)
-        self.assertEqual(normal.steps, ["on", "off"])
-        self.assertEqual(normal.identities, 2)
-        self.assertEqual(report["actual_hold_seconds"], 10.0)
-        self.assertTrue(report["off_correlated"])
-
-        for error in (KeyboardInterrupt(), OSError("uncertain on")):
-            clock = Clock()
-            transport = (
-                Transport(wait_error=error)
-                if isinstance(error, KeyboardInterrupt)
-                else Transport(on_error=error)
-            )
-            with self.subTest(error=type(error).__name__), \
-                    self.assertRaises(type(error)):
-                run(transport)
-            self.assertEqual(transport.steps, ["on", "off"])
-            self.assertTrue(transport.off_attempted)
-
-        clock = Clock()
-        failed_off = Transport(off_error=OSError("off uncertain"))
-        with self.assertRaisesRegex(OSError, "off uncertain"):
-            run(failed_off)
-        self.assertEqual(failed_off.steps, ["on", "off"])
-        self.assertTrue(failed_off.off_attempted)
-
-        clock = Clock()
-        overrun = Transport(
-            hold=projector_power.HOLD_SECONDS
-            + projector_power.MAX_HOLD_OVERRUN_SECONDS + 0.001)
-        with self.assertRaisesRegex(OSError, "missed its fixed"):
-            run(overrun)
-        self.assertEqual(overrun.steps, ["on", "off"])
 
     def test_led_plans_and_only_proved_live_action(self):
         robot = marvin.Marvin()

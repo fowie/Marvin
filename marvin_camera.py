@@ -1,8 +1,10 @@
 """Offline-default LifeCam inventory and one-frame capture."""
 
+import os
 import re
 from pathlib import Path
 import subprocess
+import tempfile
 
 from tools.marvin_paths import new_output_path
 
@@ -13,6 +15,7 @@ FFMPEG_FORMAT = "mjpeg"
 FRAME_SIZE = "352x288"
 INVENTORY_TIMEOUT_SECONDS = 5
 CAPTURE_TIMEOUT_SECONDS = 10
+MAX_CAPTURE_BYTES = 1024 * 1024
 _USB_PATH = re.compile(r"[0-9]+-[0-9]+(?:\.[0-9]+)*\Z")
 
 
@@ -111,40 +114,69 @@ def capture(output, *, run=False, expected_usb_path=None,
     destination = new_output_path(output)
     if destination.suffix.lower() not in (".jpg", ".jpeg"):
         raise ValueError("Camera output must be a new .jpg or .jpeg file.")
-    devices = inventory(
-        expected_usb_path,
-        sys_usb_root=sys_usb_root,
-        sys_video_root=sys_video_root,
-        dev_root=dev_root,
-        runner=runner,
-    )
-    device = _select(devices, expected_usb_path)
-    argv = [
-        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
-        "-f", "v4l2", "-input_format", FFMPEG_FORMAT,
-        "-video_size", FRAME_SIZE, "-i", device["node"],
-        "-frames:v", "1", "-an", "-c:v", "copy", "-f", "image2",
-        str(destination),
-    ]
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    reservation = os.open(destination, flags, 0o600)
     try:
-        completed = runner(
-            argv, capture_output=True, text=True,
-            timeout=CAPTURE_TIMEOUT_SECONDS, check=False)
-    except subprocess.TimeoutExpired as error:
-        raise TimeoutError(
-            f"ffmpeg exceeded the {CAPTURE_TIMEOUT_SECONDS}-second capture limit; "
-            "no retry was attempted.") from error
-    if completed.returncode:
-        detail = (completed.stderr or "").strip()[-2000:]
-        raise OSError(
-            f"ffmpeg failed with exit {completed.returncode}: "
-            f"{detail or 'no stderr'}")
+        os.close(reservation)
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
+    stage = None
+    finalized = False
     try:
-        size = destination.stat().st_size
-    except FileNotFoundError as error:
-        raise OSError("ffmpeg reported success without creating the output.") from error
-    if not size:
-        raise OSError("ffmpeg reported success but created an empty output.")
+        devices = inventory(
+            expected_usb_path,
+            sys_usb_root=sys_usb_root,
+            sys_video_root=sys_video_root,
+            dev_root=dev_root,
+            runner=runner,
+        )
+        device = _select(devices, expected_usb_path)
+        argv = [
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "v4l2", "-input_format", FFMPEG_FORMAT,
+            "-video_size", FRAME_SIZE, "-i", device["node"],
+            "-frames:v", "1", "-an", "-c:v", "copy",
+            "-fs", str(MAX_CAPTURE_BYTES), "-f", "image2pipe", "pipe:1",
+        ]
+        try:
+            completed = runner(
+                argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=CAPTURE_TIMEOUT_SECONDS, check=False)
+        except subprocess.TimeoutExpired as error:
+            raise TimeoutError(
+                f"ffmpeg exceeded the {CAPTURE_TIMEOUT_SECONDS}-second capture limit; "
+                "no retry was attempted.") from error
+        if completed.returncode:
+            detail = completed.stderr or b""
+            if isinstance(detail, bytes):
+                detail = detail.decode(errors="replace")
+            raise OSError(
+                f"ffmpeg failed with exit {completed.returncode}: "
+                f"{detail.strip()[-2000:] or 'no stderr'}")
+        frame = completed.stdout
+        if not isinstance(frame, bytes) or not frame:
+            raise OSError("ffmpeg reported success without a captured frame.")
+        if len(frame) > MAX_CAPTURE_BYTES:
+            raise OSError(
+                f"ffmpeg returned {len(frame)} bytes; limit is {MAX_CAPTURE_BYTES}.")
+        stage_fd, stage_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".tmp",
+            dir=destination.parent)
+        stage = Path(stage_name)
+        with os.fdopen(stage_fd, "wb") as stream:
+            stream.write(frame)
+        os.replace(stage, destination)
+        stage = None
+        finalized = True
+        size = len(frame)
+    finally:
+        if stage is not None:
+            stage.unlink(missing_ok=True)
+        if not finalized:
+            destination.unlink(missing_ok=True)
     return {
         "status": "captured",
         "output": str(destination),

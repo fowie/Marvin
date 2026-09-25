@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import sys
 
@@ -73,8 +74,15 @@ def _read(path, read_text):
         raise MicrophoneError(f"Cannot read {path}: {error}") from error
 
 
+def _resolve(path, resolve_path):
+    try:
+        return (resolve_path or (lambda value: value.resolve(strict=True)))(Path(path))
+    except OSError as error:
+        raise MicrophoneError(f"Cannot resolve {path}: {error}") from error
+
+
 def list_device(*, device, run=False, read_text=None, runner=None,
-                kernel_release=None, path_exists=None):
+                kernel_release=None, path_exists=None, resolve_path=None):
     """Verify and return the one supported live device without opening PCM."""
     if run is not True:
         raise ValueError("Literal run=True is required for live device enumeration.")
@@ -91,6 +99,20 @@ def list_device(*, device, run=False, read_text=None, runner=None,
     identity = f"{_read(root / 'idVendor', read_text)}:{_read(root / 'idProduct', read_text)}"
     if identity.lower() != USB_ID:
         raise MicrophoneError(f"Expected {USB_ID} at {USB_PATH}; found {identity}.")
+    cards = _read("/proc/asound/cards", read_text)
+    card_indices = re.findall(r"(?m)^\s*(\d+)\s+\[Array\s*\]:", cards)
+    if len(card_indices) != 1:
+        raise MicrophoneError(
+            f"Expected exactly one ALSA card named Array; found {len(card_indices)}.")
+    card_index = int(card_indices[0])
+    resolved_usb = _resolve(root, resolve_path)
+    for sound_path in (
+            Path("/sys/class/sound") / f"card{card_index}",
+            Path("/sys/class/sound") / f"pcmC{card_index}D0c"):
+        resolved_sound = _resolve(sound_path, resolve_path)
+        if resolved_sound != resolved_usb and resolved_usb not in resolved_sound.parents:
+            raise MicrophoneError(
+                f"ALSA {sound_path.name} is not below reviewed USB path {USB_PATH}.")
     stream = _read("/proc/asound/Array/stream0", read_text)
     required = (
         "Format: S16_LE",
@@ -108,13 +130,21 @@ def list_device(*, device, run=False, read_text=None, runner=None,
         raise MicrophoneError(f"Cannot enumerate ALSA capture devices: {error}") from error
     if result.returncode:
         raise MicrophoneError(result.stderr.strip() or f"arecord -l exited {result.returncode}")
-    if "card " not in result.stdout or "Array [Microphone Array]" not in result.stdout:
-        raise MicrophoneError("ALSA did not enumerate the Microsoft Microphone Array.")
+    listing = re.findall(
+        rf"(?m)^card\s+{card_index}:\s+Array\s+\[Microphone Array\],\s+"
+        r"device\s+0:\s+",
+        result.stdout,
+    )
+    if len(listing) != 1:
+        raise MicrophoneError(
+            "ALSA did not uniquely enumerate device 0 of the USB-bound "
+            "Microsoft Microphone Array card.")
     return {
         "status": "ready",
         "usb_id": identity.lower(),
         "usb_path": USB_PATH,
         "alsa_device": device,
+        "alsa_card_index": card_index,
         "format": FORMAT,
         "rate_hz": RATE,
         "channels": CHANNELS,
@@ -133,7 +163,7 @@ def expected_bytes(duration_seconds, file_type):
 
 def capture(output, *, device, duration_seconds, max_bytes, file_type,
             run=False, authorize_audio_capture=False, read_text=None, runner=None,
-            kernel_release=None, path_exists=None):
+            kernel_release=None, path_exists=None, resolve_path=None):
     """Capture one bounded native-profile file after exact live verification."""
     if run is not True or authorize_audio_capture is not True:
         raise ValueError("Literal run=True and authorize_audio_capture=True are required.")
@@ -143,7 +173,8 @@ def capture(output, *, device, duration_seconds, max_bytes, file_type,
     destination = new_output_path(output)
     device_info = list_device(
         device=device, run=True, read_text=read_text, runner=runner,
-        kernel_release=kernel_release, path_exists=path_exists)
+        kernel_release=kernel_release, path_exists=path_exists,
+        resolve_path=resolve_path)
     runner = runner or subprocess.run
     command = [
         "arecord", "--quiet", f"--device={device}", f"--file-type={file_type}",

@@ -93,8 +93,9 @@ proved servo getter/setter while the recovered map assigns those IDs to sonar
 operations. The sealed `0x27` collision experiment produced correlated opaque
 responses but no observed illumination, fan, LED, click or other power effect.
 `projector power on|off` therefore preserves offline transcript evidence only;
-live projector power and source-only shutter commands `0x2B/0x2C` are disabled
-until an installed-legacy mapping is established.
+the packaged projector runner and coordinator mode permanently reject live
+execution before preflight, device open, or write. Source-only shutter commands
+`0x2B/0x2C` are likewise disabled.
 
 LED controls preserve the completed mapping evidence without inventing a color
 model. `leds plan NAME` prints an immutable offline plan for one mapped channel
@@ -144,8 +145,11 @@ its installed eight-byte response has no proven legacy decoder.
 another capture implementation. `status` is offline, `list` verifies only
 `hw:CARD=Array,DEV=0`, and `capture` accepts only 1-5 seconds of native
 8-channel `S16_LE` audio with exact byte bounds, explicit privacy authorization,
-and a new mode-`0600` raw/WAV output. The signed kernel override containing
-`d0199ae` and the exact `045e:fff0` `FILL_MAX` quirk remains mandatory.
+and a new mode-`0600` raw/WAV output. Before `arecord`, the selected ALSA card
+and capture PCM node must both resolve through `/sys/class/sound` beneath the
+reviewed `045e:fff0` USB device; ambiguity or ancestry mismatch is rejected.
+The signed kernel override containing `d0199ae` and the exact-device `FILL_MAX`
+quirk remains mandatory.
 
 ### LifeCam capture
 
@@ -171,9 +175,12 @@ hub. The implementation then requires that exact sysfs device to be
 `045e:0721`, correlates each candidate V4L2 node by sysfs ancestry and
 `bus_info`, requires complete V4L2 driver/card/bus metadata and the fixed frame
 format, and refuses ambiguity, Intel IPU3, REAR/DEPTH cameras, existing output,
-timeout or subprocess failure. It does not hard-code unpreserved V4L2 metadata,
-accept arbitrary ffmpeg options, or send a Marvin controller, camera-power or
-DepthCamPower command.
+timeout or subprocess failure. The final path is reserved at mode `0600`;
+ffmpeg emits one size-capped frame to stdout, and a private sibling is atomically
+installed only on success. Timeout, nonzero exit and interruption remove every
+reservation or partial artifact. It does not hard-code unpreserved V4L2
+metadata, accept arbitrary ffmpeg options, or send a Marvin controller,
+camera-power or DepthCamPower command.
 
 The host proof captured one valid frame, but did not preserve a stable sysfs
 path, `/dev/videoN`, V4L2 driver/card string or `bus_info`; those are runtime

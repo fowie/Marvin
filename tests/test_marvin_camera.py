@@ -54,8 +54,8 @@ class CameraTests(unittest.TestCase):
     def runner(self, argv, **kwargs):
         self.calls.append((argv, kwargs))
         if argv[0] == "ffmpeg":
-            Path(argv[-1]).write_bytes(b"\xff\xd8fixture\xff\xd9")
-            return subprocess.CompletedProcess(argv, 0, "", "")
+            return subprocess.CompletedProcess(
+                argv, 0, b"\xff\xd8fixture\xff\xd9", b"")
         output = INFO if argv[-1] == "--all" else FORMATS
         return subprocess.CompletedProcess(argv, 0, output, "")
 
@@ -117,16 +117,19 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
             output, run=True, expected_usb_path="1-2.3",
             privacy_confirmed=True, **self.options())
         expected = [
-            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
             "-f", "v4l2", "-input_format", "mjpeg",
             "-video_size", "352x288", "-i", node,
-            "-frames:v", "1", "-an", "-c:v", "copy", "-f", "image2",
-            str(output),
+            "-frames:v", "1", "-an", "-c:v", "copy",
+            "-fs", str(marvin_camera.MAX_CAPTURE_BYTES),
+            "-f", "image2pipe", "pipe:1",
         ]
         self.assertEqual(self.calls[-1][0], expected)
         self.assertEqual(self.calls[-1][1]["timeout"], 10)
         self.assertEqual(result["status"], "captured")
         self.assertEqual(result["argv"], expected)
+        self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(output.read_bytes(), b"\xff\xd8fixture\xff\xd9")
 
     def test_identity_ambiguity_output_and_unsupported_nodes_refuse(self):
         self.calls = []
@@ -161,13 +164,15 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
                 ([dict(candidate, card="", metadata_complete=False)], "found 0"),
                 ([dict(candidate, card="REAR CAM", rejected=True)], "found 0"),
                 ([dict(candidate, driver="ipu3-cio2", rejected=True)], "found 0")):
+            refused = self.root / f"refused-{len(devices)}.jpg"
             with self.subTest(devices=devices), \
                     patch.object(marvin_camera, "inventory", return_value=devices), \
                     self.assertRaisesRegex(OSError, message):
                 marvin_camera.capture(
-                    self.root / f"refused-{len(devices)}.jpg",
+                    refused,
                     run=True, expected_usb_path="1-2.3",
                     privacy_confirmed=True)
+            self.assertFalse(refused.exists())
 
     def test_privacy_timeout_and_subprocess_error_are_explicit(self):
         with patch.object(
@@ -190,11 +195,12 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
                 self.root / "timeout.jpg", run=True,
                 expected_usb_path="1-2.3", privacy_confirmed=True,
                 **{**self.options(), "runner": timeout})
+        self.assertFalse((self.root / "timeout.jpg").exists())
 
         def failed(argv, **kwargs):
             if argv[0] == "ffmpeg":
                 return subprocess.CompletedProcess(
-                    argv, 23, "", "camera permission denied")
+                    argv, 23, b"", b"camera permission denied")
             return self.runner(argv, **kwargs)
 
         with self.assertRaisesRegex(OSError, "exit 23.*permission denied"):
@@ -202,6 +208,20 @@ assert marvin_camera.capture("new.jpg")["status"] == "offline_ready"
                 self.root / "failed.jpg", run=True,
                 expected_usb_path="1-2.3", privacy_confirmed=True,
                 **{**self.options(), "runner": failed})
+        self.assertFalse((self.root / "failed.jpg").exists())
+
+        def interrupted(argv, **kwargs):
+            if argv[0] == "ffmpeg":
+                raise KeyboardInterrupt
+            return self.runner(argv, **kwargs)
+
+        with self.assertRaises(KeyboardInterrupt):
+            marvin_camera.capture(
+                self.root / "interrupted.jpg", run=True,
+                expected_usb_path="1-2.3", privacy_confirmed=True,
+                **{**self.options(), "runner": interrupted})
+        self.assertFalse((self.root / "interrupted.jpg").exists())
+        self.assertEqual(list(self.root.glob(".*.tmp")), [])
 
 
 if __name__ == "__main__":

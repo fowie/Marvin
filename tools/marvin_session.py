@@ -253,7 +253,6 @@ def run_session(
     _front_servo_word1_projector_500_unit_mapper=False,
     _front_servo_getter=False,
     _front_servo_baseline_restore=False,
-    _projector_power_smoke=False,
     motor_supply_off=False, motor_left_only_connected=False,
     motor_right_and_servos_isolated=False, authorize_unvalidated_zero_velocity=False,
     unprivileged_usbmon=False, new_boot_declared=False,
@@ -355,7 +354,7 @@ def run_session(
             _front_servo_word0_500_unit_mapper, _front_servo_getter,
             _front_servo_word0_plus_500_unit_mapper,
             _front_servo_word1_projector_500_unit_mapper,
-            _front_servo_baseline_restore, _projector_power_smoke)):
+            _front_servo_baseline_restore)):
         raise ValueError("Internal diagnostic modes must be explicit booleans.")
     front_servo_profile = (
         _front_servo_mapper or _front_servo_getter or _front_servo_baseline_restore)
@@ -551,10 +550,6 @@ def run_session(
         raise ValueError("Preparation consent is only valid for the separate fixed preparation profile.")
     if front_servo_profile and (_isolated_zero_velocity or _motor_power_off_preparation):
         raise ValueError("Front-servo diagnostics forbid other diagnostic profiles.")
-    if _projector_power_smoke and (
-            _isolated_zero_velocity or _motor_power_off_preparation
-            or front_servo_profile or powered_trial):
-        raise ValueError("Projector-power smoke forbids other diagnostic profiles.")
     observation = left_motor_powered_observation or encoder_feedback_observation
     if observation:
         declarations = {name: value for name, value in declarations.items()
@@ -607,14 +602,10 @@ def run_session(
                         allow_telemetry_state_change, allow_line_state_trial, allow_line_state_change))
                 or probe_schedule != fixed_schedule or probe_delay):
             raise ValueError("Observation requires its scope's fixed legacy getter plan.")
-    elif not powered_trial and not front_servo_profile and not _projector_power_smoke:
+    elif not powered_trial and not front_servo_profile:
         declarations = {name: declarations[name] for name in motor_consent.PREPARATION_FLAGS}
-    if (_motor_power_off_preparation or powered_trial or front_servo_profile
-            or _projector_power_smoke):
-        if _projector_power_smoke:
-            from tools.marvin_legacy_projector_power import STEPS
-            TRANSCRIPT = (STEPS["on"], STEPS["off"])
-        elif _front_servo_baseline_restore:
+    if _motor_power_off_preparation or powered_trial or front_servo_profile:
+        if _front_servo_baseline_restore:
             from tools.marvin_legacy_front_servo_baseline_restore import TRANSCRIPT
         elif _front_servo_getter:
             from tools.marvin_legacy_front_servo_getter import TRANSCRIPT
@@ -721,7 +712,7 @@ def run_session(
     )
     if actuators_isolated is not True and not (
             _motor_power_off_preparation or observation or powered_trial
-            or front_servo_profile or _projector_power_smoke):
+            or front_servo_profile):
         raise ValueError("Physical motor/servo isolation must be acknowledged.")
     line_state_authorized = allow_line_state_change or allow_line_state_trial
     if (dtr or rts) and line_state_authorized is not True:
@@ -734,7 +725,7 @@ def run_session(
     if (probe_profile != "modern" and probe_schedule is None
             and not (
                 _isolated_zero_velocity or _motor_power_off_preparation
-                or powered_trial or front_servo_profile or _projector_power_smoke)):
+                or powered_trial or front_servo_profile)):
         raise ValueError("Named coordinator probes require the modern profile.")
     if type(usb_tail_seconds) not in (int, float) or not 5 <= usb_tail_seconds <= 30:
         raise ValueError("USB tail must be finite and between 5 and 30 seconds.")
