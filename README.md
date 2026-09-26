@@ -235,7 +235,9 @@ coordinated usbmon tail/close allowance. A runtime or cleanup failure closes the
 HTTP listener and cannot be reported as success. Any operator recorder,
 session-guard, transport, or post-nonzero fault prints `CUT_POWER_REQUIRED`
 directly on the parent terminal even though usbmon stderr is also retained
-privately.
+privately. Recorder/guard/clock failure and dirty serial/USB evidence are
+recorded but cannot suppress the exact emergency zero attempt; changed pinned
+USB identity or tty generation still blocks writing to the wrong device.
 `OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.

@@ -25,6 +25,7 @@ from tools import marvin_legacy_drive_step as drive_step
 from tools import marvin_legacy_raw_pwm_pilot as pilot
 from tools import marvin_legacy_attention_check as attention
 from tools import marvin_motor_power_off_consent as motor_consent
+from tools import marvin_session
 from tools import marvin_legacy_zero as zero
 from tools.marvin_legacy_led_mapper import _frame
 from tools.marvin_legacy_live import LiveTransport
@@ -152,8 +153,21 @@ class _OperatorTransport(LiveTransport):
         self._owner()
         if self.closed or self.fd is None:
             raise OSError("Mandatory zero requires the still-owned open transport.")
-        self._check(time.monotonic() + zero.CLEANUP_SECONDS)
+        marvin_session.check_identity(self.port, self.baseline)
+        info = os.fstat(self.fd)
+        node = Path(self.baseline["tty"]).stat()
+        if (info.st_dev, info.st_ino, info.st_rdev) != self.node_stat or (
+                node.st_dev, node.st_ino, node.st_rdev) != self.node_stat:
+            raise OSError("Pinned tty generation changed; mandatory zero suppressed.")
         faults = []
+        try:
+            self.guard()
+        except BaseException as error:
+            faults.append(f"session guard fault: {type(error).__name__}: {error}")
+        try:
+            self.ingress.clock.check()
+        except BaseException as error:
+            faults.append(f"evidence clock fault: {type(error).__name__}: {error}")
         if time.monotonic() >= deadline:
             faults.append("cleanup admission deadline elapsed")
         if self.ingress.pending:

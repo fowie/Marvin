@@ -73,10 +73,13 @@ and separately reserves 1 MiB/2,048 records for that cleanup. Its private binary
 usbmon recorder has a further ten-second coordinated tail/close allowance. At
 the session limit it shuts down the HTTP server and runtime, leaving 30 seconds
 for priority stop, LED baseline restore, transport close, and evidence
-finalization. Motion admission expiry, stale serial/USB evidence, the normal
-prewrite hygiene gate, and normal journal/application budgets cannot suppress
-the reserved exact all-zero write attempt. The attempt still requires the
-pinned owned transport and reports every timing/evidence fault afterward. Any
+finalization. Motion admission expiry, recorder/session-guard or evidence-clock
+failure, stale serial/USB evidence, the normal prewrite hygiene gate, and normal
+journal/application budgets cannot suppress the reserved exact all-zero write
+attempt. The attempt still requires the current owner, open fd, unchanged tty
+generation, and pinned USB identity; those identity failures suppress a write
+to the wrong device. Every other timing/evidence fault is reported after the
+attempt. Any
 runtime/cleanup failure closes the listener and seals a failed result rather
 than leaving a success-like dashboard running. Recorder, session-guard, transport, and
 post-nonzero failures also print `CUT_POWER_REQUIRED` directly on the parent
