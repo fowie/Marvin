@@ -85,8 +85,8 @@ arecord writes through an inherited descriptor for the already-reserved private
 seekable staging file (`/proc/self/fd/N`) rather than unseekable stdout or a
 reopened path, so it can rewrite RIFF/data lengths during graceful shutdown
 without weakening exclusive creation. Audio publication requires exit `0`,
-exact RIFF/file length, and a final nonempty `data` chunk that exactly consumes
-the staged file.
+or exit `1` only after the manager's own graceful SIGINT, plus exact RIFF/file
+length and a final nonempty `data` chunk that exactly consumes the staged file.
 Video's internal duration is 299 seconds so normal mux finalization can finish
 inside the manager's hard 300-second cap. Any terminate/kill escalation,
 unexpected nonzero exit, failure, or shutdown removes partial files. Direct-host

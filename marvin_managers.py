@@ -544,7 +544,8 @@ class MicrophoneManager(_RecorderManager):
             MEDIA_LIMIT_SECONDS * marvin_microphone.RATE
             * marvin_microphone.CHANNELS * marvin_microphone.SAMPLE_BYTES + 44
         )
-        if (returncode or not 44 <= size <= maximum
+        expected_sigint = _stop_result == "sigint" and returncode == 1
+        if ((returncode and not expected_sigint) or not 44 <= size <= maximum
                 or not self._complete_wave(size)):
             raise OSError(
                 f"Invalid bounded WAV result (exit {returncode}, {size} bytes).")

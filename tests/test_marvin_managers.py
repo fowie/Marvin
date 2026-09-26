@@ -3,6 +3,8 @@
 import json
 import os
 from pathlib import Path
+import shutil
+import signal
 import subprocess
 import struct
 import sys
@@ -13,7 +15,6 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-import shutil
 
 import marvin_managers
 import marvin_operator
@@ -371,27 +372,41 @@ class ManagerTests(unittest.TestCase):
                     list(root.glob(f".video-{outcome}.mkv.*.tmp")), [])
 
     @unittest.skipUnless(shutil.which("arecord"), "arecord is not installed")
-    def test_real_arecord_null_writes_complete_reserved_seekable_wave(self):
+    def test_real_arecord_null_sigint_finalizes_reserved_seekable_wave(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "null.wav"
             descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             try:
-                completed = subprocess.run([
+                process = subprocess.Popen([
                     "arecord", "--device=null", "--file-type=wav",
                     "--format=S16_LE", "--rate=16000", "--channels=8",
-                    "--duration=1", f"/proc/self/fd/{descriptor}",
+                    f"/proc/self/fd/{descriptor}",
                 ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE, timeout=5, check=False,
+                    stderr=subprocess.PIPE,
                     pass_fds=(descriptor,))
             finally:
                 os.close(descriptor)
-            self.assertEqual(completed.returncode, 0, completed.stderr)
+            deadline = time.monotonic() + 2
+            while (output.stat().st_size < 44 and process.poll() is None
+                   and time.monotonic() < deadline):
+                time.sleep(0.001)
+            process.send_signal(signal.SIGINT)
+            _stdout, stderr = process.communicate(timeout=3)
+            self.assertEqual(process.returncode, 1, stderr)
             self.assertEqual(output.stat().st_mode & 0o777, 0o600)
             data = output.read_bytes()
             self.assertEqual(data[:4], b"RIFF")
             self.assertEqual(data[8:12], b"WAVE")
             self.assertEqual(int.from_bytes(data[4:8], "little") + 8, len(data))
             self.assertIn(b"data", data[:44])
+
+            manager = marvin_managers.MicrophoneManager(
+                device_check=lambda **_options: {})
+            manager._stage = output
+            manager._stderr = stderr
+            manager._validate_output(process.returncode, "sigint")
+            with self.assertRaisesRegex(OSError, "Invalid bounded WAV"):
+                manager._validate_output(process.returncode, "natural")
 
 
 if __name__ == "__main__":
