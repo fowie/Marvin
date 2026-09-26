@@ -60,20 +60,25 @@ prevent live startup. Missing media paths omit those managers, so their controls
 remain visibly disabled. The CLI opens no device until all required live
 configuration is present and does not fall back to a weaker serial path.
 
-The production coordinator admits live controls for an eight-hour operator
-session inside an eight-hour-plus-30-second serial evidence envelope. Live
-polling is never faster than two seconds. This ceiling keeps four-getter
-snapshots and accepted controller actions within the non-wrapping sequence
-space while reserving 64 final transactions for mandatory stop and LED
-baseline restore. The bounded adapter journal permits 256 MiB/500,000 records
+The production coordinator has an eight-hour wall-clock ceiling inside an
+eight-hour-plus-30-second serial evidence envelope. Live polling is never
+faster than two seconds. Eight hours is sustainable for idle four-getter
+polling, not a guarantee of eight hours of continuous driving: sensor getters,
+each three-transaction drive pulse, stops, and LED operations share one
+non-wrapping sequence budget. Runtime status and the dashboard show normal and
+cleanup requests remaining. Exhaustion fails closed without wrapping while
+reserving 64 final transactions for mandatory stop and LED baseline restore.
+The bounded adapter journal permits 256 MiB/500,000 records
 and separately reserves 1 MiB/2,048 records for that cleanup. Its private binary
 usbmon recorder has a further ten-second coordinated tail/close allowance. At
 the session limit it shuts down the HTTP server and runtime, leaving 30 seconds
 for priority stop, LED baseline restore, transport close, and evidence
-finalization. Motion admission expiry and normal journal/application budgets
-never apply to the reserved mandatory all-zero stop path. Any runtime/cleanup
-failure closes the listener and seals a failed result rather than leaving a
-success-like dashboard running. Recorder, session-guard, transport, and
+finalization. Motion admission expiry, stale serial/USB evidence, the normal
+prewrite hygiene gate, and normal journal/application budgets cannot suppress
+the reserved exact all-zero write attempt. The attempt still requires the
+pinned owned transport and reports every timing/evidence fault afterward. Any
+runtime/cleanup failure closes the listener and seals a failed result rather
+than leaving a success-like dashboard running. Recorder, session-guard, transport, and
 post-nonzero failures also print `CUT_POWER_REQUIRED` directly on the parent
 operator terminal; the private usbmon stderr artifact is not the only warning.
 
@@ -116,11 +121,14 @@ sensor snapshot is also sent as a `sensor` event.
 
 A dead-man heartbeat admits at most one fresh proved 250 ms action. The same
 owner runs no getter while nonzero PWM may be applied. After mandatory zero
-cleanup it admits at most one getter with a 150 ms failure deadline, checks the
-priority queue again, and publishes a fresh SSE sensor event only after all four
-correlated getters complete one coherent cycle. Proximity and unresolved raw
-cliff readings therefore keep advancing between held pulses without concurrent
-serial ownership or a false partial-snapshot timestamp. Its lease is 0.75
+cleanup it admits at most one getter with a 150 ms failure deadline and checks
+the priority queue again. A new pulse discards any incomplete getter cycle.
+The browser leaves a 650 ms between-pulse interval inside the fresh 0.75-second
+lease, and SSE publishes only when all four correlated getters complete between
+two pulses. Each snapshot carries its earliest start, actual completion, and
+duration. Proximity and unresolved raw cliff readings therefore keep advancing
+without concurrent serial ownership, pulse-straddled samples, or a false
+partial-snapshot timestamp. Its lease is 0.75
 seconds and one owner is allowed. Release, expiry, observable response
 disconnect, shutdown, cancellation, or action error requests the accepted
 all-zero stop primitive. Each setter retains the accepted 500 ms response

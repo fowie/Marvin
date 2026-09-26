@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import queue
 from types import SimpleNamespace
+import select
 import signal
 import stat
 from threading import Condition, Event, Lock, RLock, Thread, current_thread, main_thread
@@ -134,6 +135,9 @@ class _OperatorTransport(LiveTransport):
         )
         if not allowed:
             raise OSError("Operator transaction is outside the exact getter/drive/LED allowlist.")
+        if (mandatory and packet.command == RAW_PWM_COMMAND
+                and packet.payload == pilot.ZERO_PWM):
+            return self._mandatory_zero_once(raw, deadline=deadline)
         limit = (
             OPERATOR_MAX_APPLICATION_BYTES if mandatory
             else OPERATOR_NORMAL_APPLICATION_BYTES)
@@ -142,6 +146,51 @@ class _OperatorTransport(LiveTransport):
         count = self._submit_once(raw, deadline=deadline)
         if count == len(raw):
             self.application_bytes += count
+        return count
+
+    def _mandatory_zero_once(self, raw, *, deadline):
+        self._owner()
+        if self.closed or self.fd is None:
+            raise OSError("Mandatory zero requires the still-owned open transport.")
+        self._check(time.monotonic() + zero.CLEANUP_SECONDS)
+        faults = []
+        if time.monotonic() >= deadline:
+            faults.append("cleanup admission deadline elapsed")
+        if self.ingress.pending:
+            faults.append("incomplete USB evidence publication")
+        if self.ingress.rx or self.ingress.rx_bytes != self.serial_bytes:
+            faults.append("unconsumed USB input")
+        if self.ingress.expected_tx or self.ingress.outstanding_tx:
+            faults.append("prior USB OUT evidence incomplete")
+        if select.select([self.fd], [], [], 0)[0]:
+            faults.append("queued serial input")
+        try:
+            self.event(
+                "mandatory_zero_attempt", raw_hex=raw.hex(),
+                prewrite_faults=faults)
+        except OSError as error:
+            faults.append(f"prewrite journal fault: {error}")
+        self.ingress.expected_tx.append(raw)
+        self.writes += 1
+        self.last_write_sequence = protocol.decode_packet(raw).sequence
+        self.last_write_started = time.monotonic()
+        count = os.write(self.fd, raw)
+        self.last_write = time.monotonic()
+        if count == len(raw):
+            self.application_bytes += count
+        try:
+            self.event(
+                "mandatory_zero_returned", raw_hex=raw.hex(),
+                accepted_bytes=count, prewrite_faults=faults)
+        except OSError as error:
+            faults.append(f"postwrite journal fault: {error}")
+        if faults:
+            error = OSError(
+                "Mandatory zero was attempted despite unsafe prewrite state: "
+                + "; ".join(faults))
+            error.mandatory_zero_attempted = True
+            error.accepted_bytes = count
+            raise error
         return count
 
 
@@ -168,6 +217,8 @@ class ProductionControllerOwner:
         self.operation_deadline = operation_deadline
         self.nonzero_may_have_applied = False
         self._snapshot_evidence = {}
+        self._snapshot_started_at = None
+        self._snapshot_started_monotonic = None
 
     def start(self):
         if self.started:
@@ -268,6 +319,9 @@ class ProductionControllerOwner:
             self, expected_identity=self.expected_identity)
 
     def read_incremental(self):
+        if not self._snapshot_evidence:
+            self._snapshot_started_at = _utc_now()
+            self._snapshot_started_monotonic = self.clock()
         query = marvin_sensors.QUERIES[len(self._snapshot_evidence)]
         self._snapshot_evidence[query] = self.request(
             query, timeout=OPERATOR_GETTER_TIMEOUT_SECONDS,
@@ -275,8 +329,44 @@ class ProductionControllerOwner:
         if len(self._snapshot_evidence) != len(marvin_sensors.QUERIES):
             return None
         evidence, self._snapshot_evidence = self._snapshot_evidence, {}
-        return marvin_sensors.snapshot_from_evidence(
+        completed_at = _utc_now()
+        completed_monotonic = self.clock()
+        snapshot = marvin_sensors.snapshot_from_evidence(
             self, evidence, expected_identity=self.expected_identity)
+        snapshot["acquisition"] = {
+            "started_at": self._snapshot_started_at,
+            "completed_at": completed_at,
+            "duration_seconds": max(
+                0.0,
+                completed_monotonic - self._snapshot_started_monotonic),
+            "straddled_motor_pulse": False,
+        }
+        self._snapshot_started_at = self._snapshot_started_monotonic = None
+        return snapshot
+
+    def _discard_partial_snapshot(self):
+        if self._snapshot_evidence:
+            self.report["discarded_partial_snapshots"] = (
+                self.report.get("discarded_partial_snapshots", 0) + 1)
+        self._snapshot_evidence = {}
+        self._snapshot_started_at = self._snapshot_started_monotonic = None
+
+    def budget_status(self):
+        normal_last = 65535 - OPERATOR_CLEANUP_REQUESTS
+        return {
+            "first_sequence": self.first_sequence,
+            "next_sequence": self.sequence,
+            "requests_used": self.sequence - self.first_sequence,
+            "normal_requests_remaining": max(
+                0, normal_last - self.sequence + 1),
+            "total_requests_remaining": max(0, 65536 - self.sequence),
+            "cleanup_requests_reserved": OPERATOR_CLEANUP_REQUESTS,
+            "estimated_full_sensor_cycles_remaining": max(
+                0, normal_last - self.sequence + 1)
+                // len(marvin_sensors.QUERIES),
+            "guaranteed_session_kind": "idle_polling_only",
+            "continuous_drive_duration_guaranteed": False,
+        }
 
     def _setter(self, payload, *, mandatory=False, submit_deadline=None):
         packet, _row = self._exchange(
@@ -309,6 +399,7 @@ class ProductionControllerOwner:
         primary = None
         cleanup_deadline = None
         try:
+            self._discard_partial_snapshot()
             self._setter(pilot.ZERO_PWM)
             self.nonzero_may_have_applied = True
             previous_sequence = getattr(
@@ -412,6 +503,7 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         "maximum_application_bytes": OPERATOR_MAX_APPLICATION_BYTES,
         "maximum_requests": MAX_REQUESTS,
         "cleanup_request_reserve": OPERATOR_CLEANUP_REQUESTS,
+        "emergency_zero_may_exceed_application_budget_on_failed_session": True,
         "session_seconds": OPERATOR_SESSION_SECONDS,
         "max_adapter_journal_bytes": OPERATOR_JOURNAL_MAX_BYTES,
         "max_adapter_journal_records": OPERATOR_JOURNAL_MAX_RECORDS,
@@ -905,6 +997,7 @@ class OperatorRuntime:
         with self._lock:
             age = None if self._latest_monotonic is None else max(
                 0.0, time.monotonic() - self._latest_monotonic)
+            budget_status = getattr(self.source, "budget_status", None)
             return {
                 "state": self._state,
                 "connection": {
@@ -913,6 +1006,9 @@ class OperatorRuntime:
                         "connected" if self._state == "running" and self.source is not None
                         else "disabled" if self.source is None else self._state
                     ),
+                    "budget": (
+                        budget_status() if budget_status is not None
+                        else None),
                 },
                 "poll_seconds": self.poll_seconds,
                 "latest_observed_at": None if self._latest is None else self._latest["observed_at"],

@@ -4,6 +4,7 @@ import json
 import io
 import os
 from pathlib import Path
+import socket
 import struct
 import tempfile
 from threading import Thread
@@ -228,17 +229,55 @@ class OperatorTests(unittest.TestCase):
             marvin_operator.pilot.ZERO_PWM)
         with self.assertRaisesRegex(OSError, "byte budget exhausted"):
             budget.submit(zero, deadline=1)
-        self.assertEqual(
-            budget.submit(zero, deadline=2, mandatory=True), len(zero))
-        self.assertEqual(budget.submitted, [(zero, 2)])
+        self.assertEqual(budget.submitted, [])
         owner = marvin_operator.ProductionControllerOwner(
             SimpleNamespace(token=b"identity"), {})
         owner.sequence = 65536 - marvin_operator.OPERATOR_CLEANUP_REQUESTS
         with self.assertRaisesRegex(OSError, "sequence budget exhausted"):
             owner._next_sequence()
+        budget_status = owner.budget_status()
+        self.assertEqual(budget_status["normal_requests_remaining"], 0)
+        self.assertEqual(
+            budget_status["total_requests_remaining"],
+            marvin_operator.OPERATOR_CLEANUP_REQUESTS)
+        self.assertFalse(
+            budget_status["continuous_drive_duration_guaranteed"])
         self.assertEqual(
             owner._next_sequence(mandatory=True),
             65536 - marvin_operator.OPERATOR_CLEANUP_REQUESTS)
+
+    def test_mandatory_zero_writes_despite_late_input_and_dirty_evidence(self):
+        left, right = socket.socketpair()
+        ingress = SimpleNamespace(
+            pending=[b"partial"], rx=bytearray(b"unconsumed"),
+            rx_bytes=10, expected_tx=[b"older"], outstanding_tx=[b"pending"],
+            clock=SimpleNamespace(check=lambda: None))
+        transport = marvin_operator._OperatorTransport(
+            "unused", {"tty": "unused"}, ".", ingress,
+            guard=lambda: None, plan=marvin_operator.zero._Limits())
+        transport.fd = left.fileno()
+        transport.opened = True
+        transport.journal = io.BytesIO()
+        transport.application_bytes = (
+            marvin_operator.OPERATOR_MAX_APPLICATION_BYTES)
+        transport._check = lambda _deadline: transport._owner()
+        right.sendall(b"late setter response")
+        raw = marvin_operator._frame(
+            65535, marvin_operator.RAW_PWM_COMMAND,
+            marvin_operator.pilot.ZERO_PWM)
+        try:
+            with self.assertRaisesRegex(
+                    OSError, "Mandatory zero was attempted") as raised:
+                transport.submit(raw, deadline=0, mandatory=True)
+            self.assertTrue(raised.exception.mandatory_zero_attempted)
+            self.assertEqual(right.recv(len(raw)), raw)
+            self.assertEqual(transport.last_write_sequence, 65535)
+            self.assertEqual(
+                transport.application_bytes,
+                marvin_operator.OPERATOR_MAX_APPLICATION_BYTES + len(raw))
+        finally:
+            left.close()
+            right.close()
 
     def test_drive_uses_accepted_response_window_hold_and_cleanup_bound(self):
         class Transport:
@@ -372,23 +411,41 @@ class OperatorTests(unittest.TestCase):
         class IncrementalSource(Source):
             def __init__(self):
                 super().__init__()
-                self.parts = 0
+                self.parts = []
                 self.snapshots = 0
                 self.overlap = False
+                self.generation = 0
+                self.discarded = 0
+
+            def before_pulse(self):
+                if self.parts:
+                    self.discarded += 1
+                self.parts = []
+                self.generation += 1
 
             def read_incremental(self):
                 if movement["active"]:
                     self.overlap = True
                     raise AssertionError("sensor getter overlapped a motor pulse")
-                self.parts += 1
-                if self.parts % 4:
+                time.sleep(0.1)
+                self.parts.append(self.generation)
+                if len(self.parts) != 4:
                     return None
+                if len(set(self.parts)) != 1:
+                    raise AssertionError("snapshot straddled a motor pulse")
+                self.parts = []
                 self.snapshots += 1
-                return super().read()
+                snapshot = super().read()
+                snapshot["acquisition"] = {
+                    "straddled_motor_pulse": False,
+                    "generation": self.generation,
+                }
+                return snapshot
 
         source = IncrementalSource()
 
         def pulse(_direction):
+            source.before_pulse()
             movement["active"] = True
             try:
                 time.sleep(0.08)
@@ -441,14 +498,19 @@ class OperatorTests(unittest.TestCase):
                 time.sleep(0.01)
             snapshots = source.snapshots
             lease = post("/api/drive/acquire", {})["drive"]["lease"]
+            deadline = time.monotonic() + 0.6
+            while not source.parts and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(source.parts)
             for _ in range(6):
                 post("/api/drive/heartbeat/forward", {"lease": lease})
-                time.sleep(0.1)
+                time.sleep(0.65)
             self.assertGreater(source.snapshots, snapshots)
             stop_started = time.monotonic()
             post("/api/drive/stop", {})
             self.assertLess(time.monotonic() - stop_started, 0.3)
             self.assertFalse(source.overlap)
+            self.assertGreater(source.discarded, 0)
             deadline = time.monotonic() + 2
             while len({
                     event["observed_at"] for event in sensor_events
@@ -583,6 +645,9 @@ runHeartbeatLoop(token,t=>!t.cancelled,
         owner = marvin_operator.ProductionControllerOwner(
             Transport(), {}, clock=lambda: now[0], operation_deadline=6.0)
         owner.started = True
+        owner._snapshot_evidence = {"partial": object()}
+        owner._snapshot_started_at = "started"
+        owner._snapshot_started_monotonic = now[0]
         submitted = []
         def setter(payload, **_options):
             submitted.append(payload)
@@ -593,6 +658,8 @@ runHeartbeatLoop(token,t=>!t.cancelled,
         self.assertEqual(submitted[0], marvin_operator.pilot.ZERO_PWM)
         self.assertNotEqual(submitted[1], marvin_operator.pilot.ZERO_PWM)
         self.assertEqual(submitted[2], marvin_operator.pilot.ZERO_PWM)
+        self.assertEqual(owner._snapshot_evidence, {})
+        self.assertEqual(owner.report["discarded_partial_snapshots"], 1)
 
     def test_runtime_failure_stops_http_server(self):
         class FailedSource:

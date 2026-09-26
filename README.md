@@ -223,10 +223,12 @@ reconnects, wraps sequences, or exposes arbitrary opcodes. Tests and embedding
 applications may still inject the same typed owner boundary without weakening
 the installed path.
 
-Each production live invocation admits controls for an eight-hour operator
-session with a minimum two-second live polling interval. That enforced ceiling
-fits the non-wrapping sequence space and leaves explicit transaction,
-application-byte, and adapter-journal reserves for mandatory stop and LED
+Each production live invocation has an eight-hour wall-clock ceiling with a
+minimum two-second live polling interval. Eight hours is guaranteed only for
+idle polling, not continuous driving: getters, three-transaction pulses, stops,
+and LEDs share the non-wrapping request budget shown live in status and the
+dashboard. Exhaustion fails closed while explicit transaction,
+application-byte, and adapter-journal reserves remain for mandatory stop and LED
 restore. Its serial evidence envelope reserves a further 30 seconds for those
 cleanups, transport close, and evidence sealing, followed by the existing
 coordinated usbmon tail/close allowance. A runtime or cleanup failure closes the
@@ -243,9 +245,12 @@ narrow JSON actions on that same server. Controller actions execute on the
 polling owner thread, pause sensor polling only through each bounded action and
 mandatory zero cleanup, reject movement backlog, and publish state/errors
 through the existing SSE stream. Between held pulses the owner admits one
-150 ms-bounded getter at a time, checks priority commands between getters, and
-publishes only complete four-getter snapshots, so proximity and unresolved raw
-cliff timestamps continue advancing without a read overlapping nonzero PWM.
+150 ms-bounded getter at a time and checks priority commands between getters.
+Every new pulse discards an incomplete cycle; the browser leaves 650 ms between
+pulses within the 0.75-second lease, and SSE publishes only complete
+four-getter cycles with start/completion/duration metadata. Proximity and
+unresolved raw cliff timestamps therefore advance without a read overlapping
+nonzero PWM or a snapshot straddling a pulse.
 Dead-man motion requires a fresh
 0.75-second lease heartbeat for each proved 250 ms pulse; fixed-key motion is
 four sequential proved pulses, not calibrated distance or uninterrupted exact
