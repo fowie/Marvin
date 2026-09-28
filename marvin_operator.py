@@ -222,6 +222,12 @@ class ProductionControllerOwner:
                  clock=time.monotonic, operation_deadline=None):
         self.transport = transport
         self.report = report
+        for name in ("responses", "serial_rx_bytes",
+                     "discarded_partial_snapshots"):
+            value = self.report.setdefault(name, 0)
+            if type(value) is not int or value < 0:
+                raise ValueError(
+                    f"Operator report {name} must be a nonnegative integer.")
         self.expected_identity = transport.token
         self.first_sequence = first_sequence
         self.sequence = first_sequence

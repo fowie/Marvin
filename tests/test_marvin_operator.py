@@ -398,7 +398,7 @@ class OperatorTests(unittest.TestCase):
             hold_before_cleanup,
             marvin_operator.pilot.QUARTER_SECOND_CLEANUP_BOUND_SECONDS)
 
-    def test_operator_getter_completes_on_first_correlated_response(self):
+    def test_real_owner_accepts_exact_coordinator_report_shape(self):
         class Transport:
             token = b"identity"
             last_write_started = None
@@ -406,8 +406,8 @@ class OperatorTests(unittest.TestCase):
 
             def submit(self, raw, *, deadline):
                 request = marvin_operator.protocol.decode_packet(raw)
-                payload = bytes(
-                    marvin_operator.protocol.GETTERS["read-raw-data"].payload_bytes)
+                self.assert_command = request.command
+                payload = bytes(18)
                 body = (
                     b"S"
                     + struct.pack(
@@ -432,19 +432,26 @@ class OperatorTests(unittest.TestCase):
                 return None
 
         transport = Transport()
+        report = {
+            "status": "not_started", "accepted_tx_bytes": 0,
+            "uncertain_tx_bytes": 0, "write_status": "not_attempted",
+        }
         owner = marvin_operator.ProductionControllerOwner(
-            transport,
-            {"uncertain_tx_bytes": 0, "accepted_tx_bytes": 0,
-             "responses": 0})
+            transport, report)
         owner.started = True
         started = time.monotonic()
-        owner._exchange(
-            marvin_operator.protocol.GETTERS["read-raw-data"].command,
-            expected_payload=(
-                marvin_operator.protocol.GETTERS["read-raw-data"].payload_bytes),
-            timeout=1)
+        managers = marvin_operator.managers_for_owner(owner)
+        managers["drive"].start()
+        managers["leds"].start()
         self.assertEqual(transport.reads, 1)
+        self.assertEqual(
+            transport.assert_command,
+            marvin_operator.protocol.GET_LED_STATE)
+        self.assertEqual(managers["leds"]._baseline, bytes(18))
         self.assertLess(time.monotonic() - started, 0.1)
+        self.assertEqual(report["responses"], 1)
+        self.assertEqual(report["accepted_tx_bytes"], 10)
+        self.assertEqual(report["uncertain_tx_bytes"], 0)
 
     def test_sse_sensors_advance_between_held_pulses_and_stop_is_bounded(self):
         movement = {"active": False}
