@@ -157,6 +157,23 @@ class SessionTests(unittest.TestCase):
             self.run_operator(capture_runner=fail_during_capture)
         self.assertNotIn("CUT_POWER_REQUIRED:", stderr.getvalue())
 
+    def test_operator_runtime_start_failure_seals_error_without_cut_power_notice(self):
+        def fail_startup(*_args, **_kwargs):
+            raise RuntimeError(
+                "OSError: Closed transport or response deadline; no resume.")
+
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), self.assertRaisesRegex(
+                RuntimeError, "Closed transport"):
+            self.run_operator(capture_runner=fail_startup)
+        metadata = json.loads(
+            (self.output / "metadata.json").read_text())
+        self.assertEqual(metadata["status"], "failed")
+        self.assertEqual(
+            metadata["error"],
+            "RuntimeError: OSError: Closed transport or response deadline; no resume.")
+        self.assertNotIn("CUT_POWER_REQUIRED:", stderr.getvalue())
+
     def test_operator_preserves_immediate_post_nonzero_notice_without_duplicate(self):
         def fail_after_notice(*_args, **_kwargs):
             error = OSError("post-nonzero fault")

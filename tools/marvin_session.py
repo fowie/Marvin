@@ -1336,6 +1336,7 @@ def run_session(
     except BaseException as error:
         if powered_trial:
             motor_consent.notify_powered_trial_fault_once(error)
+        if powered_trial or _operator_console:
             metadata.update(status="failed", error=f"{type(error).__name__}: {error}"[:1024])
         if encoder_feedback_observation:
             motor_consent.notify_collection_ended(error)
