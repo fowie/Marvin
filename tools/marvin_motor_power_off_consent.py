@@ -759,10 +759,9 @@ def powered_faults(operation):
         try:
             return operation(*args, **kwargs)
         except BaseException as error:
-            if (kwargs.get("_operator_console") is True
-                    or any(
-                        kwargs.get(scope) is True
-                        for scope in POWERED_TRIAL_SCOPES)):
+            if any(
+                    kwargs.get(scope) is True
+                    for scope in POWERED_TRIAL_SCOPES):
                 notify_powered_trial_fault_once(error)
             if kwargs.get("left_motor_powered_observation") is True:
                 notify_cut_power(error)

@@ -59,13 +59,19 @@ operator, and have no group/other permissions. Missing controller callbacks
 prevent live startup. Missing media paths omit those managers, so their controls
 remain visibly disabled. The CLI opens no device until all required live
 configuration is present and does not fall back to a weaker serial path.
+After the exclusive tty open, production observes two quiet seconds before the
+single LED-baseline request. The localhost listener is not bound until that
+request and manager startup succeed. A missing response still fails closed
+without retry or reconnect; clients see connection refusal rather than a
+startup socket that is later reset.
 
 The production coordinator has an eight-hour wall-clock ceiling inside an
 eight-hour-plus-30-second serial evidence envelope. Live polling is never
 faster than two seconds. Eight hours is sustainable for idle four-getter
 polling, not a guarantee of eight hours of continuous driving: sensor getters,
 each three-transaction drive pulse, stops, and LED operations share one
-non-wrapping sequence budget. Runtime status and the dashboard show normal and
+non-wrapping sequence budget. The exact allowlist and sequence cap also bound
+application bytes without a redundant second admission counter. Runtime status and the dashboard show normal and
 cleanup requests remaining. Exhaustion fails closed without wrapping while
 reserving 64 final transactions for mandatory stop and LED baseline restore.
 The bounded adapter journal permits 256 MiB/500,000 records
@@ -81,9 +87,11 @@ generation, and pinned USB identity; those identity failures suppress a write
 to the wrong device. Every other timing/evidence fault is reported after the
 attempt. Any
 runtime/cleanup failure closes the listener and seals a failed result rather
-than leaving a success-like dashboard running. Recorder, session-guard, transport, and
-post-nonzero failures also print `CUT_POWER_REQUIRED` directly on the parent
-operator terminal; the private usbmon stderr artifact is not the only warning.
+than leaving a success-like dashboard running. If nonzero motor output may
+have applied or its required zero cleanup is uncertain, the owner prints
+`CUT_POWER_REQUIRED` directly on the parent operator terminal; the private
+usbmon stderr artifact is not the only warning. Pre-motion startup and idle
+failures do not print a motor-activation warning.
 
 ## JSON and SSE routes
 

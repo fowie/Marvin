@@ -49,6 +49,7 @@ OPERATOR_FIRST_SEQUENCE = 4096
 MAX_REQUESTS = 65536 - OPERATOR_FIRST_SEQUENCE
 OPERATOR_CLEANUP_REQUESTS = 64
 OPERATOR_MIN_LIVE_POLL_SECONDS = 2.0
+OPERATOR_STARTUP_QUIET_SECONDS = 1.0
 OPERATOR_GETTER_TIMEOUT_SECONDS = 0.15
 OPERATOR_JOURNAL_MAX_BYTES = 256 * 1024 * 1024
 OPERATOR_JOURNAL_MAX_RECORDS = 500_000
@@ -56,8 +57,6 @@ OPERATOR_JOURNAL_RESERVE_BYTES = 1024 * 1024
 OPERATOR_JOURNAL_RESERVE_RECORDS = 2048
 OPERATOR_MAX_APPLICATION_BYTES = (
     MAX_REQUESTS * (10 + 18))
-OPERATOR_NORMAL_APPLICATION_BYTES = (
-    OPERATOR_MAX_APPLICATION_BYTES - OPERATOR_CLEANUP_REQUESTS * (10 + 18))
 RAW_PWM_COMMAND = protocol.decode_packet(
     pilot.STEPS_DUAL_FORWARD_2000_CONNECTED["set"]).command
 LED_SET_COMMAND = protocol.decode_packet(
@@ -112,7 +111,6 @@ class _OperatorTransport(LiveTransport):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.application_bytes = 0
 
     def submit(self, raw, *, deadline, mandatory=False):
         packet = protocol.decode_packet(raw)
@@ -139,15 +137,7 @@ class _OperatorTransport(LiveTransport):
         if (mandatory and packet.command == RAW_PWM_COMMAND
                 and packet.payload == pilot.ZERO_PWM):
             return self._mandatory_zero_once(raw, deadline=deadline)
-        limit = (
-            OPERATOR_MAX_APPLICATION_BYTES if mandatory
-            else OPERATOR_NORMAL_APPLICATION_BYTES)
-        if self.application_bytes + len(raw) > limit:
-            raise OSError("Operator application-byte budget exhausted.")
-        count = self._submit_once(raw, deadline=deadline)
-        if count == len(raw):
-            self.application_bytes += count
-        return count
+        return self._submit_once(raw, deadline=deadline)
 
     def _mandatory_zero_once(self, raw, *, deadline):
         self._owner()
@@ -190,8 +180,6 @@ class _OperatorTransport(LiveTransport):
         self.last_write_started = time.monotonic()
         count = os.write(self.fd, raw)
         self.last_write = time.monotonic()
-        if count == len(raw):
-            self.application_bytes += count
         try:
             self.event(
                 "mandatory_zero_returned", raw_hex=raw.hex(),
@@ -248,6 +236,7 @@ class ProductionControllerOwner:
         if self.transport.revalidate(deadline=deadline) != self.expected_identity:
             raise OSError("Fresh controller identity differs from the pinned preflight.")
         self.started = True
+        self.transport.wait(OPERATOR_STARTUP_QUIET_SECONDS)
 
     def _next_sequence(self, *, mandatory=False):
         last = 65535 if mandatory else 65535 - OPERATOR_CLEANUP_REQUESTS
@@ -523,6 +512,7 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         "maximum_application_bytes": OPERATOR_MAX_APPLICATION_BYTES,
         "maximum_requests": MAX_REQUESTS,
         "cleanup_request_reserve": OPERATOR_CLEANUP_REQUESTS,
+        "post_open_quiet_seconds": 1 + OPERATOR_STARTUP_QUIET_SECONDS,
         "emergency_zero_may_exceed_application_budget_on_failed_session": True,
         "session_seconds": OPERATOR_SESSION_SECONDS,
         "max_adapter_journal_bytes": OPERATOR_JOURNAL_MAX_BYTES,
@@ -1297,14 +1287,11 @@ def serve(runtime, *, port=8765, ready=None, maximum_seconds=None):
             and (type(maximum_seconds) not in (int, float)
                  or maximum_seconds <= 0)):
         raise ValueError("maximum_seconds must be positive.")
-    server = OperatorServer(("127.0.0.1", port), runtime)
     try:
         runtime.start()
+        server = OperatorServer(("127.0.0.1", port), runtime)
     except Exception:
-        try:
-            runtime.close()
-        finally:
-            server.server_close()
+        runtime.close()
         raise
     if ready is not None:
         ready(server.server_address)

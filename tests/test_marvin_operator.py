@@ -198,7 +198,7 @@ class OperatorTests(unittest.TestCase):
                     configuration={}, drive_declarations=declarations)
         self.assertNotEqual(report["status"], "operator_shutdown_complete")
 
-    def test_operator_journal_and_application_reserve_mandatory_cleanup(self):
+    def test_operator_journal_and_sequence_reserve_mandatory_cleanup(self):
         limits = marvin_operator.zero._Limits(
             max_journal_bytes=4096, max_journal_records=3,
             journal_reserve_bytes=512, journal_reserve_records=1)
@@ -214,22 +214,6 @@ class OperatorTests(unittest.TestCase):
         transport.end_cleanup_reserve()
         self.assertEqual(transport.journal_records, 3)
 
-        class BudgetTransport:
-            submit = marvin_operator._OperatorTransport.submit
-            application_bytes = marvin_operator.OPERATOR_NORMAL_APPLICATION_BYTES
-            submitted = []
-
-            def _submit_once(self, raw, *, deadline):
-                self.submitted.append((raw, deadline))
-                return len(raw)
-
-        budget = BudgetTransport()
-        zero = marvin_operator._frame(
-            65535, marvin_operator.RAW_PWM_COMMAND,
-            marvin_operator.pilot.ZERO_PWM)
-        with self.assertRaisesRegex(OSError, "byte budget exhausted"):
-            budget.submit(zero, deadline=1)
-        self.assertEqual(budget.submitted, [])
         owner = marvin_operator.ProductionControllerOwner(
             SimpleNamespace(token=b"identity"), {})
         owner.sequence = 65536 - marvin_operator.OPERATOR_CLEANUP_REQUESTS
@@ -265,8 +249,6 @@ class OperatorTests(unittest.TestCase):
         info = os.fstat(transport.fd)
         transport.node_stat = (info.st_dev, info.st_ino, info.st_rdev)
         transport.journal = io.BytesIO()
-        transport.application_bytes = (
-            marvin_operator.OPERATOR_MAX_APPLICATION_BYTES)
         right.sendall(b"late setter response")
         raw = marvin_operator._frame(
             65535, marvin_operator.RAW_PWM_COMMAND,
@@ -282,9 +264,6 @@ class OperatorTests(unittest.TestCase):
             self.assertIn("session clock expired", str(raised.exception))
             self.assertEqual(right.recv(len(raw)), raw)
             self.assertEqual(transport.last_write_sequence, 65535)
-            self.assertEqual(
-                transport.application_bytes,
-                marvin_operator.OPERATOR_MAX_APPLICATION_BYTES + len(raw))
         finally:
             left.close()
             right.close()
@@ -403,8 +382,17 @@ class OperatorTests(unittest.TestCase):
             token = b"identity"
             last_write_started = None
             reads = 0
+            waits = []
+
+            def revalidate(self, *, deadline):
+                return self.token
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
 
             def submit(self, raw, *, deadline):
+                if not self.waits:
+                    raise AssertionError("startup request preceded the quiet window")
                 request = marvin_operator.protocol.decode_packet(raw)
                 self.assert_command = request.command
                 payload = bytes(18)
@@ -438,11 +426,14 @@ class OperatorTests(unittest.TestCase):
         }
         owner = marvin_operator.ProductionControllerOwner(
             transport, report)
-        owner.started = True
         started = time.monotonic()
+        owner.start()
         managers = marvin_operator.managers_for_owner(owner)
         managers["drive"].start()
         managers["leds"].start()
+        self.assertEqual(
+            transport.waits,
+            [marvin_operator.OPERATOR_STARTUP_QUIET_SECONDS])
         self.assertEqual(transport.reads, 1)
         self.assertEqual(
             transport.assert_command,
@@ -635,7 +626,6 @@ runHeartbeatLoop(token,t=>!t.cancelled,
     def test_operator_transport_admits_exact_led_getter_only(self):
         class Transport:
             submit = marvin_operator._OperatorTransport.submit
-            application_bytes = 0
             submitted = []
             def _submit_once(self, raw, *, deadline):
                 self.submitted.append((raw, deadline))
@@ -856,8 +846,11 @@ runHeartbeatLoop(token,t=>!t.cancelled,
                 self.closed = True
 
         runtime = FailedRuntime()
-        with self.assertRaisesRegex(RuntimeError, "startup failed"):
+        with patch.object(
+                marvin_operator, "OperatorServer") as server, \
+                self.assertRaisesRegex(RuntimeError, "startup failed"):
             marvin_operator.serve(runtime, port=0)
+        server.assert_not_called()
         self.assertTrue(runtime.closed)
 
 

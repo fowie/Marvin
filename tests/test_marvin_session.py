@@ -138,15 +138,15 @@ class SessionTests(unittest.TestCase):
         return marvin_session.run_session(
             "/dev/test-marvin", self.output, **defaults)
 
-    def test_operator_recorder_fault_prints_parent_cut_power_notice(self):
+    def test_operator_recorder_fault_before_nonzero_omits_cut_power_notice(self):
         self.start_error = OSError("recorder failed")
         stderr = io.StringIO()
         with redirect_stderr(stderr), self.assertRaisesRegex(
                 OSError, "recorder failed"):
             self.run_operator()
-        self.assertEqual(stderr.getvalue().count("CUT_POWER_REQUIRED:"), 1)
+        self.assertNotIn("CUT_POWER_REQUIRED:", stderr.getvalue())
 
-    def test_operator_guard_fault_prints_parent_cut_power_notice(self):
+    def test_operator_guard_fault_before_nonzero_omits_cut_power_notice(self):
         def fail_during_capture(*args, **kwargs):
             self.finished = True
             kwargs["guard"]()
@@ -155,7 +155,7 @@ class SessionTests(unittest.TestCase):
         with redirect_stderr(stderr), self.assertRaisesRegex(
                 OSError, "USB recorder stopped"):
             self.run_operator(capture_runner=fail_during_capture)
-        self.assertEqual(stderr.getvalue().count("CUT_POWER_REQUIRED:"), 1)
+        self.assertNotIn("CUT_POWER_REQUIRED:", stderr.getvalue())
 
     def test_operator_preserves_immediate_post_nonzero_notice_without_duplicate(self):
         def fail_after_notice(*_args, **_kwargs):

@@ -227,17 +227,24 @@ Each production live invocation has an eight-hour wall-clock ceiling with a
 minimum two-second live polling interval. Eight hours is guaranteed only for
 idle polling, not continuous driving: getters, three-transaction pulses, stops,
 and LEDs share the non-wrapping request budget shown live in status and the
-dashboard. Exhaustion fails closed while explicit transaction,
-application-byte, and adapter-journal reserves remain for mandatory stop and LED
-restore. Its serial evidence envelope reserves a further 30 seconds for those
+dashboard. Exhaustion fails closed while explicit transaction and
+adapter-journal reserves remain for mandatory stop and LED restore. The exact
+allowlist plus the non-wrapping transaction cap also bound application bytes.
+Its serial evidence envelope reserves a further 30 seconds for those
 cleanups, transport close, and evidence sealing, followed by the existing
 coordinated usbmon tail/close allowance. A runtime or cleanup failure closes the
 HTTP listener and cannot be reported as success. Any operator recorder,
 session-guard, transport, or post-nonzero fault prints `CUT_POWER_REQUIRED`
 directly on the parent terminal even though usbmon stderr is also retained
-privately. Recorder/guard/clock failure and dirty serial/USB evidence are
+privately when nonzero motor output may have applied or its cleanup is
+uncertain. Pre-motion startup and idle failures do not issue that warning.
+Recorder/guard/clock failure and dirty serial/USB evidence are
 recorded but cannot suppress the exact emergency zero attempt; changed pinned
 USB identity or tty generation still blocks writing to the wrong device.
+Production startup observes two quiet seconds after the exclusive tty open
+before its single LED-baseline request, and binds the HTTP listener only after
+the controller owner and managers are ready. A missing response still fails
+closed without retry or reconnect.
 `OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.
