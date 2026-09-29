@@ -669,6 +669,9 @@ const context={Date:{now:()=>now},setInterval(){},setTimeout(){},
       channels:{"wheels":{value:path.endsWith("/reset")?0:255}}}})}
   }};
 vm.runInNewContext(SCRIPT,context);
+stream.handlers.status({data:JSON.stringify({...status,latest_observed_at:null,
+  freshness:{fresh:false,age_seconds:null}})});
+assert.match(get("freshness").textContent,/STALE/);
 stream.handlers.status({data:JSON.stringify(status)});
 stream.handlers.sensor({data:JSON.stringify({observed_at:"2026-01-01",snapshot:{}})});
 assert.match(get("freshness").textContent,/Current snapshot/);
