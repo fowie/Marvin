@@ -1056,7 +1056,7 @@ class OperatorRuntime:
 
 class OperatorServer(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = False
+    allow_reuse_address = True
 
     def __init__(self, address, runtime):
         if address[0] != "127.0.0.1":
@@ -1287,11 +1287,14 @@ def serve(runtime, *, port=8765, ready=None, maximum_seconds=None):
             and (type(maximum_seconds) not in (int, float)
                  or maximum_seconds <= 0)):
         raise ValueError("maximum_seconds must be positive.")
+    server = OperatorServer(("127.0.0.1", port), runtime)
     try:
         runtime.start()
-        server = OperatorServer(("127.0.0.1", port), runtime)
     except Exception:
-        runtime.close()
+        try:
+            runtime.close()
+        finally:
+            server.server_close()
         raise
     if ready is not None:
         ready(server.server_address)

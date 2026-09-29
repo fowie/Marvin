@@ -1,5 +1,6 @@
 """One real-HTTP lifecycle check for the local continuous operator runtime."""
 
+import errno
 import json
 import io
 import os
@@ -846,12 +847,43 @@ runHeartbeatLoop(token,t=>!t.cancelled,
                 self.closed = True
 
         runtime = FailedRuntime()
-        with patch.object(
-                marvin_operator, "OperatorServer") as server, \
-                self.assertRaisesRegex(RuntimeError, "startup failed"):
+        with self.assertRaisesRegex(RuntimeError, "startup failed"):
             marvin_operator.serve(runtime, port=0)
-        server.assert_not_called()
         self.assertTrue(runtime.closed)
+
+    def test_server_rebinds_after_time_wait_but_refuses_active_listener(self):
+        first = marvin_operator.OperatorServer(
+            ("127.0.0.1", 0), SimpleNamespace())
+        port = first.server_port
+        accepted = []
+
+        def accept_once():
+            connection, _address = first.get_request()
+            connection.close()
+            accepted.append(True)
+
+        thread = Thread(target=accept_once)
+        thread.start()
+        client = socket.create_connection(("127.0.0.1", port))
+        thread.join(1)
+        self.assertEqual(accepted, [True])
+        client.close()
+        first.server_close()
+
+        rebound = marvin_operator.OperatorServer(
+            ("127.0.0.1", port), SimpleNamespace())
+        try:
+            runtime = SimpleNamespace(
+                started=False,
+                start=lambda: setattr(runtime, "started", True),
+                close=lambda: None,
+            )
+            with self.assertRaises(OSError) as collision:
+                marvin_operator.serve(runtime, port=port)
+            self.assertEqual(collision.exception.errno, errno.EADDRINUSE)
+            self.assertFalse(runtime.started)
+        finally:
+            rebound.server_close()
 
 
 if __name__ == "__main__":

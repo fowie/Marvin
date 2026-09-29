@@ -60,10 +60,10 @@ prevent live startup. Missing media paths omit those managers, so their controls
 remain visibly disabled. The CLI opens no device until all required live
 configuration is present and does not fall back to a weaker serial path.
 After the exclusive tty open, production observes two quiet seconds before the
-single LED-baseline request. The localhost listener is not bound until that
-request and manager startup succeed. A missing response still fails closed
-without retry or reconnect; clients see connection refusal rather than a
-startup socket that is later reset.
+single LED-baseline request. Production reserves the localhost listener before
+opening the controller, permits immediate rebinding after a closed preview, and
+still refuses an active-listener collision before any controller transaction.
+A missing controller response still fails closed without retry or reconnect.
 
 The production coordinator has an eight-hour wall-clock ceiling inside an
 eight-hour-plus-30-second serial evidence envelope. Live polling is never

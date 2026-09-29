@@ -242,9 +242,10 @@ Recorder/guard/clock failure and dirty serial/USB evidence are
 recorded but cannot suppress the exact emergency zero attempt; changed pinned
 USB identity or tty generation still blocks writing to the wrong device.
 Production startup observes two quiet seconds after the exclusive tty open
-before its single LED-baseline request, and binds the HTTP listener only after
-the controller owner and managers are ready. A missing response still fails
-closed without retry or reconnect.
+before its single LED-baseline request. It reserves the localhost listener
+before opening the controller, permits immediate rebinding after a closed
+preview, and still refuses an active-listener collision. A missing response
+still fails closed without retry or reconnect.
 `OperatorRuntime` also accepts typed named `RuntimeManager` injections and owns
 their start/status/close lifecycle, so later drive, LED, and media layers can
 reuse this server and shutdown path instead of creating parallel runtimes.
