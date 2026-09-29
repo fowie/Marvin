@@ -566,17 +566,11 @@ class CampaignTests(unittest.TestCase):
             self.run_campaign()
         self.session.assert_not_called()
 
-    def test_wall_limit_is_partial_coverage_not_success(self):
-        with patch.object(campaign.time, "monotonic", return_value=0):
-            result = self.run_campaign(max_seconds=1)
-        self.assertEqual(result["status"], "stopped_wall_limit")
-        self.assertEqual(result["segments"], [])
-        self.session.assert_not_called()
-
     def test_wall_limit_reserves_close_grace_without_changing_plan_timings(self):
         with patch.object(campaign.time, "monotonic", return_value=0):
             result = self.run_campaign(max_seconds=40)
         self.assertEqual(result["status"], "stopped_wall_limit")
+        self.assertEqual(result["segments"], [])
         self.assertEqual(result["planned"]["usb_seconds"], 18)
         self.session.assert_not_called()
 
