@@ -1272,8 +1272,13 @@ def run_session(
                 now = time.monotonic()
                 if now >= recorder_deadline:
                     raise TimeoutError("USB recorder exceeded its bounded observation window.")
+                stop_after = serial_returned + (
+                    usb_tail_seconds if _operator_console
+                    else USB_POST_CLOSE_DRAIN_SECONDS)
+                if usb_close_grace_seconds and not _operator_console:
+                    stop_after = max(nominal_deadline, stop_after)
                 if (usb_close_grace_seconds and stop_requested_at is None
-                        and max(nominal_deadline, serial_returned + USB_POST_CLOSE_DRAIN_SECONDS) <= now < hard_deadline):
+                        and stop_after <= now < hard_deadline):
                     request_recorder_stop(usb_output)
                     stop_requested_at = now
                     metadata["usb_stop_requested_monotonic"] = now

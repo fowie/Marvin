@@ -187,6 +187,24 @@ class SessionTests(unittest.TestCase):
             self.run_operator(capture_runner=fail_after_notice)
         self.assertEqual(stderr.getvalue().count("CUT_POWER_REQUIRED:"), 1)
 
+    def test_operator_early_shutdown_stops_recorder_without_waiting_eight_hours(self):
+        def finish_early(_port, output, **kwargs):
+            kwargs["guard"]()
+            output.mkdir()
+            return {"status": "completed"}
+
+        result = self.run_operator(capture_runner=finish_early)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["usb"]["stop_reason"], "coordinator_stop")
+        self.assertLess(
+            result["usb_stop_requested_monotonic"]
+            - result["serial_returned_monotonic"], 6)
+        self.assertGreaterEqual(
+            result["usb_stop_requested_monotonic"]
+            - result["serial_returned_monotonic"],
+            result["usb_tail_seconds"])
+        self.assertLess(self.clock.now, 10)
+
     def test_internal_capture_boundary_and_full_binary_budget_are_opt_in(self):
         runner = Mock(side_effect=self.capture)
         result = self.run_capture(capture_runner=runner, binary_payload_limit=4096)

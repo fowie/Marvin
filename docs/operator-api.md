@@ -95,6 +95,8 @@ have applied or its required zero cleanup is uncertain, the owner prints
 `CUT_POWER_REQUIRED` directly on the parent operator terminal; the private
 usbmon stderr artifact is not the only warning. Pre-motion startup and idle
 failures do not print a motor-activation warning.
+After a normal early shutdown, the recorder keeps the five-second post-close
+USB tail, then stops; it does not wait out the eight-hour capture ceiling.
 
 ## JSON and SSE routes
 
