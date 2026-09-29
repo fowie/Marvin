@@ -222,13 +222,17 @@ class UsbIngress:
     """Tail the recorder's unbuffered, target-only binary evidence, without devices."""
 
     def __init__(self, path, baseline, clock, *,
-                 max_bytes=MAX_USB_BYTES, max_records=MAX_USB_RECORDS):
+                 max_bytes=MAX_USB_BYTES, max_records=MAX_USB_RECORDS,
+                 max_rx_bytes=8192):
         self.path, self.baseline, self.clock = Path(path), baseline, clock
         if (type(max_bytes) is not int or not 1 <= max_bytes <= 64 * 1024 * 1024
                 or type(max_records) is not int
-                or not 1 <= max_records <= 1_000_000):
+                or not 1 <= max_records <= 1_000_000
+                or type(max_rx_bytes) is not int
+                or not 1 <= max_rx_bytes <= max_bytes):
             raise ValueError("USB ingress evidence limits are invalid.")
         self.max_bytes, self.max_records = max_bytes, max_records
+        self.max_rx_bytes = max_rx_bytes
         self.stream = None
         self.pending = bytearray()
         self.started = False
@@ -314,7 +318,7 @@ class UsbIngress:
                 raise OSError("USB IN timestamps regressed.")
             self.last_rx_end = end
             self.rx_bytes += length
-            if self.rx_bytes > 8192:
+            if self.rx_bytes > self.max_rx_bytes:
                 raise OSError("USB IN byte budget exceeded.")
             self.rx.append((payload, start, end))
         elif event == ord("S"):

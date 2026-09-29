@@ -230,7 +230,10 @@ and LEDs share the non-wrapping request budget shown live in status and the
 dashboard. Exhaustion fails closed while explicit transaction and
 adapter-journal reserves remain for mandatory stop and LED restore. The exact
 allowlist plus the non-wrapping transaction cap also bound application bytes.
-Its serial evidence envelope reserves a further 30 seconds for those
+The private usbmon capture remains bounded to 64 MiB/1,000,000 records. Its
+correlator counts at most 16 MiB of serial IN over the production session and
+dequeues matched payloads immediately; short diagnostics retain their 8 KiB
+default. The serial evidence envelope reserves a further 30 seconds for those
 cleanups, transport close, and evidence sealing, followed by the existing
 coordinated usbmon tail/close allowance. A runtime or cleanup failure closes the
 HTTP listener and cannot be reported as success. Any operator recorder,

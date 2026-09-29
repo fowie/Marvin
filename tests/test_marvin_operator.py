@@ -134,6 +134,9 @@ class OperatorTests(unittest.TestCase):
             limits = options["limits"]
             self.assertEqual(limits.max_requests, marvin_operator.MAX_REQUESTS)
             self.assertEqual(
+                limits.max_rx_bytes,
+                marvin_operator.OPERATOR_MAX_SERIAL_RX_BYTES)
+            self.assertEqual(
                 limits.max_journal_bytes,
                 marvin_operator.OPERATOR_JOURNAL_MAX_BYTES)
             self.assertEqual(
@@ -146,6 +149,9 @@ class OperatorTests(unittest.TestCase):
             self.assertEqual(
                 review["max_adapter_journal_records"],
                 marvin_operator.OPERATOR_JOURNAL_MAX_RECORDS)
+            self.assertEqual(
+                review["max_serial_rx_bytes"],
+                marvin_operator.OPERATOR_MAX_SERIAL_RX_BYTES)
             session = options["session_options"]
             self.assertFalse(session["actuators_isolated"])
             self.assertTrue(session["operator_drive_authorized"])

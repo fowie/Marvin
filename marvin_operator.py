@@ -45,6 +45,7 @@ OPERATOR_EVIDENCE_SECONDS = (
     OPERATOR_SESSION_SECONDS + OPERATOR_CLEANUP_RESERVE_SECONDS)
 OPERATOR_USB_MAX_BYTES = 64 * 1024 * 1024
 OPERATOR_USB_MAX_RECORDS = 1_000_000
+OPERATOR_MAX_SERIAL_RX_BYTES = 16 * 1024 * 1024
 OPERATOR_FIRST_SEQUENCE = 4096
 MAX_REQUESTS = 65536 - OPERATOR_FIRST_SEQUENCE
 OPERATOR_CLEANUP_REQUESTS = 64
@@ -517,6 +518,7 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         "session_seconds": OPERATOR_SESSION_SECONDS,
         "max_adapter_journal_bytes": OPERATOR_JOURNAL_MAX_BYTES,
         "max_adapter_journal_records": OPERATOR_JOURNAL_MAX_RECORDS,
+        "max_serial_rx_bytes": OPERATOR_MAX_SERIAL_RX_BYTES,
         "adapter_cleanup_reserve_bytes": OPERATOR_JOURNAL_RESERVE_BYTES,
         "adapter_cleanup_reserve_records": OPERATOR_JOURNAL_RESERVE_RECORDS,
         "dynamic_allowlist": {
@@ -565,7 +567,7 @@ def serve_live(*, port, poll_seconds, chunk_seconds, expected_physical_port,
         transport_type=_OperatorTransport, observe=observe,
         limits=zero._Limits(
             first_sequence=4096, max_requests=MAX_REQUESTS, interval=0,
-            max_rx_bytes=16 * 1024 * 1024, read_size=512,
+            max_rx_bytes=OPERATOR_MAX_SERIAL_RX_BYTES, read_size=512,
             max_journal_bytes=OPERATOR_JOURNAL_MAX_BYTES,
             max_journal_records=OPERATOR_JOURNAL_MAX_RECORDS,
             journal_reserve_bytes=OPERATOR_JOURNAL_RESERVE_BYTES,

@@ -266,7 +266,7 @@ def _run_diagnostic(output, *, expected_physical_port, review, transport_type, o
     ingress = UsbIngress(
         output / "capture" / "usb" / "binary-events.bin",
         baseline["usb"], clock, max_bytes=usb_max_bytes,
-        max_records=usb_max_records)
+        max_records=usb_max_records, max_rx_bytes=limits.max_rx_bytes)
     report = {"status": "not_started", "accepted_tx_bytes": 0, "uncertain_tx_bytes": 0,
               "write_status": "not_attempted"}
     metadata = {"status": "incomplete", "evidence_kind": "recorded",

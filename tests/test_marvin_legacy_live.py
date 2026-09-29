@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import socket
 import struct
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from tools import marvin_legacy_poll as poll
 from tools import marvin_usbmon_binary as binary
 from tests.test_marvin_legacy_client import Clock, frame
 from tests.test_marvin_usbmon_binary import header
+import marvin_operator
 
 
 class Bridge:
@@ -87,6 +89,64 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(rest.ended_at, 100.020001)
         self.reader.finish(0)
         self.assertEqual(self.reader.rx_consumed, 144)
+
+    def test_configured_ingress_correlates_past_8k_and_retains_cleanup(self):
+        path = self.output / "continuous-operator.bin"
+        path.write_bytes(binary.FILE_MAGIC)
+        reader = live.UsbIngress(
+            path, {"busnum": 1, "devnum": 10}, Bridge(),
+            max_bytes=64 * 1024, max_records=1000,
+            max_rx_bytes=16 * 1024)
+        reader.open()
+        try:
+            for index in range(9):
+                payload = bytes([index]) * 1024
+                with path.open("ab") as stream:
+                    stream.write(incoming(
+                        payload, stamp=100 + index / 100, urb=10 + index))
+                reader.pump()
+                self.assertEqual(reader.match(payload).data, payload)
+            left, right = socket.socketpair()
+            node = f"/proc/self/fd/{left.fileno()}"
+            transport = marvin_operator._OperatorTransport(
+                "unused", {"tty": node}, self.output, reader,
+                guard=lambda: None,
+                plan=marvin_operator.zero._Limits(
+                    max_rx_bytes=16 * 1024))
+            transport.fd = left.fileno()
+            transport.opened = True
+            info = os.fstat(transport.fd)
+            transport.node_stat = (
+                info.st_dev, info.st_ino, info.st_rdev)
+            transport.journal = io.BytesIO()
+            transport.serial_bytes = reader.rx_consumed
+            cleanup = marvin_operator._frame(
+                65535, marvin_operator.RAW_PWM_COMMAND,
+                marvin_operator.pilot.ZERO_PWM)
+            with patch.object(
+                    marvin_operator.marvin_session, "check_identity"):
+                self.assertEqual(
+                    transport.submit(
+                        cleanup, deadline=1e12, mandatory=True),
+                    len(cleanup))
+            self.assertEqual(right.recv(len(cleanup)), cleanup)
+            with path.open("ab") as stream:
+                stream.write(
+                    event(cleanup, endpoint=0x03, status=-115, urb=100)
+                    + event(
+                        endpoint=0x03, event="C", status=0,
+                        length=len(cleanup), captured=0, data_flag=ord(">"),
+                        urb=100))
+            reader.pump()
+            reader.finish(len(cleanup))
+            self.assertEqual(reader.rx_bytes, 9 * 1024)
+            self.assertEqual(reader.rx_consumed, reader.rx_bytes)
+            self.assertEqual(reader.completed_tx, len(cleanup))
+            self.assertFalse(reader.rx)
+            left.close()
+            right.close()
+        finally:
+            reader.close()
 
     def test_usb_faults_stop_without_discarding_original_evidence(self):
         cases = [

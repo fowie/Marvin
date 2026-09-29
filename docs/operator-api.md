@@ -76,7 +76,10 @@ cleanup requests remaining. Exhaustion fails closed without wrapping while
 reserving 64 final transactions for mandatory stop and LED baseline restore.
 The bounded adapter journal permits 256 MiB/500,000 records
 and separately reserves 1 MiB/2,048 records for that cleanup. Its private binary
-usbmon recorder has a further ten-second coordinated tail/close allowance. At
+usbmon recorder is separately bounded to 64 MiB/1,000,000 records. The
+correlator counts at most 16 MiB of serial IN over the production session and
+dequeues matched payloads immediately; short diagnostics retain their 8 KiB
+default. The recorder has a further ten-second coordinated tail/close allowance. At
 the session limit it shuts down the HTTP server and runtime, leaving 30 seconds
 for priority stop, LED baseline restore, transport close, and evidence
 finalization. Motion admission expiry, recorder/session-guard or evidence-clock
