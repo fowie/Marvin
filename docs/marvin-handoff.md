@@ -39,6 +39,13 @@ For Jetson-specific tools and kernel inputs, use the
 | Camera | Microsoft LifeCam NX-3000 `045e:0721` worked through the **SPARE/TI hub** path; one valid 352x288 MJPEG frame was captured. Subsequent capture through Marvin's old internal hub produced corrupted/truncated buffers. The selected architecture connects it directly to Jetson rather than that `0451:2046` full-speed hub. | Direct-Jetson topology is **planned, not verified** until Jetson inventory and capture. Require exact USB ancestry and fixed MJPG 352x288 validation. Laptop IPU3 nodes are not Marvin; REAR CAM and DEPTH CAM did not enumerate it. Successor `DepthCamPower` must not be used. See the [LifeCam capture boundary](../README.md#lifecam-capture). |
 | Microphone | Microsoft microphone array `045e:fff0`; USB Audio 1.0 capture at 8-channel `S16_LE`, 16 kHz. Direct ALSA and PipeWire five-second raw captures each produced the expected 1,280,000 bytes on the modified host. A bounded direct-host capture passed supervised acceptance; this does not establish Jetson acceptance. The selected architecture connects it directly to Jetson rather than Marvin's internal `0451:2046` full-speed hub. | Direct-Jetson topology is **planned, not verified** until Jetson inventory and capture. Check the exact Jetson kernel for both upstream DMA fix `d0199ae` and the exact `045e:fff0` fill-max quirk; port both if absent. See [microphone host setup](#microphone-host-kernel-state) and [discovery/verification](microphone-array-discovery.md). |
 
+**New operator report (2026-09-28, not accepted):** bottom-green looked
+blinking green/yellow rather than the historically labeled solid green. The
+getter/setter/reset sequence had correlated responses, and the operator
+confirmed the pre-test appearance returned. The run sealed **FAILED** on a
+separate recorder-shutdown wait. Historical mapping remains historical; the
+new physical LED behavior is unaccepted, and opaque `0x82` is not an ACK.
+
 ## Operator acceptance and remaining boundary
 
 The operator accepted the following product behaviors on blocks with sealed
