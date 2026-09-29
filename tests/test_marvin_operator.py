@@ -630,6 +630,92 @@ runHeartbeatLoop(token,t=>!t.cancelled,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertNotIn("heartbeat=setInterval", marvin_dashboard.JS)
 
+    def test_dashboard_freshness_led_feedback_and_focused_shortcuts(self):
+        script = """
+const vm=require("node:vm"), assert=require("node:assert/strict");
+let now=100000, stream, keydown, posts=[];
+const nodes={}, ledInputs=[];
+function element(){
+  return {children:[],dataset:{},textContent:"",checked:false,disabled:false,
+    handlers:{},classList:{toggle(){}},addEventListener(name,callback){this.handlers[name]=callback},
+    append(...children){this.children.push(...children)},
+    replaceChildren(...children){this.children=children}};
+}
+const get=id=>nodes[id]??(nodes[id]=element());
+const buttons=["forward","backward","rotate-left","rotate-right"].map(direction=>{
+  const button=element();button.dataset.drive=direction;return button;
+});
+const manager={state:"ready",active_channel:null,baseline_hex:"00",
+  channels:{"wheels":{value:0,observed_effect:"wheel LEDs"}}};
+const status={state:"running",connection:{status:"connected"},poll_seconds:1,
+  latest_observed_at:"2026-01-01",
+  freshness:{fresh:true,age_seconds:0},managers:{leds:manager,
+    drive:{state:"ready",direction:null,lease_remaining_seconds:null,pulses_completed:0}}};
+const context={Date:{now:()=>now},setInterval(){},setTimeout(){},
+  addEventListener(name,callback){if(name==="keydown")keydown=callback},
+  document:{getElementById:get,createElement(tag){
+    const item=element();if(tag==="input")ledInputs.push(item);return item
+  },createTextNode:()=>element(),querySelectorAll(selector){
+    return selector==="[data-drive]"?buttons:ledInputs.filter(input=>input.dataset.led)
+  },addEventListener(){}},
+  EventSource:class{constructor(){stream=this;this.handlers={}}
+    addEventListener(name,callback){this.handlers[name]=callback}},
+  fetch:async(path,options)=>{
+    if(path==="/api/status")return new Promise(()=>{});
+    posts.push(path);
+    if(path==="/api/drive/acquire")return {ok:true,json:async()=>({drive:{lease:"lease-1"}})};
+    if(path.startsWith("/api/drive/"))return {ok:true,json:async()=>({drive:{}})};
+    return {ok:true,json:async()=>({leds:{...manager,active_channel:"wheels",
+      channels:{"wheels":{value:path.endsWith("/reset")?0:255}}}})}
+  }};
+vm.runInNewContext(SCRIPT,context);
+stream.handlers.status({data:JSON.stringify(status)});
+stream.handlers.sensor({data:JSON.stringify({observed_at:"2026-01-01",snapshot:{}})});
+assert.match(get("freshness").textContent,/Current snapshot/);
+assert.equal(get("leds").children[0].children[2].textContent,"Historical: wheel LEDs");
+stream.handlers.status({data:JSON.stringify({...status,latest_observed_at:"2026-01-02"})});
+assert.match(get("freshness").textContent,/STALE/);
+stream.handlers.sensor({data:JSON.stringify({observed_at:"2026-01-02",snapshot:{}})});
+assert.match(get("freshness").textContent,/Current snapshot/);
+now+=3000;
+vm.runInNewContext("refreshFreshness()",context);
+assert.match(get("freshness").textContent,/STALE/);
+stream.handlers.error({data:""});
+assert.match(get("freshness").textContent,/stream disconnected/);
+keydown({code:"KeyW",key:"w",repeat:false,
+  target:{closest:()=>true},preventDefault(){throw Error("intercepted select")}});
+assert.equal(posts.length,0);
+get("drive-mode").value="deadman";
+buttons[0].handlers.click({detail:0});
+assert.equal(posts.length,0);
+assert.match(get("drive-status").textContent,/requires a held key or pointer/);
+let prevented=false;
+keydown({code:"Space",key:" ",repeat:false,target:{closest:()=>buttons[0]},
+  preventDefault(){prevented=true}});
+assert.equal(prevented,true);
+assert.deepEqual(posts,["/api/drive/stop"]);
+vm.runInNewContext('ledAction("/api/leds/wheels/on","wheels on")',context)
+  .then(async()=>{
+    assert.deepEqual(posts,["/api/drive/stop","/api/leds/wheels/on"]);
+    assert.equal(ledInputs[0].checked,true);
+    assert.match(get("led-status").textContent,/command accepted; physical effect unverified/);
+    await vm.runInNewContext('ledAction("/api/leds/reset","Baseline restore")',context);
+    assert.equal(ledInputs[0].checked,false);
+    assert.match(get("led-status").textContent,/Baseline restore: command accepted/);
+    buttons[0].handlers.keydown({code:"Enter",repeat:false,preventDefault(){}});
+    await new Promise(setImmediate);
+    assert.deepEqual(posts.slice(-2),[
+      "/api/drive/acquire","/api/drive/heartbeat/forward"]);
+    buttons[0].handlers.keyup({code:"Enter",preventDefault(){}});
+    await new Promise(setImmediate);
+    assert.equal(posts.at(-1),"/api/drive/release");
+  }).catch(error=>{console.error(error);process.exitCode=1});
+""".replace("SCRIPT", json.dumps(marvin_dashboard.JS))
+        subprocess.run(
+            ["node", "-e", script], check=True, timeout=5,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertIn("reported green/yellow blinking", marvin_dashboard.HTML)
+
     def test_operator_transport_admits_exact_led_getter_only(self):
         class Transport:
             submit = marvin_operator._OperatorTransport.submit
