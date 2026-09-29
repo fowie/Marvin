@@ -1,11 +1,13 @@
 # Marvin canonical handoff
 
 Historical hardware evidence runs through **2026-09-25**; software status was
-reconciled with `main` at `2f13dd7` on **2026-09-28**. This is the entry point
+reconciled with `main` at `d6ce178` on **2026-09-28**. This is the entry point
 for a fresh host/session, especially a Jetson AGX Orin installed in Marvin. It
 separates verified evidence, operator reports, hypotheses, and unfinished work.
 Detailed procedures remain in the linked documents. This handoff is not a live
-test plan or authorization.
+test plan or authorization. Start Jetson work with the
+[gated bring-up checklist](jetson-bringup.md); keep this page as the evidence
+reference.
 
 ## Start here
 
@@ -457,40 +459,9 @@ re-verify every condition before relying on it.
 
 ## Jetson AGX Orin migration
 
-1. Clone the repository and complete the offline test/read order above.
-2. Inventory the exact Jetson kernel, architecture, Jetson/L4T release, Secure
-   Boot/signature policy, ALSA/PipeWire stack, installed packages, and udev/group
-   permissions. Keep a non-secret package/version record with the handoff.
-3. With Marvin unpowered, inventory controller/camera/microphone USB identities,
-   stable by-id names, and physical topology without opening endpoints or
-   commanding anything. Reconcile `045e:4444`, `045e:0721`, and `045e:fff0`;
-   do not mistake IPU3 or other onboard Jetson media nodes for Marvin. The
-   planned architecture places `045e:0721` and `045e:fff0` directly on Jetson,
-   not behind Marvin's internal `0451:2046` full-speed hub. Verify their actual
-   USB parent ancestry before treating that plan as implemented.
-4. Determine whether the microphone fixes are upstream in the exact Jetson
-   kernel. If needed, port/rebuild both changes as described above. Never copy
-   the x86 module or signing key.
-5. Under explicit privacy consent, validate direct ALSA capture before
-   PipeWire. Keep media private and bounded. Separately validate the directly
-   attached LifeCam with its exact `045e:0721` ancestry and one fixed MJPG
-   352x288 frame before exposing a general video path.
-6. Reproduce a read-only legacy `0x00 ReadRawData` baseline only after exact
-   controller identity, stable selector, permissions, recorder behavior,
-   isolation, cutoff, and a new evidence directory are reviewed.
-7. Keep drive and servo execution disabled until identity/topology and evidence
-   recording are validated on Jetson. Do not infer safety from matching bytes.
-8. Transfer only non-sensitive summaries/hashes unless the operator explicitly
-   moves private evidence.
-9. Preserve the accepted bounded on-blocks drive/stop/teleoperation, camera
-   center/up, and wheel-blink profiles without broadening their values or
-   evidence claims. Projector control and live camera-down remain unavailable.
-10. Continue, in order: independently refine the provisional/cross-coupled
-   P6/P7/P12 proximity assignments if needed; discriminate cliff channels with
-   contemporaneous controls/recovery or a less cross-coupled stimulus; map
-   servo words/mechanisms; perform reviewed full-control validation; only then
-   begin vision integration.
-
-Do not repeat the completed masked/exposed sensor matrix blindly. Design its
-successor from the [campaign limitations above](#completed-13-sensor-campaign)
-and the [current offline plan](cliff-proximity-mapping.md).
+Follow the [Jetson bring-up gates](jetson-bringup.md) for host preparation,
+physical topology, the inseparable microphone kernel changes, separate media
+acceptance, and the controller hold. None has been accepted on Jetson. Do not
+repeat the completed masked/exposed sensor matrix blindly. Design later sensor
+work from the [campaign limitations above](#completed-13-sensor-campaign) and
+the [current offline plan](cliff-proximity-mapping.md).

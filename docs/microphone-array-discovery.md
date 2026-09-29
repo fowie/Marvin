@@ -77,10 +77,10 @@ protocol fact, not available implementation source. It is a state-changing
 successor robot command, is not linked to `045e:fff0`, and must not be sent to
 the legacy controller or used as an ALSA mixer substitute.
 
-No new utility is warranted yet. Cached sysfs, ALSA proc metadata, and PipeWire
-registry metadata provide the complete non-recording interface inventory.
-Software that opens PCM would cross the consent boundary without adding
-offline protocol knowledge.
+At discovery time, no new utility was warranted: cached sysfs, ALSA proc
+metadata, and PipeWire registry metadata supplied the non-recording inventory.
+The later consent-gated capture utility is documented below; opening PCM still
+crosses the consent boundary.
 
 ## Historical consent-gated capture
 
@@ -311,7 +311,8 @@ containing both the DMA fix and exact device quirk is a prerequisite.
 The selected architecture connects the microphone and LifeCam directly to the
 Jetson/host to avoid the old Marvin hub path. Use `direct-host` for new work.
 The two hub routes remain documented so old evidence is interpretable; they
-must not be used as fallback paths.
+must not be used as fallback paths. For Jetson-specific host and physical
+gates, follow the [bring-up checklist](jetson-bringup.md).
 
 ## Superseded internal-route work item
 

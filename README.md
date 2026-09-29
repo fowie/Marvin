@@ -452,6 +452,7 @@ owner's approval.** Publication acceptance is tracked in
 ## Documentation
 
 - [Canonical status and Jetson handoff](docs/marvin-handoff.md)
+- [Jetson AGX Orin bring-up gates (not live authorization)](docs/jetson-bringup.md)
 - [Capability map and bring-up plan](docs/marvin-bringup-plan.md)
 - [Persistent legacy getter client and offline API example](docs/legacy-client.md)
 - [Bounded read-only polling, recording and offline inspection](docs/legacy-polling.md)
