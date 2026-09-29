@@ -11,17 +11,8 @@ reference.
 
 ## Start here
 
-On a fresh host, clone this repository and establish the offline baseline before
-connecting Marvin:
-
-```sh
-git clone https://github.com/fowie/Marvin.git
-cd Marvin
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install .
-python -m unittest discover -s tests -q
-```
+On a fresh host, clone this repository and follow the README's
+[offline setup](../README.md#offline-getting-started) before connecting Marvin.
 
 Read, in order:
 
@@ -32,11 +23,8 @@ Read, in order:
 5. the relevant focused document before any sensor, drive, servo, camera, or
    microphone work.
 
-Useful host packages/capabilities are `git`, Python 3 with `venv`/`pip`,
-`usbutils` (`lsusb`), `udev`, `v4l-utils`, `ffmpeg`, `alsa-utils`, PipeWire
-tools, and the exact running kernel's headers/build/signing toolchain. Package
-names vary by distribution. Do not install a prebuilt module from the old
-x86 host onto Jetson.
+For Jetson-specific tools and kernel inputs, use the
+[host gate](jetson-bringup.md#1-prepare-the-host-offline).
 
 ## Current control/status matrix
 
@@ -264,23 +252,9 @@ host's enrolled MOK, and installed at:
 ```
 
 That module, its signing key, its kernel build, and its architecture are not
-portable to Jetson. On a fresh system:
-
-1. record `uname -a`, architecture, Jetson/L4T release, Secure Boot/module
-   signature enforcement, loaded audio stack, `snd_usb_audio` source/version,
-   and exact kernel headers/source/config/`Module.symvers`;
-2. check whether both `d0199ae` and an exact `045e:fff0` fill-max quirk are
-   already present; if not, port both to the exact Jetson kernel and build only
-   the affected module with that kernel's toolchain;
-3. if signature enforcement is active, sign with a Jetson-owned enrolled key;
-   never copy the x86 module or key;
-4. install as an override without replacing the packaged module, run the
-   distribution's module-dependency update, and verify the selected module
-   path/signature/version before capture;
-5. with separate audio/privacy consent, validate direct ALSA `hw` capture at
-   exactly 8-channel `S16_LE`, 16 kHz before testing PipeWire. A five-second raw
-   capture is exactly 1,280,000 bytes; also check kernel logs for USB/audio
-   errors. Do not silently fall back to another device or format.
+portable to Jetson. Follow the
+[Jetson kernel and capture gates](jetson-bringup.md#3-qualify-the-microphone-kernel)
+before opening PCM; never carry only the quirk forward.
 
 Rollback is high-level and deliberate: remove only the override, rebuild module
 dependencies, then reload `snd-usb-audio` or reboot in a reviewed maintenance

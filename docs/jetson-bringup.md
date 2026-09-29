@@ -58,7 +58,8 @@ prove physical safety, calibration, firmware identity, or application ACK.
    policy. Never enable `FILL_MAX` alone: without the DMA fix, the transfer can
    exceed its buffer and corrupt kernel memory. Do not replace the packaged
    module, copy the old x86 module/key, reload a module, or install an override
-   without an approved maintenance plan. Recheck both changes after updates.
+   without an approved maintenance plan, including module-dependency updates.
+   Recheck both changes after updates.
    See [root cause and rollback](microphone-array-discovery.md#confirmed-root-cause).
 3. Verify the selected module path/version/signature and current ALSA card/PCM
    ancestry beneath `045e:fff0` before capture. **Hold:** an override exists
